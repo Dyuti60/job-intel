@@ -40,3 +40,15 @@ A changed source produces a new candidate revision rather than directly editing 
 publisher compares an approved revision with current master data, writes only a valid change, and
 records old and new values plus approval and evidence references. Retrying discovery or publication
 must not create duplicate master records or duplicate effective changes.
+
+## Registered-source gate
+
+Future Discovery starts by enumerating the Source Registry, not the open internet. An endpoint is
+eligible for scheduled enumeration only when it belongs to an active recruiting authority, its
+endpoint status is active, and `discovery_enabled` is true. Inactive or disabled records remain in
+the registry for operational history and provenance but are skipped.
+
+Source class informs future verification: authoritative official sources can establish truth,
+official supporting sources can corroborate it, and secondary/discovery-only sources can assist
+discovery or cross-checking but cannot silently override authoritative evidence. T-002 only records
+this metadata; it performs no fetching, evidence creation, or confidence calculation.

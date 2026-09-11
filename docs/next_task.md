@@ -1,28 +1,27 @@
-# T-002 — Assam Source Registry
+# T-003 — Source Documents and Discovery Runs
 
 ## Objective
 
-Introduce the first persistent domain capability: a registry of authoritative Assam Government and
-recruiting-authority sources that future discovery processes can enumerate safely and consistently.
+Establish the persistent execution and raw-document provenance infrastructure required for future
+registered-source discovery.
 
 ## Scope
 
-T-002 will define and migrate the minimal tables required to store recruiting authorities and their
-official source endpoints. It will establish stable identifiers, source type, canonical URL,
-authority ownership, active/inactive operational status, timestamps, and basic provenance/audit
-fields. It will add typed schemas, repository/service behavior, and versioned API operations needed
-to create, read, list, and deliberately update registry entries. Canonical URLs and suitable natural
-keys must prevent duplicates, and tests must cover constraints, idempotent registration, validation,
-persistence, and API behavior.
+T-003 will introduce `DiscoveryRun` and `SourceDocument` domain models and a new Alembic
+migration. A discovery run will identify the registered source endpoint being processed and retain
+execution status, start/completion timestamps, outcome metadata, and actionable failure details.
+Source documents will retain source-to-run relationships, original URL and retrieval metadata,
+deterministic document identity and content-hash metadata, media/content metadata, timestamps, and
+raw-document provenance sufficient to explain what was observed and when.
 
-T-002 will include an Alembic migration and PostgreSQL-backed validation. It may include a small,
-explicit bootstrap mechanism for initial official Assam sources only if the task defines and tests
-its provenance and repeatability.
+The repository, service, schema, and API or internal execution interfaces needed to create and
+inspect these records must remain explicit and testable. Idempotency and uniqueness rules must
+prevent the same fetched representation from producing uncontrolled duplicate document records
+while preserving repeat-run history.
 
 ## Boundaries
 
-T-002 will not implement crawling, scheduled discovery, source-document storage, PDF extraction,
-recruitment candidates, evidence, verification, confidence scoring, Human Review, approval,
-publishing, Recruitment Master, or user-facing product features. Registry records describe where
-future discovery may look; they do not themselves assert recruitment facts and cannot write to Job
-Master.
+T-003 will not implement live crawling, scheduled workers, arbitrary internet discovery, HTML or PDF
+parsing, recruitment extraction, `RecruitmentCandidate`, candidate fields, Evidence, Verification,
+confidence scoring, Human Review, approval, publishing, or Recruitment Master. Tests will use local
+fixtures or constructed metadata and must not depend on live Assam websites.

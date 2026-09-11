@@ -36,8 +36,12 @@ Discovery is never a direct Job Master writer.
 
 ## Components and responsibilities
 
-- **Source Registry (future T-002):** persistent inventory of Assam recruiting authorities and
-  official source endpoints, including operational state and provenance.
+- **Source Registry (implemented in T-002):** persistent inventory of Assam recruiting authorities
+  and their explicitly registered endpoints. It records endpoint purpose, authority classification,
+  operational state, whether discovery is permitted, optional adapter selection, last verification
+  time, and registry provenance. Official, supporting-government, and secondary/discovery-only
+  sources are distinguished explicitly. Registry provenance describes why an endpoint is trusted
+  or retained; it is not recruitment Evidence.
 - **Discovery:** independently replaceable adapters inspect registered sources, record runs, retain
   source documents, detect changes, and propose recruitment candidates. Repeat runs are idempotent.
 - **Verification:** independently evaluates candidate field claims against evidence, applying
@@ -63,3 +67,16 @@ external site behavior. Configuration, logging, and database setup remain infras
 
 External AI, if later justified, remains an optional provider behind an interface. Crawling, hashing,
 deduplication, dates, state transitions, and publication safeguards remain deterministic.
+
+## Implemented Source Registry
+
+`RecruitingAuthority` owns one or more `SourceEndpoint` records. Stable, unique authority codes
+support future configuration and adapter selection. Canonical endpoint URLs are normalized
+conservatively and globally unique. Enum-backed database checks constrain authority type/status and
+endpoint type/class/status. Foreign keys use restricted deletion because deactivation is the normal
+operational lifecycle and registered provenance must not disappear casually.
+
+The registry sits before Discovery as an allow-list and trust-classification boundary. Future
+Discovery workers may enumerate only registered endpoints that satisfy explicit eligibility policy,
+including active authority and endpoint state plus `discovery_enabled=true`. Registration does not
+fetch a URL, assert a recruitment fact, create Evidence, or permit direct Job Master writes.

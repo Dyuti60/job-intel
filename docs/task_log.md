@@ -63,3 +63,71 @@ FastAPI/Starlette test-client stack; no project test failed.
 - Host port 5432 was already allocated during validation; this project's container was validated on
   configurable host port 5433.
 - The current FastAPI/Starlette test-client dependency stack emits two upstream deprecation warnings.
+
+## T-002 — Assam Source Registry
+
+### Scope
+
+Implement persistent trusted-source metadata for Assam recruiting authorities and their registered
+web endpoints. T-002 does not fetch, crawl, parse, schedule, extract recruitment candidates, create
+Evidence, verify claims, or publish master data.
+
+### Implementation summary
+
+- Added `RecruitingAuthority` with stable unique code, constrained authority type/status, official
+  website URL, and timestamps.
+- Added `SourceEndpoint` with restricted authority ownership, globally unique normalized URL,
+  constrained endpoint type/class/status, independent discovery enablement, optional adapter key,
+  last-verification time, provenance note, and timestamps.
+- Added explicit repositories and service behavior, thin versioned API routes, conflict/not-found
+  handling, list filters, pagination, controlled endpoint metadata updates, and status-only
+  authority deactivation/reactivation.
+- Added conservative HTTP/HTTPS URL normalization and application-plus-database duplicate defense.
+- Added migration `20260912_0002` with foreign key, check constraints, unique constraints, and
+  query-oriented indexes.
+
+### Validation performed
+
+- Dependency metadata did not change, so `uv sync` was not required for T-002.
+- Existing development database began at `20260912_0001`, upgraded to
+  `20260912_0002 (head)`, and passed `alembic check`.
+- Existing database T-002 downgrade to T-001 and upgrade back to T-002 passed after confirming both
+  registry tables contained zero rows.
+- A separately named empty PostgreSQL database applied T-001 then T-002, reported T-002 head, passed
+  `alembic check`, and passed a T-002 downgrade/upgrade cycle. The disposable database was removed
+  afterward.
+- PostgreSQL inspection confirmed both registry tables, named unique/check/foreign-key constraints,
+  restricted authority deletion, and the intended endpoint indexes.
+- Complete test suite: 28 passed in 0.45 seconds with two upstream dependency warnings.
+- Ruff: all checks passed.
+- `git diff --check`: passed with no whitespace errors.
+
+### Files created/changed
+
+- Created: `alembic/versions/20260912_0002_assam_source_registry.py`,
+  `app/models/source_registry.py`, `app/repositories/source_registry.py`,
+  `app/schemas/source_registry.py`, `app/services/exceptions.py`,
+  `app/services/source_registry.py`, `app/services/url_normalization.py`,
+  `app/api/v1/routes/source_registry.py`, `tests/conftest.py`, `tests/factories.py`,
+  `tests/test_source_authorities_api.py`, `tests/test_source_endpoints_api.py`, and
+  `tests/test_source_registry_persistence.py`.
+- Changed: `app/models/__init__.py`, `app/api/v1/router.py`,
+  `docs/architecture.md`, `docs/workflow.md`, `docs/task_log.md`, and
+  `docs/next_task.md`.
+
+### Test results
+
+28 passed: 6 existing T-001 tests and 22 T-002 tests covering authority and endpoint creation,
+retrieval, listing, validation, 404/409 behavior, URL normalization, every required endpoint filter,
+controlled updates, relationships, and database-level uniqueness.
+
+### Known limitations
+
+- No authorities or endpoints are seeded.
+- Registry metadata does not prove a recruitment claim and is intentionally separate from future
+  Evidence.
+- Discovery eligibility is documented but no crawler, scheduler, or discovery execution exists.
+- Tests use isolated SQLite for API/service behavior and real PostgreSQL for migration/schema
+  validation; SQLite does not preserve timezone offsets when round-tripping timestamps.
+- The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
+  warnings.
