@@ -1,0 +1,1 @@
+"""Replaceable source adapter boundary."""
