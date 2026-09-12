@@ -961,3 +961,68 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
 - Pipeline history currently supports the explicit APSC source mapping inherited from T-013.
 - Operational error text is bounded and connection credentials are redacted, but this is not a
   general-purpose secret-scanning system.
+
+## T-015 — GitHub Actions Scheduled Pipeline Execution
+
+### Result
+
+- Added `.github/workflows/scheduled-pipeline.yml` for manual and daily APSC execution on the
+  trusted `self-hosted`, `Windows`, `X64` runner. It uses contents-read permission, one non-cancelling
+  APSC concurrency group, isolated uv-managed Python 3.12, frozen dependencies, Alembic upgrade,
+  the existing T-013 CLI, and an always-rendered Actions job summary.
+- Added `--trigger` to the pipeline CLI so manual Actions executions persist `GITHUB_ACTION` and
+  cron executions persist `SCHEDULED` through the existing T-014 history service. CLI remains the
+  default for ordinary local execution.
+- Added a source-scoped `PipelineAdvisoryLock`. Its stable signed PostgreSQL bigint key is derived
+  from SHA-256 of the normalized source identity. A dedicated connection holds the session advisory
+  lock across Discovery, Verification, routing, Publisher, and PipelineRun finalization. Contention
+  exits 2 before starting history or domain work.
+- Kept hosted CI separate and repaired its invalid job-level `runner.temp` expression by using a
+  fixed disposable Linux `/tmp` raw root. The config-default test now removes an ambient CI setting
+  before asserting the application default.
+- Established external runner state under `D:\ASSAM_JOB_DATA`: restricted runtime configuration in
+  `config\runtime.env` and content-addressed raw files in `raw`. The three existing APSC raw objects
+  were copied from checkout-local storage and their SHA-256 hashes matched.
+- Added `.env.runner.example` without credentials and detailed Windows service installation,
+  service-account permissions, persistent configuration, external storage, dispatch, lock, and
+  private Review UI guidance in `docs/self_hosted_runner.md`.
+- Added five focused tests for stable lock identity, SQLite test isolation, overlap rejection before
+  history/domain work, Actions trigger persistence, hosted-CI boundaries, and trusted-workflow
+  schedule/concurrency/storage/security configuration.
+
+### Validation performed
+
+- Complete local test suite: 260 passed in 34.85 seconds. Only upstream FastAPI/Starlette and local
+  pytest-cache warnings were emitted.
+- Ruff passed for the complete repository; `git diff --check` passed.
+- Alembic remained at `20260912_0010` because T-015 adds no schema objects. Existing persistent
+  PostgreSQL reported head and `alembic check` reported no upgrade operations.
+- A fresh PostgreSQL database applied the complete T-001 through T-014 migration chain to
+  `20260912_0010`; `alembic current` reported head and the drift check found no new operations.
+- A real PostgreSQL overlap test held the APSC advisory key in a second session. The pipeline exited
+  2, and PipelineRun count remained 3 before and after the rejected attempt.
+- Hosted CI run `34722707313` completed successfully after applying the complete migration chain,
+  checking drift, running all 260 tests, and Ruff. This also repaired the invalid T-014 CI workflow
+  definition and its environment-dependent default-settings test.
+- Trusted workflow run `34722717890` completed successfully on `assam-job-intel-runner`. It recorded
+  GITHUB_ACTION PipelineRun `a24f62da-6474-4259-b1bb-8b659487e1f0` with three successful stage rows.
+  Live Discovery found 3 UNCHANGED documents, Verification processed 0 revisions, the existing one
+  queued ReviewCase remained active, Publisher skipped 1 pending-review assessment, and Master count
+  remained 0.
+- Trusted dry-run workflow `34722797952` completed successfully and recorded GITHUB_ACTION PipelineRun
+  `18147b7d-22c8-4255-a487-81b651a3998f` with `dry_run=true`. PipelineRun history increased from 5
+  to 6 while SourceDocument, CandidateRevision, VerificationRun, ReviewCase, and RecruitmentMaster
+  counts remained exactly 3, 1, 1, 1, and 0.
+- Repeated live Actions execution retained the same three SourceDocuments, one CandidateRevision,
+  one VerificationRun, one ReviewCase, and zero Masters. No ReviewCase was started or decided.
+
+### Known limitations
+
+- The configured daily cron is 02:30 UTC / 08:00 IST. Manual `workflow_dispatch` and its trigger
+  metadata were exercised remotely; a naturally elapsed cron event was not awaited during T-015.
+- Only the explicit APSC source is scheduled. Adding another source requires a reviewed workflow
+  mapping/concurrency key and corresponding persistent configuration.
+- PostgreSQL advisory locking is the runtime overlap guarantee. SQLite intentionally bypasses the
+  lock for isolated tests and is not a supported scheduled runtime database.
+- The Review UI remains unauthenticated and localhost-only; the Actions workflow never starts or
+  exposes it.
