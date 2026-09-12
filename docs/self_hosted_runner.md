@@ -45,6 +45,12 @@ The workflow always sets `AJI_RAW_STORAGE_ROOT=D:\ASSAM_JOB_DATA\raw`, validates
 documents already exist under an old checkout-local `data/raw` directory, copy that content into
 the external root before the first scheduled run so existing `raw://` locations remain resolvable.
 
+For local failure notifications, configure `AJI_MONITOR_NOTIFICATION_CHANNELS=LOG,FILE` and
+`AJI_MONITOR_NOTIFICATION_FILE=D:\ASSAM_JOB_DATA\notifications\events.jsonl` in the external
+runtime file. Grant the runner service identity modify access to that external notifications
+directory. Use `LOG` alone if an append-only local file is not desired. Never place notification
+output under the disposable Actions checkout.
+
 The runner service identity requires read access to the runtime configuration and modify access to
 the raw-storage directory. It also needs network access to the registered official APSC endpoints
 and database access. Do not grant it interactive administrator rights merely to run the workflow.
@@ -74,5 +80,7 @@ uv run python -m workers.pipeline --source APSC --dry-run
 ```
 
 Then manually dispatch the workflow and confirm its job summary contains the PipelineRun ID and
-stage summary. Inspect `/api/v1/pipeline-runs` locally for the matching trigger and result. Rotate
-database credentials through the external file or Actions secret; never commit them.
+stage summary. The scheduled workflow also runs `workers.monitoring` after every attempted pipeline
+and preserves any pipeline failure as the job result. Inspect `/operations`,
+`/api/v1/operational-status/APSC`, and `/api/v1/pipeline-runs` locally. Rotate database credentials
+through the external file or Actions secret; never commit them.

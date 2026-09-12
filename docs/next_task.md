@@ -1,21 +1,23 @@
-# T-016 — Operational Monitoring and Failure Notifications
+# T-017 — Public Recruitment Read API and Search Baseline
 
-T-016 should build a local/private operational monitoring layer from the persisted `PipelineRun`
-and `PipelineStageRun` history created by T-014 and exercised by T-015.
+T-017 should introduce a stable, read-only public contract over current approved Recruitment Master
+revisions for Assam Government recruitment discovery.
 
 It should include:
 
-- deterministic stale/RUNNING and last-success/last-failure health evaluation
-- source-level operational status and recent stage-duration trends
-- bounded failure summaries without secrets or stack traces
-- configurable local notification routing for failed or stale scheduled executions
-- deduplicated notification events so repeated checks do not spam operators
-- links/references to the relevant PipelineRun and queued Human Review workload
-- a private read-only operational page or API suitable for local/V0 administration
-- tests using controlled history without live APSC access
+- public list and detail APIs sourced only from ACTIVE RecruitmentMaster records and their current
+  immutable revisions
+- deterministic pagination, filtering, and ordering for authority, candidate identity, and selected
+  approved structured fields
+- safe derived application-date/status metadata without rewriting Master history
+- a bounded public response that preserves useful official-source provenance while excluding
+  internal operational, reviewer, and sensitive audit details
+- explicit separation between public master reads and all candidate, verification, confidence,
+  review, monitoring, and publisher mutation domains
+- comprehensive tests proving that drafts, unresolved reviews, rejected data, historical non-current
+  revisions, and operational records cannot leak into the public contract
 
-T-016 must reuse the existing pipeline and operational-history domains. It must NOT make Human
-Review decisions, publish Recruitment Master records, expose the local UI publicly, or introduce a
-distributed observability platform.
+T-017 must NOT implement a public browser UI, eligibility matching, user profiles, alerts,
+preparation features, live crawling, automated Human Review, or mutable public APIs.
 
-Do not implement T-016 now.
+Do not implement T-017 now.

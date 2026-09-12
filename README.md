@@ -139,3 +139,23 @@ Persistent configuration and raw files stay outside the disposable checkout unde
 `D:\ASSAM_JOB_DATA`. The workflow never serves or exposes the localhost Human Review interface and
 does not bypass queued review. See [Trusted Windows pipeline runner](docs/self_hosted_runner.md) for
 service installation, permissions, configuration, and validation.
+
+## Local operational monitoring
+
+Evaluate persisted pipeline history without contacting APSC:
+
+```text
+uv run python -m workers.monitoring --source APSC
+uv run python -m workers.monitoring --source APSC --dry-run
+```
+
+The command deterministically reports current source health, recent per-stage duration trends,
+queued Human Review workload, and bounded failure alerts. `--dry-run` predicts notification events
+without storing or delivering them. Normal execution records deduplicated notification events and
+routes them through the configured local channels (`LOG`, or `LOG,FILE`). File notifications must
+use an external path such as `D:\ASSAM_JOB_DATA\notifications\events.jsonl`.
+
+Run the application and open `http://localhost:8000/operations` for the private, read-only status
+page. JSON clients can use `GET /api/v1/operational-status/{source_code}` and
+`GET /api/v1/operational-notifications`. Like `/review`, this local administration surface has no
+production authentication or CSRF boundary and must not be exposed publicly.

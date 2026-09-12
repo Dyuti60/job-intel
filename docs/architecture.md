@@ -605,3 +605,34 @@ Review-required pipeline results remain successful queued work. The scheduled wo
 the Review UI, never makes decisions, and never exposes localhost routes. Publisher eligibility and
 the asynchronous human-review boundary are unchanged. Secrets are masked and excluded from job
 summaries; bounded PipelineRun errors retain the existing redaction behavior.
+
+## Local operational monitoring and failure notifications
+
+T-016 derives a source-level operational health view from the existing immutable `PipelineRun` and
+`PipelineStageRun` history. It does not invoke or alter Discovery, Verification, Review, Confidence,
+or Master publishing. Health precedence is deterministic: stale RUNNING work, fresh RUNNING work,
+no history, latest failure, overdue last success, latest partial result, then healthy. Default
+thresholds are a 60-minute RUNNING limit and a 26-hour successful-run freshness limit; both are
+application settings. Recent stage trends use the newest 20 completed samples per stage and expose
+sample count, average/minimum/maximum duration, and latest duration.
+
+`OperationalNotificationEvent` is the only T-016 persistence object. Each immutable row records the
+source, optional PipelineRun, failure/staleness event type, severity, local delivery channel,
+bounded redacted message, delivery status/error, and timestamps. A SHA-256 key over source,
+condition identity, relevant run, and channel provides database-protected deduplication. Repeated
+checks therefore do not spam operators, while a new failed run or newly overdue success generates a
+new condition identity. Notifications are local log entries and optional append-only JSON Lines in
+external storage; no remote notification provider or secret-bearing payload is introduced.
+
+The read-only `/api/v1/operational-status/{source_code}` endpoint and private `/operations` page
+compose current health, last run/success/failure references, queued review counts, stage trends, and
+recent notification history. API run references intentionally omit full PipelineRun error and
+summary payloads. Failure summaries are first-line, credential-redacted, bounded text without stack
+traces. `/api/v1/operational-notifications` provides filtered immutable event inspection and no
+mutation endpoint.
+
+The trusted scheduled workflow invokes monitoring after every attempted pipeline execution, even
+when the pipeline fails, then preserves the original pipeline exit result. This makes a persisted
+failure observable without turning monitoring into an error suppressor. The page and APIs are
+local/private V0 administration surfaces; production exposure would require authentication,
+authorization, TLS, CSRF/session controls, and network hardening.

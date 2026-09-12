@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     discovery_read_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
     discovery_http_retries: int = Field(default=2, ge=0, le=5)
     discovery_max_response_bytes: int = Field(default=10_000_000, ge=1024)
+    monitor_running_stale_minutes: int = Field(default=60, ge=1, le=10_080)
+    monitor_success_stale_hours: int = Field(default=26, ge=1, le=8_760)
+    monitor_trend_run_limit: int = Field(default=20, ge=1, le=500)
+    monitor_notification_channels: str = "LOG"
+    monitor_notification_file: str | None = None
 
 
 @lru_cache

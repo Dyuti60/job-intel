@@ -491,3 +491,28 @@ later scheduled pipeline -> Publisher consumes eligible resolved case
 The workflow never exposes the local Review UI or creates decisions. Hosted pull-request CI remains
 separate and uses only a disposable PostgreSQL database; the trusted scheduled workflow uses the
 persistent database and raw storage outside its checkout.
+
+## Operational monitoring workflow
+
+```text
+PipelineRun / PipelineStageRun history
+  -> deterministic source health evaluation
+       -> stale RUNNING detection
+       -> latest success/failure freshness
+       -> recent per-stage duration trends
+       -> queued Human Review references
+  -> failed/stale condition candidates
+  -> SHA-256 deduplication per source + condition + channel
+  -> local LOG and optional external JSONL notification
+  -> read-only /operations and operational-status APIs
+```
+
+The trusted scheduled workflow always runs this monitor after the pipeline attempt and subsequently
+returns the original pipeline exit code. Monitoring therefore cannot make a failed pipeline appear
+successful. Repeated evaluation of the same condition reuses the stored notification identity and
+does not redeliver it; a distinct failed run or a new stale-success boundary can notify again.
+
+Monitoring is observational. It does not start pipelines, resolve ReviewCases, alter Candidate or
+Master data, or expose the private Review UI. `--dry-run` predicts health and notification routing
+without writing notification history. Normal monitoring may write only immutable operational
+notification audit records and an optional local external JSONL sink.

@@ -38,6 +38,14 @@ from app.models.master import (
     RecruitmentMasterRevision,
     RecruitmentMasterStatus,
 )
+from app.models.monitoring import (
+    OperationalHealthStatus,
+    OperationalNotificationChannel,
+    OperationalNotificationDeliveryStatus,
+    OperationalNotificationEvent,
+    OperationalNotificationSeverity,
+    OperationalNotificationType,
+)
 from app.models.pipeline import (
     PipelineRun,
     PipelineRunStatus,
@@ -104,6 +112,12 @@ __all__ = [
     "MasterFieldValueOrigin",
     "MasterPublicationEvent",
     "ObservationStatus",
+    "OperationalHealthStatus",
+    "OperationalNotificationChannel",
+    "OperationalNotificationDeliveryStatus",
+    "OperationalNotificationEvent",
+    "OperationalNotificationSeverity",
+    "OperationalNotificationType",
     "PublicationPath",
     "PublicationResult",
     "PipelineRun",
