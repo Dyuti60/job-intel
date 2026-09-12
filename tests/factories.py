@@ -180,3 +180,100 @@ def create_evidence(client: TestClient, document_id: str, **overrides) -> dict:
     )
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def create_ready_candidate_revision(
+    client: TestClient,
+    *,
+    fields: list[dict] | None = None,
+    authority_overrides: dict | None = None,
+    endpoint_overrides: dict | None = None,
+) -> tuple[dict, dict, dict, dict]:
+    authority, endpoint = create_discovery_source(
+        client,
+        authority_overrides=authority_overrides,
+        endpoint_overrides=endpoint_overrides,
+    )
+    run = create_run(client, endpoint["id"])
+    document = observe_document(client, run["id"])["document"]
+    candidate_overrides = {}
+    if authority_overrides and authority_overrides.get("code"):
+        candidate_overrides["candidate_key"] = (
+            f"{authority_overrides['code']}_RECRUITMENT"
+        )
+    candidate = create_candidate(client, authority["id"], **candidate_overrides)
+    revision = create_revision(
+        client,
+        candidate["id"],
+        document["id"],
+        **({"fields": fields} if fields is not None else {}),
+    )
+    ready = client.patch(
+        f"/api/v1/recruitment-candidates/{candidate['id']}",
+        json={"status": "READY_FOR_VERIFICATION"},
+    )
+    assert ready.status_code == 200, ready.text
+    return authority, document, ready.json(), revision
+
+
+def create_verification_run(
+    client: TestClient,
+    revision_id: str,
+    trigger_type: str = "MANUAL",
+) -> dict:
+    response = client.post(
+        "/api/v1/verification-runs",
+        json={
+            "candidate_revision_id": revision_id,
+            "trigger_type": trigger_type,
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def start_verification_run(client: TestClient, run_id: str) -> dict:
+    response = client.post(f"/api/v1/verification-runs/{run_id}/start")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def create_field_verification(
+    client: TestClient, run_id: str, field_id: str
+) -> dict:
+    response = client.post(
+        f"/api/v1/verification-runs/{run_id}/fields/{field_id}"
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def add_verification_assessment(
+    client: TestClient,
+    verification_id: str,
+    evidence_id: str,
+    assessment: str,
+    **overrides,
+) -> dict:
+    payload = {
+        "evidence_id": evidence_id,
+        "assessment": assessment,
+    }
+    payload.update(overrides)
+    response = client.post(
+        f"/api/v1/field-verifications/{verification_id}/evidence",
+        json=payload,
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def finalize_field_verification(
+    client: TestClient, verification_id: str, *, not_applicable: bool = False
+) -> dict:
+    response = client.post(
+        f"/api/v1/field-verifications/{verification_id}/finalize",
+        json={"not_applicable": not_applicable},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()

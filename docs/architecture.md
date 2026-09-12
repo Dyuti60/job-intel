@@ -192,3 +192,58 @@ Evidence answers which captured source context supports an extracted candidate v
 does not establish truth.** It does not verify a value, weight source authority, calculate
 confidence, resolve conflicts, change candidate readiness, or make data publishable. Those remain
 responsibilities of later Verification, review, approval, and master-publication domains.
+
+## Independent field verification
+
+T-006 implements the independent verification segment:
+
+```text
+RecruitmentCandidateRevision snapshot
+  -> VerificationRun
+  -> FieldVerification snapshot
+  -> VerificationEvidenceAssessment
+  -> deterministic outcome and findings
+```
+
+A `VerificationRun` targets exactly one immutable candidate revision and snapshots its revision
+hash. It starts PENDING, explicitly moves to RUNNING, and terminates as COMPLETED, PARTIAL, or
+FAILED. The service checks the snapshot before execution mutations. `fields_total` is the number of
+CandidateFields in the target revision; outcome counters count finalized field results and are
+service-managed. COMPLETED requires every field to be finalized, while PARTIAL requires at least
+one but not all fields.
+
+Each `FieldVerification` snapshots the field path, declared type, and normalized structured value.
+It starts PENDING while assessments are collected and becomes FINALIZED exactly once. The unique
+run/field identity prevents duplicate results. Finalized field results, their counts, reason, and
+finding are immutable; re-verification creates a new VerificationRun instead of rewriting history.
+
+`VerificationEvidenceAssessment` classifies persisted Evidence as SUPPORTS, CONTRADICTS, or
+CONTEXT_ONLY for one field result. It may optionally retain a normalized typed asserted value. A
+supplied SUPPORTS value must equal the field snapshot, while a supplied CONTRADICTS value must
+differ. Evidence may come from the extraction document, another immutable version, another
+endpoint, or another registered authority. This intentionally differs from T-005 extraction links,
+which require the same SourceDocument.
+
+The client cannot supply source authority. Verification derives SourceClass through
+`Evidence -> SourceDocument -> SourceEndpoint` and snapshots that class on the assessment. API
+composition exposes the assessment, Evidence excerpt/locator, SourceDocument, SourceEndpoint, and
+source class without duplicating full Evidence content in verification storage.
+
+The deterministic V0 policy is ordered as follows:
+
+1. Any authoritative-official contradiction produces CONFLICT / AUTHORITATIVE_CONFLICT.
+2. Otherwise, authoritative-official support produces CONFIRMED / AUTHORITATIVE_SUPPORT, while
+   weaker contradictions remain visible in findings.
+3. Without authoritative support, any combination of non-authoritative support and contradiction
+   produces CONFLICT / SOURCE_CONFLICT.
+4. No assessments produce INSUFFICIENT_EVIDENCE / NO_EVIDENCE.
+5. Secondary support alone produces INSUFFICIENT_EVIDENCE / ONLY_SECONDARY_EVIDENCE.
+6. Context-only, supporting-only, contradiction-only, and other inconclusive inputs produce
+   INSUFFICIENT_EVIDENCE / INSUFFICIENT_SUPPORT.
+7. NOT_APPLICABLE is never inferred; an explicit finalization request produces NOT_APPLICABLE /
+   MANUALLY_MARKED_NOT_APPLICABLE.
+
+T-006 stores source-class support and contradiction counts, total evidence evaluated, explicit
+reason codes, and human-readable findings. It deliberately stores no numeric confidence score.
+Verification never mutates candidates, revisions, fields, extraction links, Evidence, or source
+documents, and it does not approve or publish data.

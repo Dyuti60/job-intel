@@ -27,6 +27,17 @@ from app.models.source_registry import (
     SourceStatus,
     SourceType,
 )
+from app.models.verification import (
+    EvidenceAssessmentType,
+    FieldVerification,
+    FieldVerificationOutcome,
+    FieldVerificationStatus,
+    VerificationEvidenceAssessment,
+    VerificationReasonCode,
+    VerificationRun,
+    VerificationRunStatus,
+    VerificationTriggerType,
+)
 
 __all__ = [
     "AuthorityStatus",
@@ -42,6 +53,10 @@ __all__ = [
     "DocumentType",
     "Evidence",
     "EvidenceType",
+    "EvidenceAssessmentType",
+    "FieldVerification",
+    "FieldVerificationOutcome",
+    "FieldVerificationStatus",
     "ObservationStatus",
     "RecruitmentCandidate",
     "RecruitmentCandidateRevision",
@@ -52,4 +67,9 @@ __all__ = [
     "SourceDocumentStatus",
     "SourceStatus",
     "SourceType",
+    "VerificationEvidenceAssessment",
+    "VerificationReasonCode",
+    "VerificationRun",
+    "VerificationRunStatus",
+    "VerificationTriggerType",
 ]

@@ -350,3 +350,79 @@ associations, same-document enforcement, historical preservation, and database c
   represent Verification.
 - The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
   warnings.
+
+## T-006 — Verification Runs and Field Verification
+
+### Scope
+
+Implement an independent, deterministic Verification domain for immutable candidate revisions and
+fields. T-006 evaluates controlled persisted Evidence but does not implement numeric confidence,
+Human Review, approval, master data, crawling, parsing, or LLM verification.
+
+### Implementation summary
+
+- Added PENDING/RUNNING/COMPLETED/PARTIAL/FAILED VerificationRuns with immutable revision-hash
+  snapshots, derived field totals, service-managed result counters, failure metadata, and guarded
+  transitions.
+- Added pending/finalized FieldVerifications that snapshot field path, type, and structured value,
+  then retain deterministic outcomes, reason codes, source-class counts, findings, and finalization
+  time.
+- Added SUPPORTS/CONTRADICTS/CONTEXT_ONLY VerificationEvidenceAssessments with normalized optional
+  asserted values, derived source-class snapshots, cross-document verification support, and
+  idempotent uniqueness.
+- Implemented authoritative-conflict precedence, authoritative-support confirmation, baseline
+  non-authoritative conflict detection, explicit insufficient-evidence reasons, and controlled
+  NOT_APPLICABLE finalization without a numeric confidence score.
+- Added conflict-transparent API responses containing evidence, source-document, endpoint, source
+  class, locator, excerpt, assessment, asserted value, and note metadata.
+- Preserved all candidate, extraction-evidence, Evidence, SourceDocument, and registry records;
+  re-verification creates a separate run.
+
+### Validation performed
+
+- Dependency metadata did not change, so `uv sync` was not required for T-006.
+- Existing development PostgreSQL began at `20260912_0005`, upgraded to
+  `20260912_0006 (head)`, and passed `alembic check` with no model drift.
+- Existing database downgrade from T-006 to T-005 and re-upgrade to T-006 passed.
+- A separately named empty PostgreSQL database applied T-001 through T-006 in sequence, reported
+  T-006 head, and passed `alembic check`; it was removed afterward.
+- PostgreSQL inspection confirmed lifecycle/count checks, constrained vocabularies, restricted
+  foreign keys, run/field and field/evidence uniqueness, JSONB snapshots, and intended indexes.
+- Complete test suite: 150 passed in 10.71 seconds with two upstream dependency warnings.
+- Ruff: all checks passed.
+- `git diff --check`: passed with no whitespace errors.
+
+### Files created/changed
+
+- Created: `alembic/versions/20260912_0006_verification_domain.py`,
+  `app/models/verification.py`, `app/repositories/verification.py`,
+  `app/schemas/verification.py`, `app/services/verification.py`,
+  `app/api/v1/routes/verification.py`, `tests/test_verification_runs_api.py`,
+  `tests/test_verification_assessments_api.py`,
+  `tests/test_verification_outcomes_api.py`, and
+  `tests/test_verification_persistence.py`.
+- Changed: `app/models/evidence.py`, `app/models/__init__.py`,
+  `app/api/v1/router.py`, `tests/factories.py`, `docs/architecture.md`,
+  `docs/workflow.md`, `docs/task_log.md`, and `docs/next_task.md`.
+
+### Test results
+
+150 passed: 123 existing T-001 through T-005 tests and 27 T-006 tests covering run prerequisites,
+lifecycle and snapshots; exact field scoping; assessment provenance, integrity, normalization and
+idempotency; same-document, cross-document, and cross-source evaluation; every deterministic V0
+outcome; authoritative precedence and conflict transparency; counters and completion policy;
+immutability; re-verification; and database constraints.
+
+### Known limitations
+
+- Verification assessments are controlled structured inputs; T-006 does not interpret natural
+  language or autonomously verify Evidence.
+- Source class is snapshotted at assessment time, while other displayed provenance metadata is
+  composed from retained Evidence, SourceDocument, and SourceEndpoint records.
+- MULTI_SOURCE_SUPPORT is reserved in the reason vocabulary for a later policy; V0 confirmation
+  requires authoritative-official support.
+- T-006 persists no numeric confidence score, threshold, review decision, approval, or master data.
+- Service/API immutability does not prevent privileged administrators from directly modifying the
+  database outside normal application behavior.
+- The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
+  warnings.

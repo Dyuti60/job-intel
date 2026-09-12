@@ -1,6 +1,7 @@
 import enum
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     CheckConstraint,
@@ -13,10 +14,13 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.models.source_registry import constrained_enum
+
+if TYPE_CHECKING:
+    from app.models.discovery import SourceDocument
 
 
 class EvidenceType(enum.StrEnum):
@@ -63,6 +67,8 @@ class Evidence(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+    source_document: Mapped["SourceDocument"] = relationship()
 
 
 class CandidateFieldEvidence(Base):

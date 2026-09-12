@@ -137,3 +137,35 @@ unverified field proposal. Future Verification may evaluate this evidence and ma
 additional evidence concepts for corroboration or conflict analysis. Attaching extraction Evidence
 does not itself verify a field, establish authority, calculate confidence, or make a candidate ready
 or publishable.
+
+## Verification workflow
+
+```text
+READY_FOR_VERIFICATION CandidateRevision
+  -> PENDING VerificationRun with revision-hash snapshot
+  -> RUNNING
+  -> per-field snapshot and evidence assessments
+  -> deterministic field outcome and explainable finding
+  -> COMPLETED when all fields are finalized
+     or PARTIAL when only some are finalized
+  -> future confidence policy and Human Review routing
+```
+
+Each assessment refers to an existing Evidence record and marks it SUPPORTS, CONTRADICTS, or
+CONTEXT_ONLY for that specific field verification. Unlike extraction Evidence links, verification
+assessments may cross SourceDocuments and registered endpoints. The service derives and snapshots
+the SourceEndpoint class from persisted provenance; callers cannot promote secondary evidence to
+official or authoritative status.
+
+Finalization applies the documented V0 precedence: authoritative contradiction wins first;
+otherwise authoritative support confirms the value; without authoritative support, combined
+support and contradiction conflict; no, context-only, secondary-only, or otherwise inadequate
+evidence remains insufficient. NOT_APPLICABLE requires an explicit request. Findings retain all
+counts, so a weaker contradiction remains visible even when authoritative support determines the
+outcome.
+
+Verification does not modify extracted data. CandidateRevision and CandidateField snapshots prove
+what was evaluated, while Evidence and extraction associations remain unchanged. Finalized field
+results and terminal runs reject mutation. Re-verification creates a new VerificationRun and
+preserves the earlier result. T-006 records deterministic inputs only; numeric confidence, review,
+approval, and publication remain later stages.

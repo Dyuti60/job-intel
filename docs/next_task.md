@@ -1,25 +1,23 @@
-# T-006 — Verification Runs and Field Verification
+# T-007 — Explainable Confidence Scoring and Review Routing
 
 ## Objective
 
-Establish the independent Verification domain that evaluates a fixed RecruitmentCandidateRevision
-and produces explainable, field-level results without mutating candidate extraction history.
+Build a deterministic field-level and candidate-revision-level confidence policy from persisted
+Verification facts, with an explainable component breakdown and deterministic review-routing
+metadata.
 
 ## Scope
 
-T-006 will introduce `VerificationRun` and `FieldVerification`, verification statuses and outcomes,
-the exact CandidateRevision snapshot being verified, explicit relationships to Evidence evaluated
-during verification, source-authority-aware deterministic verification inputs, recorded reasons and
-findings, a conflict-detection baseline, repositories, services, internal APIs, a new Alembic
-migration, and comprehensive automated tests.
+T-007 will introduce deterministic confidence components, source-authority weighting,
+support/contradiction penalties, evidence-completeness inputs, field confidence scores,
+candidate/revision confidence aggregation, explainable confidence breakdowns, configurable review
+thresholds, and deterministic `ReviewRequired` routing metadata.
 
-The verification result for each field must remain explainable from immutable candidate values,
-evidence, source metadata, and deterministic findings. Verification must remain independent of
-Discovery and must not silently alter RecruitmentCandidateRevision, CandidateField, Evidence, or
-approved/master data.
+Confidence must be reproducible from immutable verification outcomes, reason codes, evidence
+assessments, source-class counts, conflicts, and completeness facts. The implementation must expose
+why a score and routing decision were produced and must not use arbitrary AI-generated percentages.
 
 ## Boundaries
 
-T-006 will not implement final confidence-scoring policy beyond minimal deterministic inputs needed
-for verification, Human Review UI, approval, Recruitment Master, publication, or live source
-crawling.
+T-007 will not implement Human Review UI, human approval, Recruitment Master, publication, live
+crawling, or LLM scoring.
