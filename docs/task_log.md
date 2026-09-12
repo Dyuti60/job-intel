@@ -505,3 +505,87 @@ input immutability; and database score constraints.
 - T-007 records routing metadata only and creates no Human Review queue item or decision.
 - The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
   warnings.
+
+## T-008 — Human Review Queue and Decision Workflow
+
+### Scope
+
+Implement the persistent Human Review decision layer driven only by T-007 confidence routing,
+including idempotent queue generation, field/revision work items, immutable reviewer decisions,
+typed corrections, automatic case resolution, and an internal approved-projection preview. T-008
+does not implement a browser UI, authentication, formal Master approval, or publication.
+
+### Implementation summary
+
+- Added QUEUED/IN_REVIEW/RESOLVED/CANCELLED `ReviewCase` records uniquely tied to a
+  RevisionConfidenceAssessment, with revision/run references and immutable confidence score,
+  policy, priority, reason, and component snapshots.
+- Added deterministic FIELD and REVISION `ReviewItem` records. Every routed field produces one
+  field item; PARTIAL_VERIFICATION and/or REVISION_SCORE_BELOW_THRESHOLD produce one consolidated
+  revision item. Stable per-case item keys prevent duplicates.
+- Added one immutable `ReviewDecision` per item with reviewer identity, decision/evidence notes,
+  original value/type snapshots, normalized corrected values, and decision timestamps.
+- Implemented APPROVE_AS_IS, field-only CORRECT_AND_APPROVE, REJECT, and
+  REQUEST_REVERIFICATION rules. Corrections reuse T-004 value normalization, must preserve type,
+  and must differ from the original CandidateField value.
+- Added automatic resolution after the final item and deterministic outcome precedence:
+  REVERIFICATION_REQUESTED, REJECTED, APPROVED_WITH_CORRECTIONS, then APPROVED.
+- Added a non-persistent approved projection that includes original unrouted/approved values,
+  substitutes reviewed corrections, and suppresses effective values for rejected/reverification
+  cases.
+- Strengthened T-007 replay integrity checks so ReviewCase generation verifies both confidence
+  input fingerprints and deterministic persisted outputs before creating Human Review work.
+- Added focused queue, lifecycle, item, decision, projection, filtering, ordering, idempotency,
+  integrity, immutability, and database-constraint APIs/tests. No prior migration was modified.
+
+### Validation performed
+
+- Dependency metadata did not change, so `uv sync` was not required for T-008.
+- Existing development PostgreSQL began at `20260912_0007`, upgraded to
+  `20260912_0008 (head)`, and passed `alembic check` with no model drift.
+- Existing database downgrade from T-008 to T-007 and re-upgrade to T-008 passed.
+- A separately named empty PostgreSQL database applied T-001 through T-008 in sequence, reported
+  T-008 head, and passed `alembic check`; it was removed afterward.
+- PostgreSQL inspection confirmed lifecycle/snapshot checks, JSONB snapshots, review vocabularies,
+  nonblank reviewer and required-note checks, corrected-value rules, restricted foreign keys,
+  per-confidence/per-item uniqueness, and queue/reference indexes.
+- Complete test suite: 191 passed in 31.08 seconds with two upstream dependency deprecation
+  warnings and one non-functional pytest cache-permission warning.
+- Ruff: all checks passed.
+- `git diff --check`: passed with no whitespace errors; Git emitted informational LF-to-CRLF
+  conversion warnings for Windows working-tree settings.
+
+### Files created/changed
+
+- Created: `alembic/versions/20260912_0008_human_review.py`, `app/models/review.py`,
+  `app/repositories/review.py`, `app/schemas/review.py`, `app/services/review.py`,
+  `app/api/v1/routes/review.py`, `tests/test_review_api.py`, and
+  `tests/test_review_persistence.py`.
+- Changed: `app/models/__init__.py`, `app/repositories/confidence.py`,
+  `app/services/confidence.py`, `app/api/v1/router.py`, `tests/factories.py`,
+  `docs/architecture.md`, `docs/workflow.md`, `docs/task_log.md`, and
+  `docs/next_task.md`.
+
+### Test results
+
+191 passed: 170 existing T-001 through T-007 tests and 21 T-008 tests covering review-required and
+safe-confidence queue behavior; snapshot integrity and configuration stability; field/revision item
+generation; queue ordering/filtering; lifecycle and cancellation; every decision type; required
+identity/notes; typed correction normalization; replay idempotency; resolution and outcome
+precedence; approved/rejected/reverification projections; the mandatory deadline correction;
+historical immutability; and database uniqueness/check protection.
+
+### Known limitations
+
+- Reviewer identity is a bounded operator-provided string; authentication, authorization, and user
+  records remain out of scope.
+- Review work is not assigned to individual users, and T-008 provides no HTML or JavaScript UI.
+- REQUEST_REVERIFICATION records intent only and does not create or execute another VerificationRun.
+- The approved projection is an internal read preview, not formal approval, Recruitment Master, or
+  a publication operation.
+- Decisions are final in normal APIs. Changed judgment requires a new verification/confidence/review
+  chain so historical decisions remain intact.
+- Multi-reason snapshots are application-enum-validated JSONB arrays; direct privileged database
+  writes remain an administrative responsibility.
+- The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
+  warnings.

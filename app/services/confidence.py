@@ -109,9 +109,9 @@ class ConfidenceService:
         data = self._revision_result(run, field_assessments)
         existing = self.revision_confidence.get_for_policy(run.id, ConfidencePolicyVersion.V1)
         if existing is not None:
-            if existing.input_hash != data["input_hash"]:
+            if not self._revision_assessment_matches(existing, data):
                 raise DomainConflictError(
-                    "Persisted verification facts differ from the existing confidence assessment"
+                    "Persisted revision confidence output or inputs fail integrity validation"
                 )
             self.session.rollback()
             return existing, self._list_field_assessments(run.id), False
@@ -123,7 +123,7 @@ class ConfidenceService:
         except IntegrityError as error:
             self.session.rollback()
             existing = self.revision_confidence.get_for_policy(run.id, ConfidencePolicyVersion.V1)
-            if existing is not None and existing.input_hash == data["input_hash"]:
+            if existing is not None and self._revision_assessment_matches(existing, data):
                 return existing, self._list_field_assessments(run.id), False
             raise DomainConflictError(
                 "Revision confidence conflicted with concurrent calculation; retry"
@@ -148,9 +148,9 @@ class ConfidenceService:
         data = self._field_result(verification)
         existing = self.field_confidence.get_for_policy(verification.id, ConfidencePolicyVersion.V1)
         if existing is not None:
-            if existing.input_hash != data["input_hash"]:
+            if not self._field_assessment_matches(existing, data):
                 raise DomainConflictError(
-                    "Persisted verification facts differ from the existing confidence assessment"
+                    "Persisted field confidence output or inputs fail integrity validation"
                 )
             return existing, False
         assessment = FieldConfidenceAssessment(**data)
@@ -584,10 +584,36 @@ class ConfidenceService:
         return run
 
     def _assert_fingerprint(self, existing_hash: str, verification: FieldVerification) -> None:
-        if existing_hash != self._field_result(verification)["input_hash"]:
+        existing = self.field_confidence.get_for_policy(verification.id, ConfidencePolicyVersion.V1)
+        data = self._field_result(verification)
+        if (
+            existing is None
+            or existing_hash != data["input_hash"]
+            or not self._field_assessment_matches(existing, data)
+        ):
             raise DomainConflictError(
                 "Persisted verification facts differ from the existing confidence assessment"
             )
+
+    @staticmethod
+    def _field_assessment_matches(
+        existing: FieldConfidenceAssessment, data: dict[str, Any]
+    ) -> bool:
+        return all(
+            getattr(existing, key) == value
+            for key, value in data.items()
+            if key != "field_verification_id"
+        )
+
+    @staticmethod
+    def _revision_assessment_matches(
+        existing: RevisionConfidenceAssessment, data: dict[str, Any]
+    ) -> bool:
+        return all(
+            getattr(existing, key) == value
+            for key, value in data.items()
+            if key not in {"verification_run_id", "candidate_revision_id"}
+        )
 
     def _list_field_assessments(self, run_id: uuid.UUID) -> list[FieldConfidenceAssessment]:
         return self.field_confidence.list_for_run(run_id, ConfidencePolicyVersion.V1)

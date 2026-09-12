@@ -26,6 +26,16 @@ from app.models.discovery import (
     SourceDocumentStatus,
 )
 from app.models.evidence import CandidateFieldEvidence, Evidence, EvidenceType
+from app.models.review import (
+    ReviewCase,
+    ReviewCaseOutcome,
+    ReviewCaseStatus,
+    ReviewDecision,
+    ReviewDecisionType,
+    ReviewItem,
+    ReviewItemScope,
+    ReviewItemStatus,
+)
 from app.models.source_registry import (
     AuthorityStatus,
     AuthorityType,
@@ -72,6 +82,14 @@ __all__ = [
     "RecruitmentCandidate",
     "RecruitmentCandidateRevision",
     "RecruitingAuthority",
+    "ReviewCase",
+    "ReviewCaseOutcome",
+    "ReviewCaseStatus",
+    "ReviewDecision",
+    "ReviewDecisionType",
+    "ReviewItem",
+    "ReviewItemScope",
+    "ReviewItemStatus",
     "ReviewPriority",
     "ReviewReasonCode",
     "RevisionConfidenceAssessment",

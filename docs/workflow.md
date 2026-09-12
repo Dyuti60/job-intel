@@ -202,3 +202,39 @@ Replaying V1 calculations returns the same immutable assessment. Changed policy 
 policy version; changed persisted inputs after scoring are treated as an integrity conflict.
 Confidence calculation does not modify extracted or verified data. Confidence does not approve
 data, and high confidence does not itself publish data.
+
+## Human Review workflow
+
+```text
+review-required RevisionConfidenceAssessment
+  -> idempotent ReviewCase queue generation
+  -> QUEUED
+  -> explicit start to IN_REVIEW
+  -> FIELD/REVISION item decisions
+  -> automatic RESOLVED case outcome
+  -> approved projection preview
+  -> future Master Publisher
+```
+
+Queue generation revalidates confidence integrity and snapshots the revision score, policy,
+priority, reasons, and breakdown. It creates one FIELD item for each routed field and one
+consolidated REVISION item only for PARTIAL_VERIFICATION and/or
+REVISION_SCORE_BELOW_THRESHOLD. Replaying the same revision-confidence assessment returns the same
+case and items.
+
+Review decisions require an explicitly started case and a nonblank reviewer identifier.
+APPROVE_AS_IS retains an original value. CORRECT_AND_APPROVE is field-only and stores a normalized,
+same-typed value that must differ from the original. REJECT and REQUEST_REVERIFICATION record their
+decision only; reverification is not started automatically. Corrections, rejection, and
+reverification require notes.
+
+The last item decision resolves the case with deterministic precedence:
+REVERIFICATION_REQUESTED, then REJECTED, then APPROVED_WITH_CORRECTIONS, then APPROVED. Exact
+decision replay is idempotent; a different decision conflicts. Resolved or cancelled history is
+immutable.
+
+The approved projection includes original values for unrouted and approve-as-is fields and
+corrected decision values for corrected fields. Rejected or reverification-requested cases are
+explicitly not master-eligible and return no effective publishable values. The projection is a read
+preview only. Human correction never rewrites CandidateField history, and T-008 performs no Master
+publication.

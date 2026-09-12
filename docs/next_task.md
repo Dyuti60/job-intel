@@ -1,17 +1,21 @@
-# T-008 — Human Review Queue and Decision Workflow
+# T-009 — Local Human Review Web Interface
 
 ## Objective
 
-Introduce the persistent Human Review domain driven by T-007 routing metadata.
+Implement a locally hosted server-rendered review interface consuming the T-008 domain,
+services, and APIs.
 
 ## Scope
 
-T-008 should introduce `ReviewItem`, field/revision review scope as appropriate, a
-queued/reviewing/resolved lifecycle, priority, review-reason snapshot, confidence snapshot,
-verification provenance snapshot/reference, reviewer decision, corrected value where permitted,
-decision note, approve/correct/reject/reverify outcomes, and complete audit history.
+The interface should let a reviewer view the queue by priority, open a ReviewCase, inspect
+candidate/recruitment identity, original CandidateField values, confidence scores and component
+breakdowns, review reasons, extraction Evidence, Verification Evidence assessments, source URLs
+and classes, submit approve-as-is/correct-and-approve/reject/request-reverification decisions,
+enter a reviewer identifier and notes, and see case progress and final outcome.
+
+Use FastAPI server-rendered HTML/templates or another minimal local approach. Do not add React or
+Angular.
 
 ## Boundaries
 
-T-008 must not implement the browser/local Human Review UI. The local review page will be a later
-task consuming the T-008 APIs.
+T-009 must not implement Recruitment Master or Master publication.

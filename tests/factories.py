@@ -72,7 +72,7 @@ def document_payload(**overrides) -> dict:
         "content_type": "application/pdf",
         "content_text": "controlled test document",
         "http_status_code": 200,
-        "http_etag": "\"fixture-v1\"",
+        "http_etag": '"fixture-v1"',
         "http_last_modified": "Fri, 12 Sep 2026 04:30:00 GMT",
         "storage_uri": "file:///fixtures/notice-1.pdf",
     }
@@ -198,9 +198,7 @@ def create_ready_candidate_revision(
     document = observe_document(client, run["id"])["document"]
     candidate_overrides = {}
     if authority_overrides and authority_overrides.get("code"):
-        candidate_overrides["candidate_key"] = (
-            f"{authority_overrides['code']}_RECRUITMENT"
-        )
+        candidate_overrides["candidate_key"] = f"{authority_overrides['code']}_RECRUITMENT"
     candidate = create_candidate(client, authority["id"], **candidate_overrides)
     revision = create_revision(
         client,
@@ -238,12 +236,8 @@ def start_verification_run(client: TestClient, run_id: str) -> dict:
     return response.json()
 
 
-def create_field_verification(
-    client: TestClient, run_id: str, field_id: str
-) -> dict:
-    response = client.post(
-        f"/api/v1/verification-runs/{run_id}/fields/{field_id}"
-    )
+def create_field_verification(client: TestClient, run_id: str, field_id: str) -> dict:
+    response = client.post(f"/api/v1/verification-runs/{run_id}/fields/{field_id}")
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -276,4 +270,52 @@ def finalize_field_verification(
         json={"not_applicable": not_applicable},
     )
     assert response.status_code == 200, response.text
+    return response.json()
+
+
+def complete_verification_run(client: TestClient, run_id: str, status: str = "COMPLETED") -> dict:
+    response = client.post(
+        f"/api/v1/verification-runs/{run_id}/complete",
+        json={"status": status},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def create_revision_confidence(client: TestClient, run_id: str) -> dict:
+    response = client.post(f"/api/v1/verification-runs/{run_id}/confidence")
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def create_review_case(client: TestClient, assessment_id: str) -> dict:
+    response = client.post(
+        "/api/v1/review-cases",
+        json={"revision_confidence_assessment_id": assessment_id},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def start_review_case(client: TestClient, case_id: str) -> dict:
+    response = client.post(f"/api/v1/review-cases/{case_id}/start")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def decide_review_item(
+    client: TestClient,
+    item_id: str,
+    decision: str,
+    **overrides,
+) -> dict:
+    payload = {
+        "decision": decision,
+        "reviewer_identifier": "reviewer@example.test",
+    }
+    if decision != "APPROVE_AS_IS":
+        payload["decision_note"] = f"Controlled {decision} decision."
+    payload.update(overrides)
+    response = client.post(f"/api/v1/review-items/{item_id}/decision", json=payload)
+    assert response.status_code == 201, response.text
     return response.json()

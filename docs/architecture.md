@@ -302,3 +302,65 @@ Confidence calculation only creates T-007 records. It never mutates Verification
 FieldVerification, VerificationEvidenceAssessment, Evidence, CandidateField, or CandidateRevision.
 Confidence does not approve data, and high confidence does not itself publish data. Human Review
 records and decisions remain a later domain.
+
+## Human Review decision layer
+
+T-008 implements Human Review as a separate, append-oriented decision domain:
+
+```text
+RevisionConfidenceAssessment
+  -> ReviewCase
+  -> FIELD and/or REVISION ReviewItems
+  -> immutable ReviewDecisions
+  -> approved projection preview
+  -> future Master Publisher
+```
+
+A `ReviewCase` is the workload for exactly one RevisionConfidenceAssessment, VerificationRun, and
+CandidateRevision. The revision confidence score, priority, policy version, review reasons, and
+component breakdown are copied into immutable review snapshots. Database uniqueness permits only
+one case per revision-confidence assessment; a newer verification run and confidence assessment
+creates a separate historical case rather than merging review history.
+
+Queue generation accepts only assessments with `review_required=true` and first revalidates T-007
+input fingerprints and deterministic output against persisted Verification facts using the policy
+thresholds captured in the confidence breakdown. Every routed FieldConfidenceAssessment produces
+one FIELD item. A single consolidated REVISION item is added when the revision assessment contains
+PARTIAL_VERIFICATION or REVISION_SCORE_BELOW_THRESHOLD. The stable per-case item keys prevent
+duplicate field or revision work on replay.
+
+FIELD items snapshot the CandidateField path, type, and value plus field confidence score,
+priority, policy, reasons, and breakdown. They retain references to CandidateField,
+FieldConfidenceAssessment, and FieldVerification so a future UI can retrieve extraction Evidence,
+verification assessments, source documents, endpoints, and source classes without copying source
+text into decisions. REVISION items omit field references and snapshot the aggregate confidence
+facts that require whole-revision judgment.
+
+Cases transition QUEUED -> IN_REVIEW -> RESOLVED, or QUEUED/IN_REVIEW -> CANCELLED. Decisions
+require an IN_REVIEW case. Each item transitions PENDING -> RESOLVED exactly once and has at most
+one immutable `ReviewDecision`. The final item decision automatically resolves the case. Resolved
+and cancelled cases reject new decisions, and a changed conclusion requires a new VerificationRun,
+confidence assessment, and ReviewCase.
+
+Review decisions are APPROVE_AS_IS, CORRECT_AND_APPROVE, REJECT, or REQUEST_REVERIFICATION.
+Revision items cannot be corrected. Field corrections must use the CandidateField's existing value
+type, pass the T-004 deterministic normalizer, and differ from the original value. The decision
+stores original value/type snapshots, normalized corrected value/type where applicable, bounded
+reviewer identity, required decision notes for correction/rejection/reverification, optional
+evidence note, and decision time. A correction never rewrites CandidateField or CandidateRevision.
+
+Resolved case outcome precedence is deterministic: any REQUEST_REVERIFICATION produces
+REVERIFICATION_REQUESTED; otherwise any REJECT produces REJECTED; otherwise any correction produces
+APPROVED_WITH_CORRECTIONS; otherwise all approve-as-is decisions produce APPROVED.
+
+The approved projection endpoint is an internal, non-persistent preview. For APPROVED cases it
+uses original CandidateField values, including fields that did not require review. For
+APPROVED_WITH_CORRECTIONS it substitutes only normalized decision values and retains original and
+decision references. REJECTED and REVERIFICATION_REQUESTED cases return
+`master_eligible=false`, mark every field unapproved, and expose no effective publishable values.
+This projection is not Recruitment Master, does not publish anything, and does not create an
+approval or master record.
+
+Human Review never mutates candidate, Evidence, Verification, or Confidence history. Reviewer
+decisions and snapshots provide the audit layer, while authentication, assignments, a browser UI,
+formal approval, and Master publication remain future capabilities.

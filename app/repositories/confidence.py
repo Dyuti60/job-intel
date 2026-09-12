@@ -56,6 +56,11 @@ class RevisionConfidenceRepository:
     def add(self, assessment: RevisionConfidenceAssessment) -> None:
         self.session.add(assessment)
 
+    def get(
+        self, assessment_id: uuid.UUID
+    ) -> RevisionConfidenceAssessment | None:
+        return self.session.get(RevisionConfidenceAssessment, assessment_id)
+
     def get_for_policy(
         self,
         verification_run_id: uuid.UUID,
