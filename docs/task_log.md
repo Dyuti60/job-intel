@@ -131,3 +131,75 @@ controlled updates, relationships, and database-level uniqueness.
   validation; SQLite does not preserve timezone offsets when round-tripping timestamps.
 - The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
   warnings.
+
+## T-003 — Source Documents and Discovery Runs
+
+### Scope
+
+Implement persistent execution and raw-document provenance for the pipeline segment
+`SourceEndpoint -> DiscoveryRun -> DiscoveryObservation -> SourceDocument`. T-003 performs no live
+network fetching, parsing, recruitment extraction, candidate creation, Evidence creation, or
+publishing.
+
+### Implementation summary
+
+- Added service-managed discovery runs with eligible-source enforcement, trigger metadata,
+  constrained lifecycle, completion time, failure details, and observation counters.
+- Added immutable source-document versions identified by endpoint, normalized URL, and canonical
+  SHA-256 hash, with exact URL, HTTP/content metadata, first/latest run references, sighting times,
+  status, and optional provider-neutral storage URI.
+- Added run/document observations with deterministic NEW, UNCHANGED, and CHANGED classification,
+  future UNAVAILABLE vocabulary, per-run HTTP metadata, and idempotent run/version association.
+- Added explicit repositories, services, schemas, and operational APIs for starting/filtering/
+  completing runs, recording/listing observations, and inspecting/filtering source documents.
+- Added migration `20260912_0003` with restricted foreign keys, check/unique constraints, and
+  query-oriented indexes.
+
+### Validation performed
+
+- Dependency metadata did not change, so `uv sync` was not required for T-003.
+- Existing development database began at `20260912_0002`, upgraded to
+  `20260912_0003 (head)`, and passed `alembic check`.
+- Existing database T-003 downgrade to T-002 and upgrade back to T-003 passed after confirming the
+  three T-003 tables contained zero rows.
+- A separately named empty PostgreSQL database applied T-001, T-002, and T-003, reported T-003 head,
+  and passed `alembic check`. The disposable database was removed afterward.
+- PostgreSQL inspection confirmed all three T-003 tables, constrained vocabularies, completion and
+  numeric checks, immutable-version and run/document uniqueness, restricted foreign keys, and
+  intended indexes.
+- Complete test suite: 53 passed in 1.83 seconds with two upstream dependency warnings.
+- Ruff: all checks passed.
+- `git diff --check`: passed with no whitespace errors.
+
+### Files created/changed
+
+- Created: `alembic/versions/20260912_0003_discovery_provenance.py`,
+  `app/models/discovery.py`, `app/repositories/discovery.py`,
+  `app/schemas/discovery.py`, `app/services/discovery.py`,
+  `app/api/v1/routes/discovery.py`, `tests/test_discovery_runs_api.py`,
+  `tests/test_document_observations_api.py`, and
+  `tests/test_discovery_persistence.py`.
+- Changed: `app/models/source_registry.py`, `app/models/__init__.py`,
+  `app/services/exceptions.py`, `app/api/v1/router.py`, `tests/factories.py`,
+  `docs/architecture.md`, `docs/workflow.md`, `docs/task_log.md`, and
+  `docs/next_task.md`.
+
+### Test results
+
+53 passed: 28 existing T-001/T-002 tests and 25 T-003 tests covering eligibility, run lifecycle,
+failure details, filtering, deterministic hashing and classification, immutable versions, exact and
+normalized URL behavior, distinct-URL identity, observation history, counters, payload validation,
+document filtering, and database-level integrity.
+
+### Known limitations
+
+- T-003 accepts only bounded controlled text or a strictly validated SHA-256 hash; it is not a
+  general upload or network-fetch API.
+- Raw bytes are not stored in PostgreSQL. `storage_uri` is metadata only and no storage provider is
+  integrated.
+- UNAVAILABLE/document failure vocabularies prepare persistence for later fetchers; T-003's
+  controlled observation service classifies only NEW, UNCHANGED, and CHANGED.
+- Tests use isolated SQLite for API/service behavior and real PostgreSQL for migration/schema
+  validation; SQLite does not preserve timezone offsets when round-tripping timestamps.
+- The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
+  warnings.

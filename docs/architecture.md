@@ -80,3 +80,42 @@ The registry sits before Discovery as an allow-list and trust-classification bou
 Discovery workers may enumerate only registered endpoints that satisfy explicit eligibility policy,
 including active authority and endpoint state plus `discovery_enabled=true`. Registration does not
 fetch a URL, assert a recruitment fact, create Evidence, or permit direct Job Master writes.
+
+## Discovery execution and source-document provenance
+
+T-003 implements the raw/discovery segment:
+
+```text
+SourceEndpoint -> DiscoveryRun -> DiscoveryObservation -> SourceDocument
+```
+
+A `DiscoveryRun` is one execution attempt against an eligible registered endpoint. It records its
+manual, scheduled, or retry trigger; start and completion times; deterministic counters; terminal
+status; and optional failure details. Runs and their counters are service-managed. Registry
+deactivation prevents new runs but does not hide or delete historical execution data.
+
+A `SourceDocument` is an immutable content version identified within one endpoint by:
+
+```text
+(source_endpoint_id, normalized_document_url, SHA-256 content_hash)
+```
+
+The exact observed URL is retained separately from the conservatively normalized identity URL.
+Seeing the same URL/hash updates only sighting metadata and its latest-run reference. A different
+hash at the same normalized URL creates another version; the previous hash and version remain
+unchanged. Identical bytes at different URLs remain distinct observations. Database uniqueness
+protects version identity.
+
+`DiscoveryObservation` is the many-run history connecting runs to document versions. It records
+NEW, UNCHANGED, CHANGED, or future UNAVAILABLE classification, exact observed URL, observation and
+retrieval times, and response/content metadata. The run/document pair is unique, making repeated
+controlled recording within one run idempotent.
+
+T-003 stores metadata, SHA-256 identity, and a nullable provider-neutral `storage_uri`; it does not
+store arbitrary large payloads in PostgreSQL or select an object-storage provider. A later fetcher
+may persist raw bytes in local or object storage and attach that location while keeping content
+identity and observation provenance in PostgreSQL.
+
+Source documents remain raw evidence inputs, not Recruitment Candidates or Evidence claims.
+Future candidate fields will reference document versions so extraction can be reproduced and
+Verification can evaluate provenance without mutating raw document identity.

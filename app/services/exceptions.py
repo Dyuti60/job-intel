@@ -8,3 +8,7 @@ class ResourceNotFoundError(DomainError):
 
 class DuplicateResourceError(DomainError):
     """A registry uniqueness rule would be violated."""
+
+
+class DomainConflictError(DomainError):
+    """The requested operation conflicts with current domain state."""

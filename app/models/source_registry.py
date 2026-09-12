@@ -1,6 +1,7 @@
 import enum
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -16,6 +17,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.discovery import DiscoveryRun, SourceDocument
 
 
 class AuthorityType(enum.StrEnum):
@@ -133,3 +137,7 @@ class SourceEndpoint(Base):
     )
 
     recruiting_authority: Mapped[RecruitingAuthority] = relationship(back_populates="endpoints")
+    discovery_runs: Mapped[list["DiscoveryRun"]] = relationship(back_populates="source_endpoint")
+    source_documents: Mapped[list["SourceDocument"]] = relationship(
+        back_populates="source_endpoint"
+    )

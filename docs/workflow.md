@@ -52,3 +52,31 @@ Source class informs future verification: authoritative official sources can est
 official supporting sources can corroborate it, and secondary/discovery-only sources can assist
 discovery or cross-checking but cannot silently override authoritative evidence. T-002 only records
 this metadata; it performs no fetching, evidence creation, or confidence calculation.
+
+## Discovery execution and document change workflow
+
+```text
+eligible SourceEndpoint
+  -> RUNNING DiscoveryRun
+  -> controlled document observation
+  -> normalize URL + calculate/validate SHA-256
+  -> NEW / UNCHANGED / CHANGED
+  -> immutable SourceDocument version + run observation
+  -> SUCCEEDED / PARTIAL / FAILED run
+```
+
+Only an active endpoint owned by an active authority with `discovery_enabled=true` may start a new
+run. A run begins in RUNNING state and may complete once as SUCCEEDED, PARTIAL, or FAILED.
+Completion records `completed_at`; partial and failed executions may retain an error code and
+message. Completed runs reject new observations.
+
+The first normalized URL/hash observed for an endpoint is NEW. A known normalized URL/hash is
+UNCHANGED and reuses the existing version while updating `last_seen_at` and the latest run
+reference. A known normalized URL with a previously unseen hash is CHANGED and creates a new
+version. CHANGED never overwrites an old content hash or document record. Different URLs are not
+merged solely because they have identical bytes.
+
+Every accepted observation creates—or idempotently reuses within the same run—a run/document
+association containing its classification and HTTP/content metadata. Run counters change only with
+new association records, keeping retries within one run from inflating totals. No live network
+fetching, parsing, extraction, candidate creation, or Evidence creation occurs in T-003.
