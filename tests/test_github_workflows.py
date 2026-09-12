@@ -28,6 +28,7 @@ def test_scheduled_pipeline_has_trusted_boundaries_and_concurrency() -> None:
     assert "uv sync --frozen --python 3.12" in workflow
     assert "uv run alembic upgrade head" in workflow
     assert "workers.pipeline" in workflow
+    assert "$ErrorActionPreference = 'Continue'" in workflow
     assert "GITHUB_ACTION" in workflow
     assert "SCHEDULED" in workflow
     assert "uvicorn" not in workflow

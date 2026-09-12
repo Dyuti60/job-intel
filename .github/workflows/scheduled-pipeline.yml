@@ -109,6 +109,9 @@ jobs:
           }
           $outputFile = Join-Path $env:RUNNER_TEMP 'assam-job-intelligence-pipeline.txt'
           "AJI_PIPELINE_OUTPUT_FILE=$outputFile" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # Windows PowerShell surfaces native stderr (including normal Python logging) as
+          # NativeCommandError records. Keep streaming it, then trust the process exit code.
+          $ErrorActionPreference = 'Continue'
           & uv @arguments 2>&1 | Tee-Object -FilePath $outputFile
           $pipelineExitCode = $LASTEXITCODE
           exit $pipelineExitCode
