@@ -20,6 +20,7 @@ from app.db.base import Base
 from app.models.source_registry import constrained_enum
 
 if TYPE_CHECKING:
+    from app.models.candidates import RecruitmentCandidateRevision
     from app.models.source_registry import SourceEndpoint
 
 
@@ -168,6 +169,9 @@ class SourceDocument(Base):
 
     source_endpoint: Mapped["SourceEndpoint"] = relationship(back_populates="source_documents")
     observations: Mapped[list["DiscoveryObservation"]] = relationship(
+        back_populates="source_document"
+    )
+    candidate_revisions: Mapped[list["RecruitmentCandidateRevision"]] = relationship(
         back_populates="source_document"
     )
 

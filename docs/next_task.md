@@ -1,27 +1,25 @@
-# T-004 — Recruitment Candidates and Extracted Fields
+# T-005 — Candidate Evidence and Extraction Provenance
 
 ## Objective
 
-Establish the persistent candidate and field-level extraction model that transforms immutable source
-document versions into structured, traceable recruitment proposals without treating them as
-verified or approved master data.
+Establish the explicit evidence layer that supports unverified CandidateFields with bounded,
+integrity-protected source context before any Verification capability is introduced.
 
 ## Scope
 
-T-004 will introduce `RecruitmentCandidate`, candidate revision and status metadata, and
-`CandidateField`. Candidate fields will retain typed or structured extracted values together with
-field-level provenance linking each value to the exact `SourceDocument` version from which it was
-derived. The design will establish a deterministic candidate identity and deduplication baseline so
-repeated processing does not create uncontrolled duplicate candidates while changed source
-documents can produce auditable candidate revisions.
+T-005 will introduce Evidence records linked to CandidateFields and their exact immutable
+`SourceDocument` versions. Evidence will retain a provider-neutral source locator, a bounded source
+excerpt or raw context, an explicit evidence type, provenance describing how the evidence was
+captured, and deterministic integrity/hash metadata where appropriate.
 
-T-004 will add the required Alembic migration, constrained states, relationships, repositories,
-services, operational APIs, and automated tests. Candidate data remains raw/discovery-side proposed
-data and must not write directly to Recruitment Master.
+T-005 will define CandidateField-to-Evidence relationships, constraints preventing cross-document
+provenance mismatches, idempotent evidence identity, repositories, services, internal APIs, a new
+Alembic migration, and automated tests. The design must preserve multiple evidence records when
+needed without treating evidence as a verified fact.
 
 ## Boundaries
 
-T-004 will not implement live crawling, HTML/PDF parsing, automated extraction, LLM integration,
-Verification, confidence scoring, conflict detection, Human Review, approval, publishing,
-Recruitment Master, public job search, or user-facing features. Tests will submit controlled
-candidate and extracted-field inputs tied to existing source-document fixtures.
+T-005 will not implement Verification, confidence scoring, conflict resolution, Human Review,
+approval, Recruitment Master, live source crawling, HTML/PDF parsing, OCR, LLM extraction, or
+public/user-facing features. Evidence remains untrusted extraction provenance for later independent
+Verification.

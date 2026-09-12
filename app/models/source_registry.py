@@ -19,6 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.candidates import RecruitmentCandidate
     from app.models.discovery import DiscoveryRun, SourceDocument
 
 
@@ -93,6 +94,9 @@ class RecruitingAuthority(Base):
     )
 
     endpoints: Mapped[list["SourceEndpoint"]] = relationship(back_populates="recruiting_authority")
+    recruitment_candidates: Mapped[list["RecruitmentCandidate"]] = relationship(
+        back_populates="recruiting_authority"
+    )
 
 
 class SourceEndpoint(Base):

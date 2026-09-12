@@ -87,3 +87,66 @@ def observe_document(client: TestClient, run_id: str, **overrides) -> dict:
     )
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def candidate_payload(authority_id: str, **overrides) -> dict:
+    payload = {
+        "recruiting_authority_id": authority_id,
+        "candidate_key": "APSC_ADVT_12_2026",
+        "display_name": "Combined Competitive Recruitment 2026",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def create_candidate(client: TestClient, authority_id: str, **overrides) -> dict:
+    response = client.post(
+        "/api/v1/recruitment-candidates",
+        json=candidate_payload(authority_id, **overrides),
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def candidate_fields() -> list[dict]:
+    return [
+        {
+            "field_path": "recruitment_name",
+            "value_type": "STRING",
+            "value": "Combined Competitive Recruitment",
+            "raw_value": "Combined Competitive Examination",
+            "source_locator": "page=1",
+        },
+        {
+            "field_path": "vacancies.total",
+            "value_type": "INTEGER",
+            "value": 42,
+            "raw_value": "Total posts: 42",
+            "source_locator": "page=2",
+        },
+    ]
+
+
+def revision_payload(document_id: str, **overrides) -> dict:
+    payload = {
+        "source_document_id": document_id,
+        "fields": candidate_fields(),
+        "extraction_method": "CONTROLLED_INPUT",
+        "extraction_note": "T-004 test fixture.",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def create_revision(
+    client: TestClient,
+    candidate_id: str,
+    document_id: str,
+    **overrides,
+) -> dict:
+    response = client.post(
+        f"/api/v1/recruitment-candidates/{candidate_id}/revisions",
+        json=revision_payload(document_id, **overrides),
+    )
+    assert response.status_code == 201, response.text
+    return response.json()

@@ -203,3 +203,80 @@ document filtering, and database-level integrity.
   validation; SQLite does not preserve timezone offsets when round-tripping timestamps.
 - The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
   warnings.
+
+## T-004 — Recruitment Candidates and Extracted Fields
+
+### Scope
+
+Implement logical recruitment candidates, immutable structured revisions, and typed candidate
+fields with exact SourceDocument provenance. All T-004 data remains unverified candidate data and
+cannot enter Recruitment Master.
+
+### Implementation summary
+
+- Added authority-scoped candidate identity, DRAFT/READY_FOR_VERIFICATION/DISCARDED status, guarded
+  forward-only transitions, and readiness requiring at least one structured revision.
+- Added immutable, monotonically numbered candidate revisions originating from exactly one active
+  SourceDocument version.
+- Added deterministic SHA-256 revision identity over canonical source-document identity and sorted
+  normalized field values. Exact replay reuses the revision; changed fields or source version create
+  the next revision.
+- Added CandidateFields with validated path identities, STRING/INTEGER/DECIMAL/BOOLEAN/DATE/
+  DATETIME/JSON/NULL values, original raw text, source locators, and exact source-document
+  references.
+- Added service-level candidate/document authority validation and database-level composite
+  revision/document provenance protection.
+- Added explicit repositories, services, schemas, internal APIs, JSONB persistence, and migration
+  `20260912_0004`.
+
+### Validation performed
+
+- Dependency metadata did not change, so `uv sync` was not required for T-004.
+- Existing development database began at `20260912_0003`, upgraded to
+  `20260912_0004 (head)`, and passed `alembic check`.
+- Existing database T-004 downgrade to T-003 and upgrade back to T-004 passed after confirming all
+  three T-004 tables contained zero rows.
+- A separately named empty PostgreSQL database applied T-001 through T-004, reported T-004 head, and
+  passed `alembic check`. The disposable database was removed afterward.
+- PostgreSQL inspection confirmed candidate/revision/field tables, constrained vocabularies,
+  authority/key, revision number/hash, and field path uniqueness, composite field provenance,
+  restricted foreign keys, JSONB values, and intended indexes.
+- Complete test suite: 101 passed in 4.46 seconds with two upstream dependency warnings.
+- Ruff: all checks passed.
+- `git diff --check`: passed with no whitespace errors.
+
+### Files created/changed
+
+- Created: `alembic/versions/20260912_0004_recruitment_candidates.py`,
+  `app/models/candidates.py`, `app/repositories/candidates.py`,
+  `app/schemas/candidates.py`, `app/services/candidates.py`,
+  `app/services/candidate_values.py`, `app/api/v1/routes/candidates.py`,
+  `tests/test_recruitment_candidates_api.py`, `tests/test_candidate_revisions_api.py`,
+  `tests/test_candidate_values.py`, and `tests/test_candidate_persistence.py`.
+- Changed: `app/models/source_registry.py`, `app/models/discovery.py`,
+  `app/models/__init__.py`, `app/api/v1/router.py`, `tests/factories.py`,
+  `docs/architecture.md`, `docs/workflow.md`, `docs/task_log.md`, and
+  `docs/next_task.md`.
+
+### Test results
+
+101 passed: 53 existing T-001 through T-003 tests and 48 T-004 tests covering candidate identity,
+normalization, validation, filtering, status transitions, readiness, source consistency, immutable
+revisions, replay idempotency, revision numbering and hashing, every supported field type,
+canonical serialization, field collection/path validation, historical preservation, APIs, and
+database constraints.
+
+### Known limitations
+
+- Candidate keys and structured fields must be provided by controlled callers; no parsing,
+  extraction, OCR, or AI is implemented.
+- READY_FOR_VERIFICATION means only workflow readiness and does not represent verification,
+  confidence, approval, or truth.
+- Revision identity intentionally excludes raw text, source locator, extraction method/note, and
+  timestamps; replay preserves the first stored provenance metadata for that structured proposal.
+- Revision immutability is enforced through append-only service/API behavior and the absence of
+  mutation routes; direct privileged database access remains an administrative responsibility.
+- Tests use isolated SQLite for API/service behavior and real PostgreSQL for migration/schema
+  validation; SQLite does not preserve timezone offsets when round-tripping timestamps.
+- The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
+  warnings.

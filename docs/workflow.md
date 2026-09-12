@@ -80,3 +80,33 @@ Every accepted observation createsâ€”or idempotently reuses within the same runâ
 association containing its classification and HTTP/content metadata. Run counters change only with
 new association records, keeping retries within one run from inflating totals. No live network
 fetching, parsing, extraction, candidate creation, or Evidence creation occurs in T-003.
+
+## Candidate proposal and revision workflow
+
+```text
+ACTIVE SourceDocument
+  -> logical RecruitmentCandidate (DRAFT)
+  -> controlled structured proposal
+  -> immutable RecruitmentCandidateRevision
+  -> typed CandidateFields with exact document provenance
+  -> READY_FOR_VERIFICATION
+```
+
+Candidate identity is authority plus normalized candidate key. Duplicate creation is rejected, and
+a discarded candidate remains retained for audit and deduplication. Candidate creation requires an
+active authority but does not require an active discovery endpoint.
+
+A revision accepts controlled fields rather than fetching or parsing its document. The service
+validates field types, unique paths, active document state, and authority consistency, then hashes a
+canonical source-and-fields representation. Replaying identical normalized fields in any order
+against the same source document returns the existing revision and fields. A changed structured
+value or changed source-document version creates the next monotonically numbered revision. Earlier
+revisions and fields have no mutation API and remain intact.
+
+A DRAFT candidate may become READY_FOR_VERIFICATION only after it has a revision containing fields,
+or it may become DISCARDED. These transitions are not reversible in T-004. Discarded candidates
+cannot receive revisions.
+
+**READY_FOR_VERIFICATION does not mean verified.** Candidate data remains untrusted raw/discovery
+data and cannot enter Recruitment Master. Evidence, Verification, review, approval, and publication
+remain later independent stages.

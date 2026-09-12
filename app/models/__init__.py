@@ -1,5 +1,12 @@
 """Database model exports."""
 
+from app.models.candidates import (
+    CandidateField,
+    CandidateStatus,
+    CandidateValueType,
+    RecruitmentCandidate,
+    RecruitmentCandidateRevision,
+)
 from app.models.discovery import (
     DiscoveryObservation,
     DiscoveryRun,
@@ -23,12 +30,17 @@ from app.models.source_registry import (
 __all__ = [
     "AuthorityStatus",
     "AuthorityType",
+    "CandidateField",
+    "CandidateStatus",
+    "CandidateValueType",
     "DiscoveryObservation",
     "DiscoveryRun",
     "DiscoveryRunStatus",
     "DiscoveryTriggerType",
     "DocumentType",
     "ObservationStatus",
+    "RecruitmentCandidate",
+    "RecruitmentCandidateRevision",
     "RecruitingAuthority",
     "SourceClass",
     "SourceEndpoint",

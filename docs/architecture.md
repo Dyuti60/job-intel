@@ -119,3 +119,45 @@ identity and observation provenance in PostgreSQL.
 Source documents remain raw evidence inputs, not Recruitment Candidates or Evidence claims.
 Future candidate fields will reference document versions so extraction can be reproduced and
 Verification can evaluate provenance without mutating raw document identity.
+
+## Recruitment candidates and extracted fields
+
+T-004 extends the raw/untrusted side of the pipeline:
+
+```text
+SourceDocument
+  -> RecruitmentCandidate
+  -> RecruitmentCandidateRevision
+  -> CandidateField
+  -> future Evidence and Verification
+```
+
+A `RecruitmentCandidate` is a logical proposal identified by
+`(recruiting_authority_id, candidate_key)`. Candidate keys are normalized uppercase stable
+identifiers; recruitment titles are display metadata and never define identity. Candidate status is
+limited to DRAFT, READY_FOR_VERIFICATION, and DISCARDED. These states do not assert truth.
+
+Each `RecruitmentCandidateRevision` is an immutable structured extraction from exactly one
+immutable `SourceDocument` version. Revision numbers increase per candidate. The deterministic
+revision hash is SHA-256 over UTF-8 canonical JSON containing the source-document UUID and content
+hash plus fields sorted by path, with each field's path, declared value type, and normalized
+structured value. JSON keys are sorted and compact separators are used. Raw text, source locators,
+extraction notes/methods, and timestamps are intentionally excluded from identity.
+
+Equivalent structured input from the same document reuses the existing candidate revision.
+Different structured values or a different source-document version create the next revision and
+leave all earlier revisions and fields unchanged.
+
+`CandidateField` uses a validated path-like identifier and an explicit STRING, INTEGER, DECIMAL,
+BOOLEAN, DATE, DATETIME, JSON, or NULL type. Structured values use JSONB in PostgreSQL. Decimal
+values are canonical finite strings, dates are ISO dates, datetimes are normalized to UTC, strings
+use Unicode NFC, and JSON is canonicalized before hashing. Optional raw extracted text and an
+uninterpreted provider-neutral source locator preserve extraction context.
+
+Every field repeats the exact source-document reference and a composite foreign key enforces that it
+matches its owning revision's source. Service validation also ensures the candidate authority
+matches the source document endpoint's authority and rejects unavailable or failed documents.
+
+Candidates, revisions, and fields remain unverified proposals. READY_FOR_VERIFICATION means only
+that a candidate has at least one structured revision ready to enter a future verification process;
+it is not verified, approved, publishable, or master data.
