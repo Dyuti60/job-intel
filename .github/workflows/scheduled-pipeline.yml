@@ -39,6 +39,7 @@ jobs:
       AJI_RUNTIME_CONFIG_PATH: D:\ASSAM_JOB_DATA\config\runtime.env
       AJI_RAW_STORAGE_ROOT: D:\ASSAM_JOB_DATA\raw
       AJI_DATABASE_URL_SECRET: ${{ secrets.AJI_DATABASE_URL }}
+      PSExecutionPolicyPreference: Bypass
 
     steps:
       - name: Check out trusted main branch
@@ -58,7 +59,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Resolve persistent runtime configuration
-        shell: pwsh
+        shell: powershell
         run: |
           $databaseUrl = $env:AJI_DATABASE_URL_SECRET
           if ([string]::IsNullOrWhiteSpace($databaseUrl)) {
@@ -90,16 +91,16 @@ jobs:
           New-Item -ItemType Directory -Path $rawRoot -Force | Out-Null
 
       - name: Upgrade persistent database
-        shell: pwsh
+        shell: powershell
         run: uv run alembic upgrade head
 
       - name: Report migration revision
-        shell: pwsh
+        shell: powershell
         run: uv run alembic current
 
       - name: Run pipeline
         id: pipeline
-        shell: pwsh
+        shell: powershell
         run: |
           $trigger = if ('${{ github.event_name }}' -eq 'schedule') { 'SCHEDULED' } else { 'GITHUB_ACTION' }
           $arguments = @('run', 'python', '-m', 'workers.pipeline', '--source', $env:AJI_PIPELINE_SOURCE, '--trigger', $trigger)
@@ -114,7 +115,7 @@ jobs:
 
       - name: Publish operational summary
         if: always()
-        shell: pwsh
+        shell: powershell
         run: |
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '## Assam Job Intelligence pipeline'
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ''

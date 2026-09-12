@@ -21,6 +21,11 @@ changing application code. Only trusted maintainers should be able to modify or 
 the scheduled workflow. Never attach the self-hosted runner to workflows that execute untrusted
 pull-request code.
 
+The job sets PowerShell's process execution policy to `Bypass` because the Windows service account
+otherwise defaults to `Restricted`, which prevents the official Python setup action from running its
+temporary installer. The setting is inherited only by workflow processes; it does not modify the
+machine or user policy stored in the registry.
+
 ## Persistent runtime configuration
 
 The checkout is disposable. Create these directories outside it:

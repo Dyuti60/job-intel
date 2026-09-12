@@ -29,4 +29,6 @@ def test_scheduled_pipeline_has_trusted_boundaries_and_concurrency() -> None:
     assert "GITHUB_ACTION" in workflow
     assert "SCHEDULED" in workflow
     assert "uvicorn" not in workflow
+    assert "PSExecutionPolicyPreference: Bypass" in workflow
+    assert "shell: pwsh" not in workflow
     assert "permissions:\n  contents: read" in workflow
