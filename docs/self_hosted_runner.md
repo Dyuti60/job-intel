@@ -21,10 +21,10 @@ changing application code. Only trusted maintainers should be able to modify or 
 the scheduled workflow. Never attach the self-hosted runner to workflows that execute untrusted
 pull-request code.
 
-The job sets PowerShell's process execution policy to `Bypass` because the Windows service account
-otherwise defaults to `Restricted`, which prevents the official Python setup action from running its
-temporary installer. The setting is inherited only by workflow processes; it does not modify the
-machine or user policy stored in the registry.
+The job uses the uv action and `uv python install 3.12`, which installs an isolated interpreter in
+the runner service profile without requiring a machine-wide Python installation. PowerShell's
+process execution policy is set to `Bypass` for generated workflow scripts only; it does not modify
+the machine or user policy stored in the registry.
 
 ## Persistent runtime configuration
 

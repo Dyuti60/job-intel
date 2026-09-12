@@ -45,18 +45,18 @@ jobs:
       - name: Check out trusted main branch
         uses: actions/checkout@v7
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
 
+      - name: Install isolated Python 3.12
+        shell: powershell
+        run: uv python install 3.12
+
       - name: Synchronize frozen dependencies
-        run: uv sync --frozen
+        shell: powershell
+        run: uv sync --frozen --python 3.12
 
       - name: Resolve persistent runtime configuration
         shell: powershell

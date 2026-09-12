@@ -24,6 +24,8 @@ def test_scheduled_pipeline_has_trusted_boundaries_and_concurrency() -> None:
     assert "runs-on: [self-hosted, Windows, X64]" in workflow
     assert "cancel-in-progress: false" in workflow
     assert "D:\\ASSAM_JOB_DATA\\raw" in workflow
+    assert "uv python install 3.12" in workflow
+    assert "uv sync --frozen --python 3.12" in workflow
     assert "uv run alembic upgrade head" in workflow
     assert "workers.pipeline" in workflow
     assert "GITHUB_ACTION" in workflow
@@ -31,4 +33,5 @@ def test_scheduled_pipeline_has_trusted_boundaries_and_concurrency() -> None:
     assert "uvicorn" not in workflow
     assert "PSExecutionPolicyPreference: Bypass" in workflow
     assert "shell: pwsh" not in workflow
+    assert "actions/setup-python" not in workflow
     assert "permissions:\n  contents: read" in workflow
