@@ -238,3 +238,32 @@ corrected decision values for corrected fields. Rejected or reverification-reque
 explicitly not master-eligible and return no effective publishable values. The projection is a read
 preview only. Human correction never rewrites CandidateField history, and T-008 performs no Master
 publication.
+
+## Local Human Review interface workflow
+
+```text
+Review Queue
+  -> open ReviewCase
+  -> POST Start Review
+  -> inspect candidate, confidence, extraction Evidence, and verification assessments
+  -> POST one immutable decision per routed item
+  -> automatic case resolution after the final item
+  -> approved projection preview
+  -> future Master Publisher
+```
+
+The default queue shows QUEUED and IN_REVIEW cases in CRITICAL, HIGH, NORMAL, NONE order, oldest
+first within a priority. Status and priority filters are read-only presentation controls. A case
+page composes candidate/revision identity, source links, stored confidence components and reasons,
+field values, extraction provenance, verification support/conflict assessments, progress, and
+existing decisions without querying from templates or recalculating domain results.
+
+Starting, cancelling, and deciding are POST operations followed by redirects. Decision forms call
+the existing T-008 service, including reviewer/note rules and typed correction validation. The UI
+does not directly change CandidateField, CandidateRevision, Evidence, Verification, or Confidence
+records. Human correction never rewrites CandidateField history.
+
+When the final item resolves a case, the UI displays the persisted outcome and reads the existing
+approved projection. Approved and corrected values are previews only. REJECTED and
+REVERIFICATION_REQUESTED cases visibly remain ineligible for Master publication, and requesting
+reverification does not start a VerificationRun.

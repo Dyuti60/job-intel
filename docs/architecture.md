@@ -364,3 +364,28 @@ approval or master record.
 Human Review never mutates candidate, Evidence, Verification, or Confidence history. Reviewer
 decisions and snapshots provide the audit layer, while authentication, assignments, a browser UI,
 formal approval, and Master publication remain future capabilities.
+
+## Local Human Review web layer
+
+T-009 adds a server-rendered presentation layer at `/review` over the T-008 Human Review domain.
+FastAPI routes render Jinja2 templates, accept small standard URL-encoded forms, and use
+Post/Redirect/Get after mutations. Queue and case screens call `ReviewService` for lifecycle and
+decision changes; templates contain no transition, correction, confidence, verification, or
+projection policy.
+
+`ReviewCaseViewService` is a read-only composition boundary for the UI. It assembles retained
+candidate and authority identity, source-document metadata, field and revision confidence
+snapshots, extraction Evidence, VerificationEvidenceAssessments, SourceEndpoint/source-class
+provenance, review progress, immutable decisions, and the T-008 approved projection. It formats
+typed values and stored confidence components for display but never recalculates scores or makes
+domain decisions.
+
+Evidence excerpts and context are rendered as escaped text, never executable source HTML.
+Registered source URLs are explicit new-window links with `noopener noreferrer`; remote pages are
+not embedded. All lifecycle and decision mutations use POST, while GET routes remain read-only.
+
+This interface is a localhost development tool. T-009 deliberately provides no authentication,
+authorization, CSRF protection, hardened sessions, assignment workflow, or production deployment
+controls. Those protections are mandatory before deployment to a shared or untrusted network.
+The resolved-case projection remains a non-persistent preview: the web layer does not approve,
+publish, or create Recruitment Master data.

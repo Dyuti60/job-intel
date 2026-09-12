@@ -1,21 +1,21 @@
-# T-009 — Local Human Review Web Interface
+# T-010 — Approved Recruitment Master and Publisher
 
 ## Objective
 
-Implement a locally hosted server-rendered review interface consuming the T-008 domain,
-services, and APIs.
+Introduce the canonical cleansed Recruitment Master produced only from eligible reviewed or
+verified candidate revisions.
 
 ## Scope
 
-The interface should let a reviewer view the queue by priority, open a ReviewCase, inspect
-candidate/recruitment identity, original CandidateField values, confidence scores and component
-breakdowns, review reasons, extraction Evidence, Verification Evidence assessments, source URLs
-and classes, submit approve-as-is/correct-and-approve/reject/request-reverification decisions,
-enter a reviewer identifier and notes, and see case progress and final outcome.
+T-010 should establish RecruitmentMaster identity, MasterField or equivalent structured approved
+values, a deterministic publisher consuming the approved projection, publishing without mutating
+candidate/review history, idempotent upsert, master revision/version history, MasterChange audit
+records, original-versus-corrected value provenance, source/verification/review provenance,
+publication timestamps, and last-verified timestamps.
 
-Use FastAPI server-rendered HTML/templates or another minimal local approach. Do not add React or
-Angular.
+A revision must not publish when its Review outcome is REJECTED, its Review outcome requests
+reverification, required review is unresolved, or confidence/review integrity fails.
 
 ## Boundaries
 
-T-009 must not implement Recruitment Master or Master publication.
+T-010 must not implement live crawling or the public user search UI.

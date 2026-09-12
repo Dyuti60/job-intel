@@ -1,0 +1,218 @@
+{% extends "review/base.html" %}
+{% block content %}
+<nav class="breadcrumbs"><a href="/review">Review queue</a> / {{ candidate.candidate_key }}</nav>
+
+{% if message %}<div class="flash success" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
+
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">{{ candidate.authority_name }} · {{ candidate.authority_code }}</p>
+    <h1>{{ candidate.display_name }}</h1>
+    <p>{{ candidate.candidate_key }} · Revision {{ candidate.revision_number }}</p>
+  </div>
+  <div class="case-state">
+    <span class="badge priority-{{ priority | lower }}">{{ priority }}</span>
+    <strong>{{ status | replace('_', ' ') }}</strong>
+    {% if outcome %}<span class="outcome">{{ outcome | replace('_', ' ') }}</span>{% endif %}
+  </div>
+</div>
+
+{% if status == 'QUEUED' %}
+<div class="toolbar">
+  <form method="post" action="/review/cases/{{ case_id }}/start"><button type="submit">Start Review</button></form>
+  <form method="post" action="/review/cases/{{ case_id }}/cancel"><button class="danger secondary" type="submit">Cancel Case</button></form>
+</div>
+{% elif status == 'IN_REVIEW' %}
+<div class="toolbar">
+  <form method="post" action="/review/cases/{{ case_id }}/cancel" onsubmit="return confirm('Cancel this review case?');"><button class="danger secondary" type="submit">Cancel Case</button></form>
+</div>
+{% endif %}
+
+<section class="grid two">
+  <article class="card">
+    <h2>Candidate context</h2>
+    <dl class="facts">
+      <dt>Candidate key</dt><dd>{{ candidate.candidate_key }}</dd>
+      <dt>Revision</dt><dd>{{ candidate.revision_number }}</dd>
+      <dt>Source type</dt><dd>{{ candidate.source_document_type }}</dd>
+      <dt>Source document</dt><dd><a href="{{ candidate.source_document_url }}" target="_blank" rel="noopener noreferrer">Open original source</a></dd>
+    </dl>
+  </article>
+  <article class="card">
+    <h2>Revision confidence</h2>
+    <div class="score">{{ score if score is not none else 'N/A' }}<small>{% if score is not none %}/100{% endif %}</small></div>
+    <dl class="facts">
+      <dt>Policy</dt><dd>{{ policy_version }}</dd>
+      <dt>Coverage</dt><dd>{{ coverage_ratio }}</dd>
+      <dt>Progress</dt><dd>{{ resolved_items }} of {{ total_items }} review items resolved</dd>
+    </dl>
+    <div class="reasons">
+      {% for reason in reasons %}<span class="reason" title="{{ reason.code }}">{{ reason.label }}</span>{% endfor %}
+    </div>
+  </article>
+</section>
+
+<details class="card breakdown" open>
+  <summary>Revision confidence component breakdown</summary>
+  <table><tbody>{% for row in breakdown %}<tr><th>{{ row.label }}</th><td>{{ row.value }}</td></tr>{% endfor %}</tbody></table>
+</details>
+
+<section>
+  <div class="section-heading"><h2>Review items</h2><span>{{ resolved_items }} / {{ total_items }} resolved</span></div>
+  {% for item in items %}
+  <article class="review-item card" id="item-{{ item.id }}">
+    <header class="item-header">
+      <div>
+        <p class="eyebrow">{{ item.scope }} item</p>
+        <h3>{{ item.field_path if item.scope == 'FIELD' else 'Revision-level decision' }}</h3>
+      </div>
+      <div><span class="badge priority-{{ item.priority | lower }}">{{ item.priority }}</span> <span class="badge">{{ item.status }}</span></div>
+    </header>
+
+    {% if item.scope == 'FIELD' %}
+    <div class="grid three">
+      <div><span class="label">Original value</span><pre class="value">{{ item.original_value_display }}</pre></div>
+      <div><span class="label">Value type</span><strong>{{ item.value_type }}</strong></div>
+      <div><span class="label">Confidence / criticality</span><strong>{{ item.confidence_score if item.confidence_score is not none else 'N/A' }} · {{ item.criticality }}</strong></div>
+    </div>
+    {% else %}
+    <p>This item covers revision-wide routing conditions that cannot be resolved by one field decision.</p>
+    <p><strong>Revision confidence:</strong> {{ item.confidence_score if item.confidence_score is not none else 'N/A' }} · <strong>Coverage:</strong> {{ coverage_ratio }}</p>
+    {% endif %}
+
+    <div class="reasons">
+      {% for reason in item.review_reasons %}<span class="reason" title="{{ reason.code }}">{{ reason.label }}</span>{% endfor %}
+    </div>
+
+    <details class="breakdown">
+      <summary>Confidence component breakdown</summary>
+      <table><tbody>{% for row in item.breakdown %}<tr><th>{{ row.label }}</th><td>{{ row.value }}</td></tr>{% endfor %}</tbody></table>
+    </details>
+
+    {% if item.scope == 'FIELD' %}
+    <section class="evidence-section">
+      <h4>Extraction Evidence</h4>
+      {% if item.extraction_evidence %}
+        {% for evidence in item.extraction_evidence %}
+        <article class="evidence">
+          <div class="evidence-meta"><span>{{ evidence.type }}</span><span>{{ evidence.source_class }}</span><span>{{ evidence.document_type }}</span></div>
+          <blockquote>{{ evidence.excerpt }}</blockquote>
+          {% if evidence.context %}<p class="context"><strong>Context:</strong> {{ evidence.context }}</p>{% endif %}
+          {% if evidence.locator %}<p><strong>Locator:</strong> {{ evidence.locator }}</p>{% endif %}
+          <p>{{ evidence.authority_name }} · {{ evidence.endpoint_name }} · <a href="{{ evidence.document_url }}" target="_blank" rel="noopener noreferrer">Open source</a></p>
+        </article>
+        {% endfor %}
+      {% else %}<p class="muted">No extraction Evidence is linked to this field.</p>{% endif %}
+    </section>
+
+    <section class="evidence-section">
+      <h4>Verification Evidence Assessments</h4>
+      {% if item.verification.assessments %}
+        {% for assessment in item.verification.assessments %}
+        <article class="evidence assessment-{{ assessment.assessment | lower }}">
+          <div class="evidence-meta"><strong>{{ assessment.assessment }}</strong><span>{{ assessment.source_class }}</span><span>{{ assessment.evidence.type }}</span></div>
+          {% if assessment.asserted_value_type %}<p><strong>Asserted value:</strong> {{ assessment.asserted_value }} <small>({{ assessment.asserted_value_type }})</small></p>{% endif %}
+          {% if assessment.note %}<p><strong>Assessment note:</strong> {{ assessment.note }}</p>{% endif %}
+          <blockquote>{{ assessment.evidence.excerpt }}</blockquote>
+          {% if assessment.evidence.context %}<p class="context"><strong>Context:</strong> {{ assessment.evidence.context }}</p>{% endif %}
+          {% if assessment.evidence.locator %}<p><strong>Locator:</strong> {{ assessment.evidence.locator }}</p>{% endif %}
+          <p>{{ assessment.evidence.authority_name }} · {{ assessment.evidence.endpoint_name }} · <a href="{{ assessment.evidence.document_url }}" target="_blank" rel="noopener noreferrer">Open source</a></p>
+        </article>
+        {% endfor %}
+      {% else %}<p class="muted">No verification Evidence assessments were recorded.</p>{% endif %}
+    </section>
+    {% endif %}
+
+    {% if item.status == 'RESOLVED' %}
+    <section class="decision-summary">
+      <h4>Final decision: {{ item.decision.decision | replace('_', ' ') }}</h4>
+      <dl class="facts">
+        <dt>Reviewer</dt><dd>{{ item.decision.reviewer_identifier }}</dd>
+        <dt>Decided</dt><dd>{{ item.decision.decided_at.strftime('%Y-%m-%d %H:%M:%S') }}</dd>
+        <dt>Original</dt><dd><pre class="value">{{ item.decision.original_value }}</pre></dd>
+        {% if item.decision.corrected_value_type %}<dt>Corrected</dt><dd><pre class="value">{{ item.decision.corrected_value }}</pre> ({{ item.decision.corrected_value_type }})</dd>{% endif %}
+        {% if item.decision.note %}<dt>Note</dt><dd>{{ item.decision.note }}</dd>{% endif %}
+        {% if item.decision.evidence_note %}<dt>Evidence note</dt><dd>{{ item.decision.evidence_note }}</dd>{% endif %}
+      </dl>
+    </section>
+    {% elif status == 'IN_REVIEW' %}
+    <section class="decision-controls">
+      <h4>Record final decision</h4>
+      <div class="decision-grid">
+        <form method="post" action="/review/items/{{ item.id }}/decision" class="decision-form">
+          <input type="hidden" name="decision" value="APPROVE_AS_IS">
+          <label>Reviewer identifier<input required maxlength="255" name="reviewer_identifier"></label>
+          <label>Optional note<textarea maxlength="8000" name="decision_note"></textarea></label>
+          <button type="submit">Approve As Is</button>
+        </form>
+
+        {% if item.scope == 'FIELD' and item.value_type != 'NULL' %}
+        <form method="post" action="/review/items/{{ item.id }}/decision" class="decision-form correction">
+          <input type="hidden" name="decision" value="CORRECT_AND_APPROVE">
+          <label>Reviewer identifier<input required maxlength="255" name="reviewer_identifier"></label>
+          <label>Corrected {{ item.value_type }} value
+            {% if item.value_type == 'BOOLEAN' %}
+            <select name="corrected_value" required><option value="true">true</option><option value="false">false</option></select>
+            {% elif item.value_type == 'JSON' %}
+            <textarea name="corrected_value" required placeholder='{"key": "value"}'></textarea>
+            {% elif item.value_type == 'INTEGER' %}
+            <input type="number" step="1" name="corrected_value" required>
+            {% elif item.value_type == 'DATE' %}
+            <input type="date" name="corrected_value" required>
+            {% elif item.value_type == 'DATETIME' %}
+            <input type="text" name="corrected_value" required placeholder="2026-10-27T17:00:00+05:30">
+            {% else %}
+            <input type="text" name="corrected_value" required>
+            {% endif %}
+          </label>
+          <label>Decision note<textarea required maxlength="8000" name="decision_note"></textarea></label>
+          <label>Evidence note<textarea maxlength="4000" name="evidence_note"></textarea></label>
+          <button type="submit">Correct and Approve</button>
+        </form>
+        {% elif item.scope == 'FIELD' %}
+        <p class="muted">NULL fields cannot receive a different same-type corrected value.</p>
+        {% endif %}
+
+        <form method="post" action="/review/items/{{ item.id }}/decision" class="decision-form danger-zone">
+          <input type="hidden" name="decision" value="REJECT">
+          <label>Reviewer identifier<input required maxlength="255" name="reviewer_identifier"></label>
+          <label>Required rejection note<textarea required maxlength="8000" name="decision_note"></textarea></label>
+          <button class="danger" type="submit">Reject</button>
+        </form>
+
+        <form method="post" action="/review/items/{{ item.id }}/decision" class="decision-form warning-zone">
+          <input type="hidden" name="decision" value="REQUEST_REVERIFICATION">
+          <label>Reviewer identifier<input required maxlength="255" name="reviewer_identifier"></label>
+          <label>Required note<textarea required maxlength="8000" name="decision_note"></textarea></label>
+          <p class="muted">Records a request only; verification will not run automatically.</p>
+          <button class="warning" type="submit">Request Re-verification</button>
+        </form>
+      </div>
+    </section>
+    {% endif %}
+  </article>
+  {% endfor %}
+</section>
+
+{% if projection %}
+<section class="card projection">
+  <p class="eyebrow">Internal preview only</p>
+  <h2>Approved Projection</h2>
+  <p class="outcome-large">{{ projection.outcome | replace('_', ' ') }}</p>
+  {% if projection.master_eligible %}
+  <p>This reviewed revision is eligible for a future Master Publisher. Nothing has been published.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Field</th><th>Type</th><th>Effective value</th><th>Origin</th><th>References</th></tr></thead>
+    <tbody>{% for field in projection.fields %}<tr>
+      <td>{{ field.field_path }}</td><td>{{ field.value_type }}</td><td><pre class="value">{{ field.effective_value_display }}</pre></td>
+      <td>{{ 'Corrected' if field.corrected else 'Original' }}</td>
+      <td>Field {{ field.candidate_field_id }}{% if field.review_decision_id %}<br>Decision {{ field.review_decision_id }}{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}
+  <div class="flash error">This revision is not eligible for Master publication.</div>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

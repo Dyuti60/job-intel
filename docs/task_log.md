@@ -589,3 +589,84 @@ historical immutability; and database uniqueness/check protection.
   writes remain an administrative responsibility.
 - The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
   warnings.
+
+## T-009 — Local Human Review Web Interface
+
+### Scope
+
+Implement a minimal local server-rendered Human Review interface over the immutable T-008 review
+domain. The interface presents queue, candidate, evidence, verification, confidence, decision,
+resolution, and approved-projection information but creates no Recruitment Master or publication.
+
+### Implementation summary
+
+- Added FastAPI/Jinja2 pages at `/review` and `/review/cases/{case_id}`, isolated from `/api/v1`.
+- Added a focused read-only `ReviewCaseViewService` that composes candidate/authority identity,
+  source-document metadata, extraction Evidence, VerificationEvidenceAssessments, stored confidence
+  components, review snapshots, progress, decisions, and the T-008 approved projection.
+- Added operational queue counts, active-case priority/age ordering, status and priority filters,
+  candidate/revision context, typed values, human-readable confidence breakdowns, review reasons,
+  and visibly distinct supporting/contradicting assessments.
+- Added POST-only start, cancel, and final-decision forms with Post/Redirect/Get behavior. All
+  lifecycle, correction, idempotency, resolution, and projection behavior continues through
+  `ReviewService`; templates contain no business decisions.
+- Added STRING, INTEGER, DECIMAL, BOOLEAN, DATE, DATETIME, JSON, and documented NULL correction
+  controls. Transport parsing hands typed input to the existing T-004/T-008 normalizer and does not
+  duplicate domain normalization in JavaScript.
+- Added resolved-decision and final-outcome displays plus master-eligibility-aware approved
+  projection previews. CandidateField history remains unchanged after correction.
+- Added local CSS, responsive layouts, escaped source context, safe new-window source links, and
+  friendly HTML errors. No remote content is embedded or interpreted as HTML.
+- Added Jinja2 3.1 as an explicit runtime dependency. T-009 introduced no database objects or
+  migration.
+
+### Validation performed
+
+- `uv sync` completed after locking and installing Jinja2 3.1.6.
+- Complete test suite: 201 passed in 24.91 seconds with two upstream dependency deprecation
+  warnings.
+- Ruff: all checks passed.
+- `git diff --check`: passed with no whitespace errors; Git emitted informational LF-to-CRLF
+  conversion warnings for Windows working-tree settings.
+- Existing development PostgreSQL reports `20260912_0008 (head)` and `alembic check` reports no new
+  upgrade operations, confirming the presentation-only task added no migration.
+- An isolated PostgreSQL database applied T-001 through T-008, then served the application through
+  a real uvicorn process on localhost. End-to-end HTTP smoke validation passed queue loading, case
+  visibility, start, readable extraction/verification Evidence, confidence explanation, safe
+  source links, typed correction, automatic resolution, approved projection, and original
+  CandidateField immutability. The temporary database was removed afterward.
+- A graphical in-app browser was unavailable in the execution session, so the manual smoke used
+  the real server and inspected rendered HTML over localhost HTTP rather than a visual browser.
+
+### Files created/changed
+
+- Created: `app/review_web/__init__.py`, `app/review_web/router.py`,
+  `app/review_web/services.py`, `app/static/review.css`, `templates/review/base.html`,
+  `templates/review/queue.html`, `templates/review/case.html`, `templates/review/error.html`, and
+  `tests/test_review_web.py`.
+- Changed: `app/main.py`, `pyproject.toml`, `uv.lock`, `README.md`, `docs/architecture.md`,
+  `docs/workflow.md`, `docs/task_log.md`, and `docs/next_task.md`.
+
+### Test results
+
+201 passed: 191 existing T-001 through T-008 tests and 10 T-009 tests covering queue HTML,
+ordering, filters and counts; candidate/confidence/reason/breakdown composition; field and revision
+items; extraction and verification Evidence; supporting and contradicting provenance; source
+links; escaped source text; read-only GET behavior; start/cancel; approve/correct/reject/reverify;
+form errors; typed deadline correction; automatic resolution; approved/rejected/reverification
+projection behavior; and CandidateField immutability.
+
+### Known limitations
+
+- The interface is localhost-only and has no authentication, authorization, CSRF protection,
+  hardened sessions, reviewer assignment, or production deployment controls.
+- Reviewer identifiers are entered separately in each decision form and persist only in the
+  resulting ReviewDecision record.
+- Source URLs are explicit links; their remote availability and safety are not checked by T-009.
+- REQUEST_REVERIFICATION records intent only and does not start a new VerificationRun.
+- The approved projection remains a read-only preview and is not approval, publication, or
+  Recruitment Master.
+- The execution environment exposed no connected graphical browser, so visual layout was covered
+  by template assertions and real rendered-HTML HTTP smoke testing rather than interactive visual
+  inspection.
+- The current FastAPI/Starlette test-client stack emits two upstream deprecation warnings.

@@ -1,0 +1,8 @@
+{% extends "review/base.html" %}
+{% block content %}
+<section class="card error-panel">
+  <p class="eyebrow">Unable to continue</p>
+  <h1>{{ error }}</h1>
+  <p><a href="/review">Return to the review queue</a></p>
+</section>
+{% endblock %}
