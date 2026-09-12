@@ -1,22 +1,20 @@
-# T-012 — Automated Verification and Confidence Worker
+# T-014 — Scheduled Pipeline Execution and Operational Run History
 
-T-012 should implement a one-shot worker that discovers CandidateRevisions ready for verification
-and drives the existing:
+T-014 should introduce controlled recurring execution for the end-to-end pipeline.
 
-Verification
-→ FieldVerification
-→ Confidence
-→ Review routing
+It should include:
 
-domains.
+- persistent PipelineRun history
+- stage timing/status summaries
+- scheduled one-shot invocation
+- safe overlap prevention / locking
+- source-level scheduling configuration
+- retry/error visibility
+- last-success/last-failure operational state
+- ability to invoke the existing T-013 orchestrator without duplicating business logic
 
-For the first APSC path it should use persisted official Evidence and Source provenance to produce
-deterministic VerificationEvidenceAssessments without modifying Candidate history.
+It must NOT introduce distributed infrastructure unless required.
 
-It should create ReviewCases automatically when T-007 reports `review_required=true`.
+For local/V0 operation prefer a lightweight scheduler or OS-compatible execution strategy.
 
-It must NOT make Human Review decisions automatically.
-
-It should leave approved/no-review data ready for the existing T-010B Master Publisher.
-
-Do not implement T-012 now.
+Do not implement T-014 now.

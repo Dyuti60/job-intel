@@ -41,8 +41,9 @@ from app.services.exceptions import DomainConflictError, ResourceNotFoundError
 
 
 class VerificationService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, commit: bool = True) -> None:
         self.session = session
+        self.commit = commit
         self.runs = VerificationRunRepository(session)
         self.field_verifications = FieldVerificationRepository(session)
         self.assessments = VerificationAssessmentRepository(session)
@@ -76,7 +77,7 @@ class VerificationService:
             fields_not_applicable=0,
         )
         self.runs.add(run)
-        self.session.commit()
+        self._save()
         return self.get_run(run.id)
 
     def get_run(self, run_id: uuid.UUID) -> VerificationRun:
@@ -112,7 +113,7 @@ class VerificationService:
         self._validate_revision_snapshot(run)
         run.status = VerificationRunStatus.RUNNING
         run.started_at = datetime.now(UTC)
-        self.session.commit()
+        self._save()
         return self.get_run(run.id)
 
     def complete_run(
@@ -147,7 +148,7 @@ class VerificationService:
         else:
             run.error_code = data.error_code
             run.error_message = data.error_message
-        self.session.commit()
+        self._save()
         return self.get_run(run.id)
 
     def create_field_verification(
@@ -187,7 +188,7 @@ class VerificationService:
         )
         self.field_verifications.add(verification)
         try:
-            self.session.commit()
+            self._save()
         except IntegrityError as error:
             self.session.rollback()
             existing = self.field_verifications.get_for_run_field(run.id, field.id)
@@ -267,7 +268,7 @@ class VerificationService:
         )
         self.assessments.add(assessment)
         try:
-            self.session.commit()
+            self._save()
         except IntegrityError as error:
             self.session.rollback()
             existing = self.assessments.get_for_field_evidence(
@@ -328,8 +329,11 @@ class VerificationService:
         verification.status = FieldVerificationStatus.FINALIZED
         verification.finalized_at = datetime.now(UTC)
         self._increment_run_counter(run, outcome)
-        self.session.commit()
+        self._save()
         return self.get_field_verification(verification.id), True
+
+    def _save(self) -> None:
+        self.session.commit() if self.commit else self.session.flush()
 
     def _validate_revision_snapshot(self, run: VerificationRun) -> None:
         revision = self.revisions.get(run.candidate_revision_id)

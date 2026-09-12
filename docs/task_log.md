@@ -819,3 +819,98 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
   database records; logs and the command summary are the operational record for T-010B.
 - The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
   warnings.
+
+## T-012 — Automated Verification and Confidence Worker
+
+### Result
+
+- Added `python -m workers.verification` with required authority filtering, optional candidate-key
+  targeting, `--dry-run`, deterministic oldest-first selection, configurable bounded batches, and
+  per-revision transaction/failure isolation.
+- Added a conservative no-network Evidence interpreter. It supports normalized exact STRING
+  presence, field-labelled INTEGER values, and field-labelled DD/MM/YYYY, DD-MM-YYYY, and ISO DATE
+  values. Ambiguous and unsupported evidence remains CONTEXT_ONLY.
+- The worker uses CandidateService for DRAFT readiness, then existing Verification, Confidence,
+  and Review services for every mutation. It finalizes all fields, computes V1 confidence, queues
+  one idempotent ReviewCase where required, and stops before Human decisions or Master publishing.
+- Completed V1 Verification/Confidence results suppress duplicate work. A resolved
+  REVERIFICATION_REQUESTED case becomes eligible only until one newer run is created.
+- Existing domain services gained opt-in flush-only units of work so the worker can commit or roll
+  back a complete revision atomically without changing normal API commit behavior.
+- Added five focused tests for typed support/contradiction/context behavior, DRAFT readiness,
+  Confidence and Review integration, deterministic batching, replay idempotency, network isolation,
+  one-shot reverification, and dry-run.
+
+### Validation performed
+
+- Complete test suite: 241 passed in 29.94 seconds; only upstream FastAPI/Starlette and local
+  pytest-cache warnings were emitted.
+- Ruff: all checks passed.
+- No migration was added. PostgreSQL remained at `20260912_0009 (head)` and `alembic check`
+  reported no new upgrade operations.
+- Live T-011 APSC CandidateRevision `befd0911-2b8e-48e3-a9f1-526b45051a7d` produced VerificationRun
+  `66bb7dd5-eb04-4006-9be4-badce5c7813f`: 14 total, 11 confirmed, 0 conflicted, 3 insufficient.
+  V1 confidence was 83 and queued ReviewCase `d3569059-82ab-4d68-aa40-1dbaf7cc7405`.
+- Dry-run predicted the same result and persisted nothing. An immediate second persisted execution
+  scanned zero revisions; counts remained one run, one confidence assessment, and one ReviewCase.
+- The localhost Review UI returned HTTP 200 and displayed the APSC key, score 83, and QUEUED state.
+  RecruitmentMaster and MasterPublicationEvent counts remained zero.
+
+### Known limitations
+
+- Interpretation is intentionally narrow and not fuzzy or semantic. BOOLEAN, DATETIME, JSON, NULL,
+  and unlabeled numeric/date assertions remain CONTEXT_ONLY.
+- Worker failures are isolated and logged but no separate worker-run ledger is persisted.
+- The in-app Browser runtime was unavailable during validation; review visibility was verified
+  against the running local server with read-only HTTP requests instead.
+
+## T-013 — End-to-End Pipeline Orchestrator
+
+### Result
+
+- Added `python -m workers.pipeline --source APSC` and `--dry-run` as a thin in-process coordinator
+  over the existing APSC Discovery, Verification/Confidence/Review routing, and Master Publisher
+  worker services.
+- Added an explicit `APSC -> APSC` source/authority mapping and a structured PipelineSummary with
+  per-stage summaries, active-review count, errors, and SUCCESS/PARTIAL/FAILED status.
+- Preserved every stage transaction and policy boundary. Fatal Discovery short-circuits later
+  stages; usable PARTIAL Discovery continues; queued review is SUCCESS; isolated downstream item
+  failures make the combined result PARTIAL.
+- The Master Publisher is always invoked after a safe Verification stage, including unchanged
+  Discovery and zero new Verification work, allowing human-approved cases to publish later.
+- Full dry-run delegates to each existing worker dry-run. It does not create a parallel simulation
+  engine or persist source, candidate, verification, review, or master changes.
+- Added nine focused tests covering direct publication, pending review, asynchronous correction and
+  publication, rejection, one-shot reverification, changed and partial Discovery, fatal Discovery,
+  idempotent replay, full dry-run, structured summaries, and CLI exit behavior.
+
+### Validation performed
+
+- Complete test suite: 250 passed in 38.76 seconds; only upstream FastAPI/Starlette and local
+  pytest-cache warnings were emitted.
+- Ruff: all checks passed.
+- `git diff --check`: passed; only informational Windows LF-to-CRLF warnings were emitted.
+- No migration was added. PostgreSQL remained at `20260912_0009 (head)` and `alembic check`
+  reported no new upgrade operations.
+- Live APSC pipeline run fetched the three bounded official resources with HTTP 200, classified all
+  three SourceDocuments UNCHANGED, reused one Candidate and revision, processed zero Verification
+  revisions, retained one active ReviewCase, skipped one pending-review publication, and returned
+  SUCCESS with zero Master records.
+- A second live run produced the same counts and no duplicate document version, candidate revision,
+  VerificationRun, Confidence assessment, ReviewCase, Master, or publication event.
+- Live dry-run reported the same route and preserved identical before/after counts: four historical
+  DiscoveryRuns, three SourceDocuments, one CandidateRevision, one VerificationRun, one ReviewCase,
+  and zero RecruitmentMasters.
+- The controlled review-continuation test queued review on run one, corrected
+  `application.end_date` from `2026-10-20` to `2026-10-27`, and published that corrected MasterField
+  on an unchanged second run while preserving the CandidateField value.
+
+### Known limitations
+
+- T-013 supports only the explicit APSC mapping and remains a one-shot command without scheduling,
+  overlap locking, or persistent pipeline-run history.
+- `--candidate-key` is intentionally omitted because Discovery is currently one fixed APSC flow
+  and the existing Master Publisher scans a global pending batch; partial propagation would give a
+  misleading end-to-end targeting guarantee.
+- Stage dry-runs are independent rollback simulations over persisted pre-stage state. Hypothetical
+  Discovery output is not forwarded to Verification inside a shadow transaction.

@@ -50,8 +50,15 @@ PRIORITY_RANK = {
 
 
 class ConfidenceService:
-    def __init__(self, session: Session, policy: ConfidencePolicyV1 | None = None) -> None:
+    def __init__(
+        self,
+        session: Session,
+        policy: ConfidencePolicyV1 | None = None,
+        *,
+        commit: bool = True,
+    ) -> None:
         self.session = session
+        self.commit = commit
         self.policy = policy or ConfidencePolicyV1.from_settings(get_settings())
         self.fields = FieldVerificationRepository(session)
         self.runs = VerificationRunRepository(session)
@@ -68,7 +75,7 @@ class ConfidenceService:
         if not created:
             return assessment, False
         try:
-            self.session.commit()
+            self._save()
         except IntegrityError as error:
             self.session.rollback()
             existing = self.field_confidence.get_for_policy(
@@ -113,15 +120,17 @@ class ConfidenceService:
                 raise DomainConflictError(
                     "Persisted revision confidence output or inputs fail integrity validation"
                 )
-            self.session.rollback()
+            if self.commit:
+                self.session.rollback()
             return existing, self._list_field_assessments(run.id), False
 
         assessment = RevisionConfidenceAssessment(**data)
         self.revision_confidence.add(assessment)
         try:
-            self.session.commit()
+            self._save()
         except IntegrityError as error:
-            self.session.rollback()
+            if self.commit:
+                self.session.rollback()
             existing = self.revision_confidence.get_for_policy(run.id, ConfidencePolicyVersion.V1)
             if existing is not None and self._revision_assessment_matches(existing, data):
                 return existing, self._list_field_assessments(run.id), False
@@ -147,6 +156,8 @@ class ConfidenceService:
         cls,
         session: Session,
         assessment: RevisionConfidenceAssessment,
+        *,
+        commit: bool = True,
     ) -> list[FieldConfidenceAssessment]:
         if assessment.policy_version != ConfidencePolicyVersion.V1:
             raise DomainConflictError("Unsupported confidence policy version")
@@ -159,12 +170,15 @@ class ConfidenceService:
             )
         except (KeyError, TypeError, ValueError) as error:
             raise DomainConflictError("Revision confidence policy snapshot is invalid") from error
-        validated, field_assessments, _ = cls(session, policy).score_run(
+        validated, field_assessments, _ = cls(session, policy, commit=commit).score_run(
             assessment.verification_run_id
         )
         if validated.id != assessment.id:
             raise DomainConflictError("Revision confidence identity mismatch")
         return field_assessments
+
+    def _save(self) -> None:
+        self.session.commit() if self.commit else self.session.flush()
 
     def _get_or_build_field_assessment(
         self, verification: FieldVerification

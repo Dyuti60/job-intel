@@ -41,8 +41,9 @@ REVISION_ITEM_REASONS = {
 
 
 class ReviewService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, commit: bool = True) -> None:
         self.session = session
+        self.commit = commit
         self.cases = ReviewCaseRepository(session)
         self.items = ReviewItemRepository(session)
         self.decisions = ReviewDecisionRepository(session)
@@ -132,7 +133,7 @@ class ReviewService:
             )
 
         try:
-            self.session.commit()
+            self._save()
         except IntegrityError as error:
             self.session.rollback()
             existing = self.cases.get_by_confidence_assessment(assessment.id)
@@ -176,7 +177,7 @@ class ReviewService:
             )
         review_case.status = ReviewCaseStatus.IN_REVIEW
         review_case.started_at = datetime.now(UTC)
-        self.session.commit()
+        self._save()
         return self.get_case(review_case.id)
 
     def cancel_case(self, case_id: uuid.UUID) -> tuple[ReviewCase, bool]:
@@ -187,7 +188,7 @@ class ReviewService:
             raise DomainConflictError("Resolved review case is immutable")
         review_case.status = ReviewCaseStatus.CANCELLED
         review_case.resolved_at = datetime.now(UTC)
-        self.session.commit()
+        self._save()
         return self.get_case(review_case.id), True
 
     def resolve_case(self, case_id: uuid.UUID) -> tuple[ReviewCase, bool]:
@@ -201,7 +202,7 @@ class ReviewService:
         if self.items.pending_count(review_case.id):
             raise DomainConflictError("Review case still has pending items")
         self._resolve_case(review_case, datetime.now(UTC))
-        self.session.commit()
+        self._save()
         return self.get_case(review_case.id), True
 
     def get_item(self, item_id: uuid.UUID) -> ReviewItem:
@@ -249,7 +250,7 @@ class ReviewService:
         if self.items.pending_count(review_case.id) == 0:
             self._resolve_case(review_case, now)
         try:
-            self.session.commit()
+            self._save()
         except IntegrityError as error:
             self.session.rollback()
             existing = self.decisions.get_for_item(item.id)
@@ -312,7 +313,12 @@ class ReviewService:
     def _validate_confidence_integrity(
         self, assessment: RevisionConfidenceAssessment
     ) -> list[FieldConfidenceAssessment]:
-        return ConfidenceService.validate_persisted_revision_assessment(self.session, assessment)
+        return ConfidenceService.validate_persisted_revision_assessment(
+            self.session, assessment, commit=self.commit
+        )
+
+    def _save(self) -> None:
+        self.session.commit() if self.commit else self.session.flush()
 
     @staticmethod
     def _validate_decision(item: ReviewItem, data: ReviewDecisionCreate) -> Any:

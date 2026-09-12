@@ -501,3 +501,51 @@ revision hash, preserving changed provenance as immutable revisions.
 The worker composes existing Registry, Discovery, Candidate, and Evidence services in one
 transaction and stops at extraction Evidence. It never creates Verification, Confidence, Review,
 or Master records. Authoritative extraction remains unverified Candidate data.
+
+## Automated Verification and Confidence worker
+
+T-012 adds a one-shot orchestration service and `python -m workers.verification` entry point over
+the existing T-004 through T-008 domains. It selects non-discarded CandidateRevisions with fields
+in stable creation-time/UUID order, scoped by authority and optional candidate key. A completed V1
+VerificationRun with its RevisionConfidenceAssessment makes that revision current and prevents
+repeat work. A resolved `REVERIFICATION_REQUESTED` case becomes eligible exactly once when no newer
+run exists. Batch size is configured by `AJI_VERIFICATION_BATCH_SIZE` (default 100).
+
+The worker is downstream-only: it imports no discovery adapter or HTTP client and reads only
+persisted CandidateFieldEvidence and immutable Evidence. A focused deterministic interpreter
+compares NFC/case/whitespace-normalized strings, field-labelled integers, and bounded DD/MM/YYYY,
+DD-MM-YYYY, or ISO dates. Unsupported or ambiguous input becomes `CONTEXT_ONLY`; absent evidence
+finalizes through T-006 as
+`INSUFFICIENT_EVIDENCE / NO_EVIDENCE`. Stored Evidence is never rewritten.
+
+Each selected revision is one transaction. DRAFT readiness changes use CandidateService;
+VerificationRun, FieldVerification, assessment, finalization, and completion use
+VerificationService; ConfidenceService calculates the unchanged V1 policy; and ReviewService
+creates a QUEUED case only when routing requires it. A failure rolls back that revision and later
+items continue. Dry-run executes the same domain path and rolls back every revision. No Human
+Review decision or Recruitment Master publication occurs here.
+
+## End-to-end pipeline orchestrator
+
+T-013 adds `python -m workers.pipeline` as a coordination-only layer. A small explicit registry maps
+the supported `APSC` source to authority code `APSC`. The orchestrator calls
+APSCDiscoveryWorkerService, VerificationWorkerService, and MasterPublisherWorkerService in process
+and consumes their structured summaries. It does not parse worker output or own discovery,
+evidence interpretation, confidence, review, correction, eligibility, hashing, or publication
+rules.
+
+Stages remain independently transactional. Fatal Discovery or stage-level infrastructure failure
+short-circuits unsafe downstream execution. A usable PARTIAL Discovery continues through valid
+persisted work and makes the pipeline PARTIAL. Isolated Verification or Publisher item errors retain
+their worker behavior and make the combined result PARTIAL. Queued Human Review is normal SUCCESS.
+
+The Publisher always runs after a safely completed Verification stage, including when Discovery is
+UNCHANGED and Verification scans zero revisions. Consequently an eligible ReviewCase resolved by a
+human between executions is published by a later pipeline invocation without rediscovery or
+reverification. Queued, in-review, rejected, cancelled, and reverification-requested cases retain
+the existing Publisher safeguards.
+
+Pipeline dry-run delegates to each existing stage's dry-run implementation. Each stage evaluates
+the persisted state visible when it begins and rolls back its own writes; the orchestrator does not
+maintain a separate hypothetical cross-stage database. T-013 adds no persistence, scheduler,
+distributed lock, subprocess boundary, or recurring execution.

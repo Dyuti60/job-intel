@@ -67,3 +67,42 @@ URIs. Override the root with `AJI_RAW_STORAGE_ROOT`. HTTP limits are configurabl
 `AJI_DISCOVERY_HTTP_RETRIES`, and `AJI_DISCOVERY_MAX_RESPONSE_BYTES`. The command exits 0 for a
 successful or usable PARTIAL run and nonzero when discovery cannot safely execute. It creates no
 Verification or Master data.
+
+## Verification worker
+
+Verify pending persisted APSC CandidateRevisions without fetching source websites:
+
+```text
+uv run python -m workers.verification --authority APSC
+```
+
+Preview the same workflow with no database changes:
+
+```text
+uv run python -m workers.verification --authority APSC --dry-run
+```
+
+Use `--candidate-key APSC_ADVT_12_2026` for an optional exact candidate target.
+`AJI_VERIFICATION_BATCH_SIZE` bounds each oldest-first execution and defaults to 100. The worker
+uses only persisted Evidence, queues Human Review where required, and never fetches sources, makes
+review decisions, or invokes the Master Publisher.
+
+## End-to-end pipeline
+
+Run the supported APSC source through Discovery, Verification/Confidence/Review routing, and the
+Master Publisher in one process:
+
+```text
+uv run python -m workers.pipeline --source APSC
+```
+
+Run all three established stage dry-runs without persistent changes:
+
+```text
+uv run python -m workers.pipeline --source APSC --dry-run
+```
+
+Queued or in-progress Human Review is a successful operational outcome, not an error. The pipeline
+always invokes the Master Publisher, so a later execution can publish a ReviewCase resolved between
+runs even when Discovery is unchanged and Verification has no new work. `SUCCESS` and usable
+`PARTIAL` return exit code 0; fatal pipeline failures return nonzero.

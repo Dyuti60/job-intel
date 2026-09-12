@@ -361,3 +361,61 @@ Identical bytes produce UNCHANGED observations and reuse Candidate, revision, Ev
 Changed bytes create a SourceDocument version; changed extraction creates the next immutable
 CandidateRevision. Dry-run fetches/classifies but rolls back database changes and skips raw writes.
 Verification remains a separate later stage: discovery does not verify, score, review, or publish.
+
+## Automated Verification worker workflow
+
+```text
+eligible CandidateRevision
+  -> CandidateService readiness transition when DRAFT
+  -> VerificationRun (AUTOMATED or RETRY)
+  -> one FieldVerification per CandidateField
+  -> persisted extraction Evidence interpreted conservatively
+  -> SUPPORTS / CONTRADICTS / CONTEXT_ONLY assessments
+  -> deterministic T-006 final outcomes
+  -> COMPLETED VerificationRun
+  -> T-007 field and revision Confidence
+  -> T-008 QUEUED ReviewCase when review_required
+  -> STOP
+```
+
+The worker performs no network request and does not infer support merely because Evidence is
+linked. Missing or ambiguous evidence is a valid insufficient result rather than a batch failure.
+No-review results remain ready for the Master Publisher. Review-required results remain visible at
+`/review` until a human acts; the worker neither starts cases nor submits decisions. Re-running
+without a changed CandidateRevision or a newer reverification request is a no-op. Dry-run predicts
+the complete route while rolling back Candidate readiness, Verification, Confidence, and Review
+records.
+
+## End-to-end pipeline workflow
+
+```text
+one-shot Pipeline execution
+  -> source mapping (APSC -> APSC authority)
+  -> existing APSC Discovery worker
+  -> existing Verification worker
+  -> Confidence and Review routing inside Verification worker
+  -> existing Master Publisher worker (always invoked after safe Verification)
+  -> combined structured operational summary
+```
+
+Human Review remains asynchronous:
+
+```text
+pipeline run 1
+  -> ReviewCase QUEUED
+  -> Publisher skips pending review
+  -> SUCCESS, Human Review Required
+
+human resolves case through /review
+
+pipeline run 2
+  -> Discovery may be UNCHANGED
+  -> Verification may scan zero revisions
+  -> Publisher finds the resolved confidence/review state
+  -> approved or corrected Master publication
+```
+
+The orchestrator never starts or decides a ReviewCase. Rejection stays unpublished, and a
+reverification request is handled only by the existing one-shot T-012 retry rule. A fatal Discovery
+failure prevents later stages. PARTIAL Discovery with usable official data continues. Dry-run calls
+the established dry-run path of every stage and leaves all persistence unchanged.
