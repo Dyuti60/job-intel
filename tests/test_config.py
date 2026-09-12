@@ -1,7 +1,8 @@
 from app.core.config import Settings
 
 
-def test_settings_load_defaults() -> None:
+def test_settings_load_defaults(monkeypatch) -> None:
+    monkeypatch.delenv("AJI_APP_ENV", raising=False)
     settings = Settings(_env_file=None)
 
     assert settings.app_name == "Assam Job Intelligence"
