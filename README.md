@@ -102,7 +102,23 @@ Run all three established stage dry-runs without persistent changes:
 uv run python -m workers.pipeline --source APSC --dry-run
 ```
 
+Every command invocation records a `PipelineRun` and per-stage operational history. This audit
+record is the sole intentional write during `--dry-run`; source, candidate, verification, review,
+and Master data remain unchanged. Inspect history through `GET /api/v1/pipeline-runs` and
+`GET /api/v1/pipeline-runs/{id}`.
+
 Queued or in-progress Human Review is a successful operational outcome, not an error. The pipeline
 always invokes the Master Publisher, so a later execution can publish a ReviewCase resolved between
 runs even when Discovery is unchanged and Verification has no new work. `SUCCESS` and usable
 `PARTIAL` return exit code 0; fatal pipeline failures return nonzero.
+
+## GitHub Continuous Integration
+
+`.github/workflows/ci.yml` runs on pushes to `main`, pull requests targeting `main`, and manual
+workflow dispatch. It uses a GitHub-hosted Ubuntu runner, Python 3.12, uv, and a disposable
+PostgreSQL service database to apply the complete Alembic chain, check schema drift, run all tests,
+and run Ruff. CI does not invoke live APSC Discovery and needs no runtime or production secrets.
+
+Recommended flow: create a feature branch, push it, open a pull request to `main`, let CI pass, and
+then merge. Repository administrators should enable branch protection for `main` and require the CI
+job; this project does not alter repository protection settings automatically.

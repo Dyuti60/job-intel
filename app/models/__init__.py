@@ -38,6 +38,14 @@ from app.models.master import (
     RecruitmentMasterRevision,
     RecruitmentMasterStatus,
 )
+from app.models.pipeline import (
+    PipelineRun,
+    PipelineRunStatus,
+    PipelineStage,
+    PipelineStageRun,
+    PipelineStageStatus,
+    PipelineTriggerType,
+)
 from app.models.review import (
     ReviewCase,
     ReviewCaseOutcome,
@@ -98,6 +106,12 @@ __all__ = [
     "ObservationStatus",
     "PublicationPath",
     "PublicationResult",
+    "PipelineRun",
+    "PipelineRunStatus",
+    "PipelineStage",
+    "PipelineStageRun",
+    "PipelineStageStatus",
+    "PipelineTriggerType",
     "RecruitmentCandidate",
     "RecruitmentCandidateRevision",
     "RecruitmentMaster",

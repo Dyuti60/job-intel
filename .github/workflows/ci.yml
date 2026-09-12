@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Migrations, tests, and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: assam_job_intelligence_ci
+          POSTGRES_USER: aji_ci
+          POSTGRES_PASSWORD: ci_only_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aji_ci -d assam_job_intelligence_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      AJI_APP_ENV: test
+      AJI_DEBUG: "false"
+      AJI_DATABASE_URL: postgresql+psycopg://aji_ci:ci_only_password@localhost:5432/assam_job_intelligence_ci
+      AJI_RAW_STORAGE_ROOT: ${{ runner.temp }}/assam-job-intelligence-raw
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Synchronize frozen dependencies
+        run: uv sync --frozen
+
+      - name: Wait for PostgreSQL
+        run: |
+          for attempt in {1..30}; do
+            pg_isready -h localhost -p 5432 -U aji_ci -d assam_job_intelligence_ci && exit 0
+            sleep 1
+          done
+          exit 1
+
+      - name: Apply complete migration chain
+        run: uv run alembic upgrade head
+
+      - name: Report migration revision
+        run: uv run alembic current
+
+      - name: Check migration/schema drift
+        run: uv run alembic check
+
+      - name: Run full test suite
+        run: uv run pytest -q
+
+      - name: Run Ruff
+        run: uv run ruff check .

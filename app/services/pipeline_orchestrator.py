@@ -1,6 +1,9 @@
 import enum
 import logging
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from time import perf_counter
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -39,6 +42,18 @@ PIPELINE_SOURCES = {
 }
 
 
+@dataclass(frozen=True)
+class PipelineStageExecution:
+    stage: str
+    status: str
+    started_at: datetime
+    completed_at: datetime
+    duration_ms: int
+    summary: dict[str, Any] = field(default_factory=dict)
+    error_code: str | None = None
+    error_message: str | None = None
+
+
 @dataclass
 class PipelineSummary:
     source: str
@@ -50,6 +65,7 @@ class PipelineSummary:
     publisher: MasterPublisherWorkerSummary | None = None
     active_review_cases: int = 0
     errors: list[str] = field(default_factory=list)
+    stage_executions: list[PipelineStageExecution] = field(default_factory=list)
 
 
 class PipelineOrchestratorService:
@@ -89,6 +105,7 @@ class PipelineOrchestratorService:
             status=PipelineStatus.SUCCESS,
         )
         self.logger.info("pipeline_started source=%s dry_run=%s", key, dry_run)
+        stage_started_at, stage_started_clock = self._start_stage()
         try:
             result.discovery = APSCDiscoveryWorkerService(
                 self.session, self.settings, self.logger
@@ -96,14 +113,44 @@ class PipelineOrchestratorService:
         except Exception as error:
             self.session.rollback()
             result.status = PipelineStatus.FAILED
-            result.errors.append(f"Discovery failed: {type(error).__name__}: {error}")
+            message = f"Discovery failed: {type(error).__name__}: {error}"
+            result.errors.append(message)
+            result.stage_executions.append(
+                self._finish_stage(
+                    "DISCOVERY",
+                    "FAILED",
+                    stage_started_at,
+                    stage_started_clock,
+                    error_code=type(error).__name__,
+                    error_message=str(error),
+                )
+            )
             self.logger.exception("pipeline_discovery_failed source=%s", key)
             return result
+        discovery_status = (
+            "PARTIAL" if result.discovery.status == DiscoveryRunStatus.PARTIAL else "SUCCESS"
+        )
+        result.stage_executions.append(
+            self._finish_stage(
+                "DISCOVERY",
+                discovery_status,
+                stage_started_at,
+                stage_started_clock,
+                summary={
+                    "documents_new": result.discovery.documents_new,
+                    "documents_changed": result.discovery.documents_changed,
+                    "documents_unchanged": result.discovery.documents_unchanged,
+                    "candidates_created": result.discovery.candidates_created,
+                    "candidates_reused": result.discovery.candidates_reused,
+                    "revisions_created": result.discovery.revisions_created,
+                    "revisions_reused": result.discovery.revisions_reused,
+                },
+            )
+        )
 
+        stage_started_at, stage_started_clock = self._start_stage()
         try:
-            result.verification = VerificationWorkerService(
-                self.session, self.logger
-            ).run(
+            result.verification = VerificationWorkerService(self.session, self.logger).run(
                 authority=config.authority_code,
                 candidate_key=None,
                 batch_size=self.settings.verification_batch_size,
@@ -113,13 +160,39 @@ class PipelineOrchestratorService:
             self.session.rollback()
             result.status = PipelineStatus.FAILED
             result.errors.append(f"Verification failed: {type(error).__name__}: {error}")
+            result.stage_executions.append(
+                self._finish_stage(
+                    "VERIFICATION",
+                    "FAILED",
+                    stage_started_at,
+                    stage_started_clock,
+                    error_code=type(error).__name__,
+                    error_message=str(error),
+                )
+            )
             self.logger.exception("pipeline_verification_failed source=%s", key)
             return result
+        result.stage_executions.append(
+            self._finish_stage(
+                "VERIFICATION",
+                "PARTIAL" if result.verification.failed else "SUCCESS",
+                stage_started_at,
+                stage_started_clock,
+                summary={
+                    "revisions_scanned": result.verification.revisions_scanned,
+                    "completed": result.verification.completed,
+                    "failed": result.verification.failed,
+                    "fields_confirmed": result.verification.fields_confirmed,
+                    "fields_conflicted": result.verification.fields_conflicted,
+                    "fields_insufficient": result.verification.fields_insufficient,
+                    "review_cases_queued": result.verification.review_cases_queued,
+                },
+            )
+        )
 
+        stage_started_at, stage_started_clock = self._start_stage()
         try:
-            result.publisher = MasterPublisherWorkerService(
-                self.session, self.logger
-            ).run(
+            result.publisher = MasterPublisherWorkerService(self.session, self.logger).run(
                 batch_size=self.settings.master_publisher_batch_size,
                 dry_run=dry_run,
             )
@@ -128,8 +201,34 @@ class PipelineOrchestratorService:
             self.session.rollback()
             result.status = PipelineStatus.FAILED
             result.errors.append(f"Master Publisher failed: {type(error).__name__}: {error}")
+            result.stage_executions.append(
+                self._finish_stage(
+                    "MASTER_PUBLISHER",
+                    "FAILED",
+                    stage_started_at,
+                    stage_started_clock,
+                    error_code=type(error).__name__,
+                    error_message=str(error),
+                )
+            )
             self.logger.exception("pipeline_publisher_failed source=%s", key)
             return result
+        result.stage_executions.append(
+            self._finish_stage(
+                "MASTER_PUBLISHER",
+                "PARTIAL" if result.publisher.failed else "SUCCESS",
+                stage_started_at,
+                stage_started_clock,
+                summary={
+                    "scanned": result.publisher.scanned,
+                    "master_created": result.publisher.master_created,
+                    "master_updated": result.publisher.master_updated,
+                    "master_unchanged": result.publisher.master_unchanged,
+                    "review_pending": result.publisher.review_pending,
+                    "failed": result.publisher.failed,
+                },
+            )
+        )
 
         if (
             result.discovery.status == DiscoveryRunStatus.PARTIAL
@@ -144,6 +243,32 @@ class PipelineOrchestratorService:
             result.active_review_cases,
         )
         return result
+
+    @staticmethod
+    def _start_stage() -> tuple[datetime, float]:
+        return datetime.now(UTC), perf_counter()
+
+    @staticmethod
+    def _finish_stage(
+        stage: str,
+        status: str,
+        started_at: datetime,
+        started_clock: float,
+        *,
+        summary: dict[str, Any] | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> PipelineStageExecution:
+        return PipelineStageExecution(
+            stage=stage,
+            status=status,
+            started_at=started_at,
+            completed_at=datetime.now(UTC),
+            duration_ms=max(0, round((perf_counter() - started_clock) * 1000)),
+            summary=summary or {},
+            error_code=error_code,
+            error_message=error_message,
+        )
 
     def _active_review_count(self, authority_code: str) -> int:
         return int(
@@ -164,9 +289,7 @@ class PipelineOrchestratorService:
                 )
                 .where(
                     RecruitingAuthority.code == authority_code,
-                    ReviewCase.status.in_(
-                        (ReviewCaseStatus.QUEUED, ReviewCaseStatus.IN_REVIEW)
-                    ),
+                    ReviewCase.status.in_((ReviewCaseStatus.QUEUED, ReviewCaseStatus.IN_REVIEW)),
                 )
             )
             or 0

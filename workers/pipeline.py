@@ -6,6 +6,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.db.session import SessionLocal
+from app.models.pipeline import PipelineTriggerType
+from app.services.pipeline_history import PipelineHistoryService
 from app.services.pipeline_orchestrator import (
     PIPELINE_SOURCES,
     PipelineOrchestratorService,
@@ -30,15 +32,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     logger = get_logger(__name__)
     try:
         with SessionLocal() as session:
-            summary = PipelineOrchestratorService(session, settings, logger).run(
+            summary, pipeline_run = PipelineHistoryService(session).execute(
+                PipelineOrchestratorService(session, settings, logger),
                 source=args.source,
                 dry_run=args.dry_run,
+                trigger_type=PipelineTriggerType.CLI,
             )
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as error:
         logger.exception("pipeline_worker_level_failure source=%s", args.source)
         print(f"Pipeline failed before a safe summary could be produced: {error}")
         return 1
     print(format_pipeline_summary(summary))
+    print(f"Operational PipelineRun: {pipeline_run.id}")
     return 1 if summary.status == PipelineStatus.FAILED else 0
 
 

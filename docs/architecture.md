@@ -549,3 +549,32 @@ Pipeline dry-run delegates to each existing stage's dry-run implementation. Each
 the persisted state visible when it begins and rolls back its own writes; the orchestrator does not
 maintain a separate hypothetical cross-stage database. T-013 adds no persistence, scheduler,
 distributed lock, subprocess boundary, or recurring execution.
+
+## Pipeline operational history and Continuous Integration
+
+T-014 wraps the T-013 coordinator with an operational projection; it does not duplicate any stage
+business logic. Each CLI invocation first creates one UUID `PipelineRun` in `RUNNING`, runs the
+existing orchestrator in process, and then finalizes that record as `SUCCESS`, `PARTIAL`, or
+`FAILED`. Source/authority codes, trigger, timestamps, duration, dry-run marker, routing/publication
+counts, bounded failure metadata, and the structured combined summary are retained.
+
+Each attempted `DISCOVERY`, `VERIFICATION`, and `MASTER_PUBLISHER` stage has one immutable
+`PipelineStageRun` per parent run. It retains status, timing, structured summary, and bounded failure
+metadata. Parent stage-status columns support efficient operations queries. Foreign keys use
+`RESTRICT`; execution history is audit data, not a cascade-deletion target. Current `RUNNING` state
+provides overlap-detection groundwork only. T-015 will combine it with an application/database guard
+and GitHub Actions concurrency; T-014 does not claim a lock.
+
+Dry-run deliberately has one exception to its no-write contract: operational PipelineRun and
+PipelineStageRun history is committed. Discovery, Candidate, Verification, Confidence, Review, and
+Master writes still use their existing rollback behavior. This makes dry-run observable without
+changing recruitment data.
+
+The read-only `/api/v1/pipeline-runs` and `/api/v1/pipeline-runs/{id}` endpoints expose newest-first
+history and stage detail. They do not start, retry, cancel, or mutate pipeline executions.
+
+Continuous Integration is separate from runtime operations. `.github/workflows/ci.yml` uses a
+GitHub-hosted Ubuntu runner with read-only contents permission, Python 3.12, uv, and a temporary
+PostgreSQL service. It applies the full migration chain, checks drift, runs fixture-only tests, and
+Ruff. The disposable CI database/raw path are not the persistent local/V0 stores. CI never runs live
+APSC Discovery; a trusted self-hosted scheduled runtime remains a T-015 concern.

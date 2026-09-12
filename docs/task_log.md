@@ -914,3 +914,50 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
   misleading end-to-end targeting guarantee.
 - Stage dry-runs are independent rollback simulations over persisted pre-stage state. Hypothetical
   Discovery output is not forwarded to Verification inside a shadow transaction.
+
+## T-014 — Persistent Pipeline Run History and GitHub Actions CI
+
+### Result
+
+- Added `PipelineRun` and `PipelineStageRun` operational audit entities plus migration
+  `20260912_0010`. Each CLI pipeline invocation records its trigger, overall/stage statuses,
+  timestamps and durations, structured summaries, routing/publication counts, and bounded redacted
+  failure details without duplicating T-013 orchestration logic.
+- Updated the existing pipeline structured result with precise in-process stage executions. The CLI
+  now wraps the same orchestrator with `PipelineHistoryService` and prints the operational run ID.
+- Dry-run records only operational history; all established source, candidate, Verification,
+  Confidence, Review, and Master rollback behavior remains unchanged.
+- Added read-only newest-first `GET /api/v1/pipeline-runs` filtering and
+  `GET /api/v1/pipeline-runs/{id}` stage-detail APIs.
+- Added GitHub-hosted Ubuntu CI for pull requests to `main`, pushes to `main`, and manual dispatch.
+  CI uses Python 3.12, frozen uv dependencies, a temporary PostgreSQL 17 service, the full Alembic
+  chain/current/drift check, full Pytest, and Ruff with contents-read permission only.
+- Added five focused test functions covering SUCCESS/PARTIAL/FAILED history, stage timing, summary
+  retention, bounded credential-redacted errors, dry-run audit semantics, repeated operational
+  runs, read APIs, filters, ordering, and missing IDs.
+
+### Validation performed
+
+- Complete test suite: 255 passed in 32.69 seconds; only upstream FastAPI/Starlette and local
+  pytest-cache warnings were emitted.
+- Existing PostgreSQL upgraded from `20260912_0009` to `20260912_0010`; `alembic current` reported
+  head and `alembic check` reported no upgrade operations.
+- T-014 downgraded cleanly to `20260912_0009` and re-upgraded to `20260912_0010`.
+- A fresh PostgreSQL database applied T-001 through T-014 and passed current/drift checks. New
+  indexes and all 17 primary/foreign/unique/check constraints were inspected in PostgreSQL.
+- Local APSC pipeline smoke run completed SUCCESS with three timed stage rows: 2350 ms Discovery,
+  18 ms Verification, and 12 ms Master Publisher. It retained one pending ReviewCase, produced no
+  Master, and stored PipelineRun `0abc073a-0193-404a-aea0-a0468ae38e63`.
+- A local dry-run stored a second operational history record while domain counts remained five
+  DiscoveryRuns, three SourceDocuments, one CandidateRevision, one VerificationRun, one ReviewCase,
+  and zero Masters.
+- CI YAML parsed locally and its required trigger/service/step configuration was inspected. Remote
+  GitHub Actions execution was not performed because no commit or push was authorized.
+
+### Known limitations
+
+- T-014 persists `RUNNING` state as groundwork but intentionally provides no overlap lock or
+  scheduler. T-015 must combine application/database overlap protection with Actions concurrency.
+- Pipeline history currently supports the explicit APSC source mapping inherited from T-013.
+- Operational error text is bounded and connection credentials are redacted, but this is not a
+  general-purpose secret-scanning system.

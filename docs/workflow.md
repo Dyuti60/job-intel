@@ -418,4 +418,41 @@ pipeline run 2
 The orchestrator never starts or decides a ReviewCase. Rejection stays unpublished, and a
 reverification request is handled only by the existing one-shot T-012 retry rule. A fatal Discovery
 failure prevents later stages. PARTIAL Discovery with usable official data continues. Dry-run calls
-the established dry-run path of every stage and leaves all persistence unchanged.
+the established dry-run path of every stage and leaves all recruitment-domain persistence unchanged;
+T-014 records only its operational run audit.
+
+## Pipeline operational-history workflow
+
+```text
+pipeline CLI invocation
+  -> PipelineRun RUNNING (operational audit commit)
+  -> existing PipelineOrchestrator
+       -> DISCOVERY          -> PipelineStageRun
+       -> VERIFICATION       -> PipelineStageRun
+       -> MASTER_PUBLISHER   -> PipelineStageRun
+  -> structured combined summary
+  -> PipelineRun SUCCESS / PARTIAL / FAILED with completion timing
+```
+
+Every invocation creates separate operational history, including idempotent runs that produce no
+new domain records. Failure metadata is bounded and excludes stack traces. Dry-run also creates this
+audit, but source/candidate/verification/review/master mutations remain rolled back. `RUNNING`
+records are groundwork for T-015 overlap protection; no lock or scheduler exists yet.
+
+## GitHub CI workflow
+
+```text
+developer feature branch
+  -> push
+  -> pull request targeting main
+  -> GitHub-hosted Ubuntu CI
+       -> Python 3.12 + frozen uv environment
+       -> temporary PostgreSQL readiness
+       -> Alembic upgrade / current / check
+       -> full fixture-only Pytest suite
+       -> Ruff
+  -> merge main after required checks pass
+```
+
+Pushes to `main` and manual workflow dispatch run the same checks. CI uses temporary workflow
+credentials and never executes the live APSC pipeline. Persistent self-hosted execution is T-015.
