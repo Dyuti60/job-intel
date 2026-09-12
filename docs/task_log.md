@@ -670,3 +670,119 @@ projection behavior; and CandidateField immutability.
   by template assertions and real rendered-HTML HTTP smoke testing rather than interactive visual
   inspection.
 - The current FastAPI/Starlette test-client stack emits two upstream deprecation warnings.
+
+## T-010 — Approved Recruitment Master and Publisher
+
+### Scope
+
+Implement the canonical cleansed Recruitment Master and transactional deterministic Publisher over
+eligible T-007 confidence and T-008 review results, without changing any prior pipeline history.
+
+### Implementation summary
+
+- Added logical RecruitmentMaster identity, an explicit current revision, immutable numbered
+  RecruitmentMasterRevisions, typed MasterFields, field-level MasterChanges, and immutable
+  MasterPublicationEvents.
+- Added deterministic canonical SHA-256 projection identity over authority code, candidate key,
+  display name, and sorted normalized typed fields.
+- Added strict direct and Human Review publication eligibility, full candidate/verification/
+  confidence/review integrity revalidation, and mandatory reuse of the T-008 approved projection
+  for reviewed publication.
+- Added corrected-value provenance from MasterField through ReviewDecision and CandidateField while
+  leaving the original CandidateField unchanged.
+- Added idempotent exact replay, unchanged-content reverification events, current-revision updates,
+  last-verified refresh, and transactional ADDED/UPDATED/REMOVED change generation.
+- Added internal Publisher and read APIs for masters, current state, revision history, fields,
+  changes, and publication events.
+- Added database and end-to-end tests for publication eligibility, both publication paths,
+  corrections, hashing, idempotency, changed/unchanged projections, provenance, integrity,
+  transaction rollback, reads, and uniqueness constraints.
+
+### Validation performed
+
+- Complete test suite: 217 passed in 25.86 seconds with two upstream dependency deprecation
+  warnings.
+- Ruff: all checks passed.
+- `git diff --check`: passed with no whitespace errors; Git emitted informational LF-to-CRLF
+  conversion warnings for Windows working-tree settings.
+- Existing PostgreSQL upgraded from `20260912_0008` to `20260912_0009`; `alembic current` reports
+  `20260912_0009 (head)` and `alembic check` reports no new upgrade operations.
+- T-010 downgraded to T-008 and re-upgraded successfully. A new empty PostgreSQL database applied
+  the complete T-001 -> T-002 -> T-003 -> T-004 -> T-005 -> T-006 -> T-007 -> T-008 -> T-010
+  chain successfully.
+- PostgreSQL catalog inspection confirmed 47 named primary/foreign/unique/check constraints and 25
+  indexes across the five T-010 tables, including restricted provenance FKs, current-revision FK,
+  master identity, revision number/hash identity, field-path identity, change identity, and event
+  idempotency.
+- The controlled PostgreSQL scenario passed end to end: official and secondary Evidence,
+  Verification, Confidence, Human correction from `2026-10-20` to `2026-10-27`, Master publishing,
+  corrected provenance, and unchanged CandidateField history.
+- The T-009 Review UI was served by uvicorn against the T-010 schema and `/review` returned HTTP
+  200 with the queue page.
+
+### Known limitations
+
+- T-010 exposes an internal master contract only; public search, operational deadline status,
+  eligibility, alerts, and live-source ingestion remain outside this task.
+- Master display name is treated as business content and therefore participates in projection
+  identity.
+- Reusing an older identical projection resolves to the already immutable matching revision; the
+  new provenance is retained in a publication event rather than duplicating business content.
+
+## T-010B — Executable Master Publisher Worker
+
+### Scope
+
+Add an independently executable, bounded, idempotent PostgreSQL worker that discovers unpublished
+RevisionConfidenceAssessments and delegates eligible items to the existing T-010
+MasterPublisherService. T-010B adds no scheduler and no database objects.
+
+### Implementation summary
+
+- Added `python -m workers.master_publisher` with standard-library argument parsing, existing
+  configuration/session/logging integration, concise operational summaries, and worker-level exit
+  codes.
+- Added an explicit deterministic repository query for assessments on COMPLETED VerificationRuns
+  without a MasterPublicationEvent, ordered by creation time and UUID and bounded by
+  `AJI_MASTER_PUBLISHER_BATCH_SIZE` (default 100).
+- Added orchestration classification for direct, approved, corrected, missing/pending/cancelled
+  review, rejected, and reverification-requested states. Only publishable states enter the existing
+  T-010 Publisher.
+- Added per-item rollback/failure isolation for domain and integrity errors while retaining
+  worker-level failure for database/session outages.
+- Added a read-only Publisher preview used by `--dry-run` to validate immutable inputs and predict
+  create/update/unchanged behavior without Master mutations.
+- Excluded already successfully processed assessments at query time, making an idle periodic rerun
+  a no-op and preventing repeated UNCHANGED events for the same confidence input.
+- Added focused orchestration, batch, ordering, skip, correction, replay, dry-run, CLI, exit-code,
+  and configuration tests plus a controlled PostgreSQL smoke helper.
+
+### Validation performed
+
+- Complete test suite: 225 passed in 35.79 seconds with two upstream dependency deprecation
+  warnings.
+- Ruff: all checks passed.
+- `git diff --check`: passed with no whitespace errors; Git emitted informational LF-to-CRLF
+  conversion warnings for Windows working-tree settings.
+- No migration was added. Existing PostgreSQL remains at `20260912_0009 (head)`, and
+  `alembic check` reports no new upgrade operations.
+- Controlled PostgreSQL first run scanned three assessments, published one VERIFIED_NO_REVIEW and
+  one HUMAN_CORRECTED master, safely skipped one queued ReviewCase, and exited successfully.
+- The Master API returned two records with two revisions, three fields, three initial changes, and
+  two publication events; the corrected Master value was `2026-10-27` and the pending case remained
+  unpublished.
+- A second worker run skipped only the still-pending case and left all Master/revision/field/change/
+  event counts unchanged.
+- Dry-run discovered a new direct assessment, reported that one Master would be created, retained
+  the pending-review skip, and left all Master counts unchanged.
+
+### Known limitations
+
+- T-010B is a one-shot command. Scheduling, distributed locks, Celery/Redis, and recurring
+  orchestration remain out of scope.
+- Old missing or pending review assessments remain discoverable on later runs. With a very small
+  batch and a large permanently pending backlog, newer assessments can wait behind older items.
+- Individual domain/integrity failures are reported but are not persisted as separate worker-run
+  database records; logs and the command summary are the operational record for T-010B.
+- The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
+  warnings.

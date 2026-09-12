@@ -26,6 +26,18 @@ from app.models.discovery import (
     SourceDocumentStatus,
 )
 from app.models.evidence import CandidateFieldEvidence, Evidence, EvidenceType
+from app.models.master import (
+    MasterChange,
+    MasterChangeType,
+    MasterField,
+    MasterFieldValueOrigin,
+    MasterPublicationEvent,
+    PublicationPath,
+    PublicationResult,
+    RecruitmentMaster,
+    RecruitmentMasterRevision,
+    RecruitmentMasterStatus,
+)
 from app.models.review import (
     ReviewCase,
     ReviewCaseOutcome,
@@ -78,9 +90,19 @@ __all__ = [
     "FieldVerification",
     "FieldVerificationOutcome",
     "FieldVerificationStatus",
+    "MasterChange",
+    "MasterChangeType",
+    "MasterField",
+    "MasterFieldValueOrigin",
+    "MasterPublicationEvent",
     "ObservationStatus",
+    "PublicationPath",
+    "PublicationResult",
     "RecruitmentCandidate",
     "RecruitmentCandidateRevision",
+    "RecruitmentMaster",
+    "RecruitmentMasterRevision",
+    "RecruitmentMasterStatus",
     "RecruitingAuthority",
     "ReviewCase",
     "ReviewCaseOutcome",

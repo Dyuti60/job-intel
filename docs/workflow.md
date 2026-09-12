@@ -267,3 +267,73 @@ When the final item resolves a case, the UI displays the persisted outcome and r
 approved projection. Approved and corrected values are previews only. REJECTED and
 REVERIFICATION_REQUESTED cases visibly remain ineligible for Master publication, and requesting
 reverification does not start a VerificationRun.
+
+## Master publication workflow
+
+```text
+COMPLETED verification + confidence not requiring review
+  -> Publisher integrity checks
+  -> original CandidateField projection
+  -> RecruitmentMaster
+
+confidence requiring review
+  -> RESOLVED APPROVED/APPROVED_WITH_CORRECTIONS ReviewCase
+  -> existing approved projection
+  -> Publisher integrity checks
+  -> RecruitmentMaster
+```
+
+The Publisher is invoked with one explicit RevisionConfidenceAssessment. It revalidates the
+CandidateRevision hash, VerificationRun snapshot, finalized field snapshots, Confidence input
+fingerprints, complete run coverage, and, when required, ReviewCase snapshots and approved
+projection eligibility. Required Human Review cannot be bypassed. REJECTED,
+REVERIFICATION_REQUESTED, CANCELLED, unresolved, partial, failed, or stale inputs do not publish.
+
+The effective values are original CandidateField values for direct publication and unrouted or
+approve-as-is reviewed fields. CORRECT_AND_APPROVE uses the T-008 projection's normalized corrected
+value while retaining both CandidateField and ReviewDecision provenance. Publishing never mutates
+Candidate, Evidence, Verification, Confidence, or Review history.
+
+```text
+new effective values
+  -> new immutable RecruitmentMasterRevision
+  -> immutable MasterFields
+  -> ADDED/UPDATED/REMOVED MasterChanges
+  -> current-revision pointer advances
+
+unchanged effective values
+  -> existing RecruitmentMasterRevision reused
+  -> UNCHANGED MasterPublicationEvent
+  -> RecruitmentMaster.last_verified_at refreshed
+```
+
+Every successful distinct publication input creates a publication event. Replaying the same
+confidence assessment is idempotent, and matching business content from a newer source or candidate
+revision creates audit provenance without inventing another master revision. Master values are the
+trusted internal projection, but T-010 does not expose a public search experience.
+
+## Master Publisher worker workflow
+
+```text
+unpublished RevisionConfidenceAssessments on COMPLETED VerificationRuns
+  -> deterministic oldest-first bounded scan
+  -> classify direct/review state
+  -> skip non-publishable review states
+  -> MasterPublisherService integrity and projection rules
+  -> Recruitment Master or unchanged-publication audit
+  -> per-run operational summary
+```
+
+Direct no-review assessments and resolved APPROVED or APPROVED_WITH_CORRECTIONS cases are passed to
+the existing Publisher one at a time. Missing or pending review, cancellation, rejection, and
+reverification requests are normal skips. One item's domain/integrity error is logged and counted,
+then processing continues; a database/session failure terminates the worker with a nonzero exit.
+
+Successfully published assessment IDs are excluded from later scans through their unique
+MasterPublicationEvent. Therefore a second periodic run with no new confidence or review result is
+a no-op. A distinct newer assessment may still produce the T-010 UNCHANGED reverification event
+when effective content matches an existing MasterRevision.
+
+`--dry-run` performs selection, review classification, Publisher integrity validation, projection
+hashing, and create/update/unchanged prediction without committing Master state. Scheduling remains
+outside T-010B; cron, Windows Task Scheduler, or another orchestrator may invoke the command later.

@@ -8,6 +8,8 @@ from app.models.confidence import (
     FieldConfidenceAssessment,
     RevisionConfidenceAssessment,
 )
+from app.models.master import MasterPublicationEvent
+from app.models.verification import VerificationRun, VerificationRunStatus
 
 
 class FieldConfidenceRepository:
@@ -70,5 +72,31 @@ class RevisionConfidenceRepository:
             select(RevisionConfidenceAssessment).where(
                 RevisionConfidenceAssessment.verification_run_id == verification_run_id,
                 RevisionConfidenceAssessment.policy_version == policy_version,
+            )
+        )
+
+    def list_pending_publication_ids(self, *, limit: int) -> list[uuid.UUID]:
+        """Return completed-run assessments without a successful publication event."""
+        return list(
+            self.session.scalars(
+                select(RevisionConfidenceAssessment.id)
+                .join(
+                    VerificationRun,
+                    VerificationRun.id == RevisionConfidenceAssessment.verification_run_id,
+                )
+                .outerjoin(
+                    MasterPublicationEvent,
+                    MasterPublicationEvent.revision_confidence_assessment_id
+                    == RevisionConfidenceAssessment.id,
+                )
+                .where(
+                    VerificationRun.status == VerificationRunStatus.COMPLETED,
+                    MasterPublicationEvent.id.is_(None),
+                )
+                .order_by(
+                    RevisionConfidenceAssessment.created_at,
+                    RevisionConfidenceAssessment.id,
+                )
+                .limit(limit)
             )
         )

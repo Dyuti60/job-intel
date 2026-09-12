@@ -1,21 +1,29 @@
-# T-010 — Approved Recruitment Master and Publisher
+# T-011 — First Live Official Source Adapter: APSC
 
 ## Objective
 
-Introduce the canonical cleansed Recruitment Master produced only from eligible reviewed or
-verified candidate revisions.
+Connect the existing trusted pipeline to the first real Assam Government recruitment source by
+implementing one narrowly defined APSC recruitment or notification flow.
 
 ## Scope
 
-T-010 should establish RecruitmentMaster identity, MasterField or equivalent structured approved
-values, a deterministic publisher consuming the approved projection, publishing without mutating
-candidate/review history, idempotent upsert, master revision/version history, MasterChange audit
-records, original-versus-corrected value provenance, source/verification/review provenance,
-publication timestamps, and last-verified timestamps.
+T-011 should implement:
 
-A revision must not publish when its Review outcome is REJECTED, its Review outcome requests
-reverification, required review is unresolved, or confidence/review integrity fails.
+- source seeding and registration for APSC
+- an APSC-specific discovery adapter
+- HTTP fetching with bounded timeouts and retries
+- recruitment or notification listing discovery
+- SourceDocument persistence
+- deterministic NEW / UNCHANGED / CHANGED detection
+- a controlled raw-content persistence strategy
+- safe parsing of the selected APSC page or document type
+- generation of RecruitmentCandidate revisions and CandidateFields
+- extraction Evidence creation
+- no direct Verification truth assumptions
+
+The initial adapter should support one narrowly defined real APSC recruitment/notification flow
+rather than attempting all APSC content.
 
 ## Boundaries
 
-T-010 must not implement live crawling or the public user search UI.
+T-011 must not automate Human Review or schedule recurring crawling.

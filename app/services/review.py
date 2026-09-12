@@ -7,7 +7,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.confidence import (
-    ConfidencePolicyVersion,
     FieldConfidenceAssessment,
     ReviewPriority,
     ReviewReasonCode,
@@ -33,7 +32,6 @@ from app.repositories.review import (
 from app.schemas.review import ReviewDecisionCreate
 from app.services.candidate_values import normalize_typed_value
 from app.services.confidence import ConfidenceService
-from app.services.confidence_policy import ConfidencePolicyV1
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
 
 REVISION_ITEM_REASONS = {
@@ -314,23 +312,7 @@ class ReviewService:
     def _validate_confidence_integrity(
         self, assessment: RevisionConfidenceAssessment
     ) -> list[FieldConfidenceAssessment]:
-        if assessment.policy_version != ConfidencePolicyVersion.V1:
-            raise DomainConflictError("Unsupported confidence policy version")
-        policy_data = assessment.component_breakdown.get("policy", {})
-        try:
-            policy = ConfidencePolicyV1(
-                standard_threshold=int(policy_data["standard_threshold"]),
-                critical_threshold=int(policy_data["critical_threshold"]),
-                revision_threshold=int(policy_data["revision_threshold"]),
-            )
-        except (KeyError, TypeError, ValueError) as error:
-            raise DomainConflictError("Revision confidence policy snapshot is invalid") from error
-        validated, field_assessments, _ = ConfidenceService(self.session, policy).score_run(
-            assessment.verification_run_id
-        )
-        if validated.id != assessment.id:
-            raise DomainConflictError("Revision confidence identity mismatch")
-        return field_assessments
+        return ConfidenceService.validate_persisted_revision_assessment(self.session, assessment)
 
     @staticmethod
     def _validate_decision(item: ReviewItem, data: ReviewDecisionCreate) -> Any:

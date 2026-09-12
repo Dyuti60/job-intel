@@ -1,1 +1,1 @@
-"""Background work boundary; no worker framework is selected in T-001."""
+"""Independently executable background workers without a scheduling framework."""

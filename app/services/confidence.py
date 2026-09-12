@@ -142,6 +142,30 @@ class ConfidenceService:
             raise ResourceNotFoundError("Revision confidence assessment not found")
         return assessment, self._list_field_assessments(verification_run_id)
 
+    @classmethod
+    def validate_persisted_revision_assessment(
+        cls,
+        session: Session,
+        assessment: RevisionConfidenceAssessment,
+    ) -> list[FieldConfidenceAssessment]:
+        if assessment.policy_version != ConfidencePolicyVersion.V1:
+            raise DomainConflictError("Unsupported confidence policy version")
+        policy_data = assessment.component_breakdown.get("policy", {})
+        try:
+            policy = ConfidencePolicyV1(
+                standard_threshold=int(policy_data["standard_threshold"]),
+                critical_threshold=int(policy_data["critical_threshold"]),
+                revision_threshold=int(policy_data["revision_threshold"]),
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise DomainConflictError("Revision confidence policy snapshot is invalid") from error
+        validated, field_assessments, _ = cls(session, policy).score_run(
+            assessment.verification_run_id
+        )
+        if validated.id != assessment.id:
+            raise DomainConflictError("Revision confidence identity mismatch")
+        return field_assessments
+
     def _get_or_build_field_assessment(
         self, verification: FieldVerification
     ) -> tuple[FieldConfidenceAssessment, bool]:

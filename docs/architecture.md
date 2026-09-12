@@ -389,3 +389,84 @@ authorization, CSRF protection, hardened sessions, assignment workflow, or produ
 controls. Those protections are mandatory before deployment to a shared or untrusted network.
 The resolved-case projection remains a non-persistent preview: the web layer does not approve,
 publish, or create Recruitment Master data.
+
+## Approved Recruitment Master and deterministic Publisher
+
+T-010 adds the trusted-data boundary after Verification, Confidence, and, when required, Human
+Review. `RecruitmentMaster` is the stable identity for one normalized
+`(recruiting_authority_id, candidate_key)` and stores its display name, ACTIVE/INACTIVE/ARCHIVED
+status, restricted current-revision reference, first/last publication timestamps, and the latest
+successful trustworthy verification time. A different candidate key remains a different
+recruitment cycle.
+
+Every business-content change creates an immutable `RecruitmentMasterRevision`. Revisions are
+numbered monotonically per master and record the exact CandidateRevision, VerificationRun,
+RevisionConfidenceAssessment, optional ReviewCase, publication path, display name, publication
+time, and verification time. The allowed paths are VERIFIED_NO_REVIEW, HUMAN_APPROVED, and
+HUMAN_CORRECTED. The master current-revision pointer makes current reads direct while older
+revisions remain retained.
+
+`MasterField` stores the normalized T-004 typed value for one unique field path in a master
+revision. It always references its source CandidateField. Its value origin distinguishes
+CANDIDATE_VERIFIED, HUMAN_APPROVED_AS_IS, and HUMAN_CORRECTED; human-derived values additionally
+reference the immutable ReviewDecision. A corrected value is copied into the master field without
+rewriting the original CandidateField or any review history.
+
+The Publisher accepts a specific RevisionConfidenceAssessment, so it never guesses among multiple
+VerificationRuns or policy versions. Direct publication requires a READY_FOR_VERIFICATION
+candidate, a COMPLETED run, complete finalized field verification/confidence coverage, matching
+revision and field snapshots, a valid confidence fingerprint, and `review_required=false`. When
+review is required, direct publication is impossible: the unique matching ReviewCase must be
+RESOLVED as APPROVED or APPROVED_WITH_CORRECTIONS, its snapshots must still match Confidence, and
+the existing T-008 approved projection must report `master_eligible=true`. Rejected, cancelled,
+unresolved, or reverification-requested cases cannot publish.
+
+The projection hash is lowercase SHA-256 over deterministic canonical JSON containing the
+authority code, normalized candidate key, display name, and field entries sorted by path. Each
+entry contains its path, declared type, and normalized structured value. UUIDs, timestamps,
+reviewer notes, and request metadata do not affect business identity. Display name intentionally
+participates because it is published master data. A master/hash uniqueness constraint protects
+concurrent duplicate revisions.
+
+If the projection changes, publication creates the next immutable revision and `MasterChange`
+records for ADDED, UPDATED, and REMOVED fields. First publication records every field as ADDED.
+Changes snapshot old/new types and values and retain the new CandidateField and optional
+ReviewDecision provenance. If independently reverified source provenance yields the same effective
+projection, no business revision, fields, or changes are duplicated.
+
+Every successful distinct confidence-based publication attempt creates an immutable
+`MasterPublicationEvent`, classified CREATED or UNCHANGED, linking the selected candidate revision,
+verification run, confidence assessment, optional review case, publication path, and reused or new
+master revision. Exact request replay reuses the existing event. An UNCHANGED event refreshes only
+the logical master's `last_verified_at`; historical revision timestamps remain immutable.
+
+Publication runs in one database transaction. Master, revision, fields, changes, event, and current
+pointer either persist together or roll back together. The Master API is internal and read-only
+apart from the focused Publisher operation. It exposes current state, immutable revisions,
+field-level provenance, changes, and publication events; it is not the future public job-search
+contract.
+
+## Executable Master Publisher worker
+
+T-010B adds an independently executable orchestration layer at
+`python -m workers.master_publisher`. It does not own projection, eligibility, integrity,
+transaction, correction, hashing, revision, or change semantics. Those remain exclusively in the
+T-010 `MasterPublisherService`.
+
+`RevisionConfidenceRepository.list_pending_publication_ids` selects only assessments attached to
+COMPLETED VerificationRuns and without a successful MasterPublicationEvent. Selection is ordered by
+assessment creation time and UUID, then limited by `AJI_MASTER_PUBLISHER_BATCH_SIZE` (default 100).
+This makes batching deterministic and prevents an unchanged periodic invocation from replaying
+already-processed inputs or generating repeated UNCHANGED events.
+
+The worker classifies required-review state before publishing. Direct assessments and RESOLVED
+APPROVED/APPROVED_WITH_CORRECTIONS cases are delegated to `MasterPublisherService`; missing,
+queued, in-review, cancelled, rejected, and reverification-requested cases are reported and skipped.
+A domain/integrity failure rolls back that assessment and does not prevent later IDs in the batch
+from being processed. Database-level failure remains a worker-level error. Each real publication
+retains the Publisher's own atomic transaction rather than joining the batch into one transaction.
+
+Dry-run uses the Publisher's read-only preview path. It revalidates the same immutable inputs,
+constructs the same effective projection/hash, and reports whether content would create, update, or
+reuse a MasterRevision, then rolls back without Master mutations. T-010B adds no scheduler, queue
+broker, or database schema.

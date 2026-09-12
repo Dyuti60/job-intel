@@ -30,6 +30,11 @@ def test_engine() -> Generator[Engine, None, None]:
     try:
         yield engine
     finally:
+        # SQLite cannot ALTER away the circular current-master-revision foreign
+        # key before dropping the two tables. Tests still run with FK checks on;
+        # disable them only for deterministic fixture teardown.
+        with engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
         Base.metadata.drop_all(engine)
         engine.dispose()
 

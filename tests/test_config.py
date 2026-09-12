@@ -10,6 +10,7 @@ def test_settings_load_defaults() -> None:
     assert settings.confidence_standard_threshold == 80
     assert settings.confidence_critical_threshold == 90
     assert settings.confidence_revision_threshold == 85
+    assert settings.master_publisher_batch_size == 100
 
 
 def test_settings_load_environment(monkeypatch) -> None:
@@ -19,6 +20,7 @@ def test_settings_load_environment(monkeypatch) -> None:
     monkeypatch.setenv("AJI_CONFIDENCE_STANDARD_THRESHOLD", "75")
     monkeypatch.setenv("AJI_CONFIDENCE_CRITICAL_THRESHOLD", "88")
     monkeypatch.setenv("AJI_CONFIDENCE_REVISION_THRESHOLD", "82")
+    monkeypatch.setenv("AJI_MASTER_PUBLISHER_BATCH_SIZE", "25")
 
     settings = Settings(_env_file=None)
 
@@ -28,3 +30,4 @@ def test_settings_load_environment(monkeypatch) -> None:
     assert settings.confidence_standard_threshold == 75
     assert settings.confidence_critical_threshold == 88
     assert settings.confidence_revision_threshold == 82
+    assert settings.master_publisher_batch_size == 25

@@ -26,3 +26,23 @@ Open `http://localhost:8000/review`. The server-rendered interface shows queued 
 ReviewCases and reuses the existing T-008 lifecycle and decision services. It is intended only for
 trusted localhost development. It has no authentication or CSRF protection and must not be exposed
 to an untrusted network.
+
+## Master Publisher worker
+
+Publish the next deterministic batch of eligible confidence/review results into Recruitment Master:
+
+```text
+uv run python -m workers.master_publisher
+```
+
+Inspect and validate pending work without changing Master data:
+
+```text
+uv run python -m workers.master_publisher --dry-run
+```
+
+`AJI_MASTER_PUBLISHER_BATCH_SIZE` controls the maximum pending assessments processed per execution
+and defaults to 100. The worker exits 0 after a completed batch, including normal skips and isolated
+domain/integrity failures that were reported per item. It exits nonzero for a worker-level failure
+such as unusable configuration or database connectivity. The command is independently executable;
+no recurring scheduler is included.
