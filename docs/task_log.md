@@ -1026,3 +1026,62 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
   lock for isolated tests and is not a supported scheduled runtime database.
 - The Review UI remains unauthenticated and localhost-only; the Actions workflow never starts or
   exposes it.
+
+## T-016 — Operational Monitoring and Failure Notifications
+
+### Result
+
+- Added deterministic source health evaluation over existing PipelineRun/PipelineStageRun history,
+  with explicit HEALTHY, RUNNING, DEGRADED, FAILED, STALE, and NO_DATA states. Stale RUNNING work,
+  overdue success, latest failure/partial state, and recent per-stage duration trends are derived
+  without mutating pipeline or recruitment domains.
+- Added immutable `OperationalNotificationEvent` persistence with PIPELINE_FAILED, RUNNING_STALE,
+  and SUCCESS_OVERDUE conditions; WARNING/CRITICAL severity; LOG/FILE local routing; delivery
+  status; bounded redacted messages; and database-protected SHA-256 deduplication.
+- Added `python -m workers.monitoring --source APSC [--dry-run]`. Dry-run predicts alerts without
+  writes; normal execution records deduplicated delivery history. The trusted scheduled workflow
+  now runs monitoring after every attempted pipeline and still preserves the original pipeline
+  failure result.
+- Added read-only `/api/v1/operational-status/{source_code}` and
+  `/api/v1/operational-notifications` APIs plus the private `/operations` server-rendered page.
+  These expose last-run health, queued review references, trends, and safe failure summaries without
+  starting pipelines or exposing full operational payloads.
+- Configured the trusted runner for optional append-only notifications at
+  `D:\ASSAM_JOB_DATA\notifications\events.jsonl`, outside the Actions checkout, while keeping the
+  Human Review and operations pages private/local.
+- Added 12 new automated test functions (including parametrized cases), bringing the collected
+  suite from 260 to 272 tests. Coverage includes status precedence, thresholds, duration trends,
+  notification delivery/deduplication/failure, database uniqueness, safe APIs/HTML, dry-run,
+  workflow integration, escaping, and domain immutability.
+
+### Validation performed
+
+- Complete local test suite: 272 passed in 35.43 seconds. Only upstream FastAPI/Starlette and the
+  pre-existing inaccessible local pytest-cache warnings were emitted.
+- Ruff passed for the complete repository; `git diff --check` passed.
+- Existing persistent PostgreSQL upgraded from `20260912_0010` to `20260912_0011`, reported head,
+  and Alembic detected no drift. T-016 downgraded cleanly to `0010`, then re-upgraded to `0011`
+  with no drift.
+- A fresh PostgreSQL database applied the full T-001 through T-016 chain to `20260912_0011`.
+  Inspection found the expected primary/foreign/unique and eight named check constraints plus six
+  indexes on `operational_notification_events`.
+- Local live-state smoke checks reported APSC HEALTHY, three stage trends, one queued ReviewCase,
+  and zero alert events. Both dry-run and normal monitoring completed successfully; the read-only
+  API returned HTTP 200 and the operations page rendered HTTP 200.
+- GitHub-hosted CI run `34723884746` completed successfully for commit `ee73aed`, including fresh
+  migration, drift check, the full suite, and Ruff.
+- Trusted workflow run `34723971833` completed successfully on `assam-job-intel-runner`; database
+  upgrade, live pipeline, monitoring, and summary steps all passed. Live Discovery observed three
+  unchanged documents, Verification found no new revision, Publisher skipped the existing pending
+  review, the APSC ReviewCase remained QUEUED, and Master count remained zero.
+
+### Known limitations
+
+- T-016 routes notifications only to local logging and optional local JSONL. Email, SMS, chat, and
+  hosted observability integrations are intentionally absent.
+- Health is evaluated when the monitoring worker/API/page is invoked; there is no independent
+  always-on monitoring daemon. The scheduled Actions workflow provides the current recurring check.
+- The private operations and Review pages have no production authentication/authorization or CSRF
+  hardening and must remain bound to a trusted local environment.
+- Stage trends are bounded descriptive summaries, not anomaly detection or a distributed metrics
+  platform.
