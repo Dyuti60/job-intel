@@ -14,6 +14,7 @@ from app.models.confidence import RevisionConfidenceAssessment
 from app.models.discovery import DiscoveryRun, DocumentType, SourceDocument
 from app.models.evidence import Evidence
 from app.models.master import MasterField, MasterPublicationEvent, RecruitmentMaster
+from app.models.pipeline import PipelineRun, PipelineTriggerType
 from app.models.review import ReviewCase
 from app.models.verification import VerificationRun
 from app.services.pipeline_orchestrator import (
@@ -299,8 +300,17 @@ def test_pipeline_command_prints_summary_and_returns_expected_exit(
     monkeypatch.setattr(pipeline_command, "get_settings", lambda: settings)
     monkeypatch.setattr(pipeline_command, "SessionLocal", lambda: nullcontext(db_session))
     monkeypatch.setattr(pipeline_command, "PipelineOrchestratorService", StubPipeline)
-    assert pipeline_command.main(["--source", "APSC"]) == 0
+    assert (
+        pipeline_command.main(
+            ["--source", "APSC", "--trigger", PipelineTriggerType.GITHUB_ACTION]
+        )
+        == 0
+    )
     assert "Status: SUCCESS" in capsys.readouterr().out
+    recorded_run = db_session.scalar(
+        select(PipelineRun).order_by(PipelineRun.started_at.desc())
+    )
+    assert recorded_run.trigger_type == PipelineTriggerType.GITHUB_ACTION
 
     expected.status = PipelineStatus.FAILED
     assert pipeline_command.main(["--source", "APSC"]) == 1

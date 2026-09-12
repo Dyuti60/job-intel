@@ -1,0 +1,131 @@
+name: Trusted APSC Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: Registered source to process
+        required: true
+        default: APSC
+        type: choice
+        options:
+          - APSC
+      dry_run:
+        description: Record operational history but roll back recruitment-domain changes
+        required: true
+        default: false
+        type: boolean
+  schedule:
+    - cron: "30 2 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: assam-job-intelligence-pipeline-apsc
+  cancel-in-progress: false
+
+jobs:
+  pipeline:
+    name: Run trusted APSC pipeline
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 30
+    env:
+      AJI_APP_ENV: production
+      AJI_DEBUG: "false"
+      AJI_LOG_LEVEL: INFO
+      AJI_PIPELINE_SOURCE: ${{ inputs.source || 'APSC' }}
+      AJI_PIPELINE_DRY_RUN: ${{ inputs.dry_run || false }}
+      AJI_RUNTIME_CONFIG_PATH: D:\ASSAM_JOB_DATA\config\runtime.env
+      AJI_RAW_STORAGE_ROOT: D:\ASSAM_JOB_DATA\raw
+      AJI_DATABASE_URL_SECRET: ${{ secrets.AJI_DATABASE_URL }}
+
+    steps:
+      - name: Check out trusted main branch
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Synchronize frozen dependencies
+        run: uv sync --frozen
+
+      - name: Resolve persistent runtime configuration
+        shell: pwsh
+        run: |
+          $databaseUrl = $env:AJI_DATABASE_URL_SECRET
+          if ([string]::IsNullOrWhiteSpace($databaseUrl)) {
+            if (-not (Test-Path -LiteralPath $env:AJI_RUNTIME_CONFIG_PATH -PathType Leaf)) {
+              throw "AJI_DATABASE_URL secret is unset and external runtime config is missing."
+            }
+            $entry = Get-Content -LiteralPath $env:AJI_RUNTIME_CONFIG_PATH |
+              Where-Object { $_ -match '^AJI_DATABASE_URL=' } |
+              Select-Object -First 1
+            if ($null -eq $entry) {
+              throw "External runtime config does not define AJI_DATABASE_URL."
+            }
+            $databaseUrl = $entry.Substring('AJI_DATABASE_URL='.Length).Trim()
+          }
+          if ([string]::IsNullOrWhiteSpace($databaseUrl)) {
+            throw "AJI_DATABASE_URL resolved to an empty value."
+          }
+          if ($databaseUrl.Contains("`r") -or $databaseUrl.Contains("`n")) {
+            throw "AJI_DATABASE_URL must be a single line."
+          }
+          Write-Output "::add-mask::$databaseUrl"
+          "AJI_DATABASE_URL=$databaseUrl" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          $rawRoot = [IO.Path]::GetFullPath($env:AJI_RAW_STORAGE_ROOT)
+          $workspace = [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
+          if ($rawRoot.StartsWith($workspace, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "AJI_RAW_STORAGE_ROOT must remain outside the Actions checkout."
+          }
+          New-Item -ItemType Directory -Path $rawRoot -Force | Out-Null
+
+      - name: Upgrade persistent database
+        shell: pwsh
+        run: uv run alembic upgrade head
+
+      - name: Report migration revision
+        shell: pwsh
+        run: uv run alembic current
+
+      - name: Run pipeline
+        id: pipeline
+        shell: pwsh
+        run: |
+          $trigger = if ('${{ github.event_name }}' -eq 'schedule') { 'SCHEDULED' } else { 'GITHUB_ACTION' }
+          $arguments = @('run', 'python', '-m', 'workers.pipeline', '--source', $env:AJI_PIPELINE_SOURCE, '--trigger', $trigger)
+          if ($env:AJI_PIPELINE_DRY_RUN -eq 'true') {
+            $arguments += '--dry-run'
+          }
+          $outputFile = Join-Path $env:RUNNER_TEMP 'assam-job-intelligence-pipeline.txt'
+          "AJI_PIPELINE_OUTPUT_FILE=$outputFile" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          & uv @arguments 2>&1 | Tee-Object -FilePath $outputFile
+          $pipelineExitCode = $LASTEXITCODE
+          exit $pipelineExitCode
+
+      - name: Publish operational summary
+        if: always()
+        shell: pwsh
+        run: |
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '## Assam Job Intelligence pipeline'
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ''
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Source: ``$env:AJI_PIPELINE_SOURCE``"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Event: ``${{ github.event_name }}``"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Dry run: ``$env:AJI_PIPELINE_DRY_RUN``"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '- Human Review remains private at the local `/review` interface.'
+          if ($env:AJI_PIPELINE_OUTPUT_FILE -and (Test-Path -LiteralPath $env:AJI_PIPELINE_OUTPUT_FILE)) {
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ''
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '```text'
+            $pipelineOutput = Get-Content -LiteralPath $env:AJI_PIPELINE_OUTPUT_FILE -Raw
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $pipelineOutput
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '```'
+          }

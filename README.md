@@ -112,6 +112,10 @@ always invokes the Master Publisher, so a later execution can publish a ReviewCa
 runs even when Discovery is unchanged and Verification has no new work. `SUCCESS` and usable
 `PARTIAL` return exit code 0; fatal pipeline failures return nonzero.
 
+The runtime command accepts `--trigger CLI`, `MANUAL`, `GITHUB_ACTION`, or `SCHEDULED` for its
+operational audit. A source-scoped PostgreSQL advisory lock prevents overlapping local and Actions
+executions; lock contention exits nonzero before domain or PipelineRun work starts.
+
 ## GitHub Continuous Integration
 
 `.github/workflows/ci.yml` runs on pushes to `main`, pull requests targeting `main`, and manual
@@ -122,3 +126,16 @@ and run Ruff. CI does not invoke live APSC Discovery and needs no runtime or pro
 Recommended flow: create a feature branch, push it, open a pull request to `main`, let CI pass, and
 then merge. Repository administrators should enable branch protection for `main` and require the CI
 job; this project does not alter repository protection settings automatically.
+
+## Trusted scheduled APSC pipeline
+
+`.github/workflows/scheduled-pipeline.yml` runs the real one-shot APSC pipeline on the trusted
+self-hosted Windows x64 runner. It supports manual dispatch (including dry-run) and a daily
+02:30 UTC / 08:00 IST schedule. GitHub concurrency and the PostgreSQL advisory lock jointly prevent
+overlap. The workflow upgrades Alembic first, records `GITHUB_ACTION` or `SCHEDULED` PipelineRun
+trigger metadata, and publishes the CLI summary to the Actions job summary.
+
+Persistent configuration and raw files stay outside the disposable checkout under
+`D:\ASSAM_JOB_DATA`. The workflow never serves or exposes the localhost Human Review interface and
+does not bypass queued review. See [Trusted Windows pipeline runner](docs/self_hosted_runner.md) for
+service installation, permissions, configuration, and validation.

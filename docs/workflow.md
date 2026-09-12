@@ -456,3 +456,38 @@ developer feature branch
 
 Pushes to `main` and manual workflow dispatch run the same checks. CI uses temporary workflow
 credentials and never executes the live APSC pipeline. Persistent self-hosted execution is T-015.
+
+## Scheduled trusted pipeline workflow
+
+```text
+workflow_dispatch                         daily 02:30 UTC / 08:00 IST
+        \                                      /
+         -> GitHub Actions APSC concurrency <-
+              -> trusted Windows x64 self-hosted runner
+              -> resolve external runtime configuration
+              -> validate external raw-storage root
+              -> Alembic upgrade/current
+              -> acquire source-scoped PostgreSQL advisory lock
+              -> existing T-013 PipelineOrchestrator
+                   -> Discovery
+                   -> Verification + Confidence + Review routing
+                   -> Master Publisher
+              -> PipelineRun/StageRun history
+              -> GitHub Actions operational summary
+```
+
+Manual runs use trigger `GITHUB_ACTION`; scheduled runs use `SCHEDULED`. GitHub concurrency prevents
+two workflow jobs from running together, and the database advisory lock prevents overlap with any
+local CLI process using the same source. Lock contention fails without starting domain work.
+
+Queued Human Review is not an execution failure:
+
+```text
+scheduled pipeline -> ReviewCase QUEUED -> workflow SUCCESS
+human reviews privately at localhost /review
+later scheduled pipeline -> Publisher consumes eligible resolved case
+```
+
+The workflow never exposes the local Review UI or creates decisions. Hosted pull-request CI remains
+separate and uses only a disposable PostgreSQL database; the trusted scheduled workflow uses the
+persistent database and raw storage outside its checkout.

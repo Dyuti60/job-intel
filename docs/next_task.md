@@ -1,24 +1,21 @@
-# T-015 — GitHub Actions Scheduled Pipeline Execution
+# T-016 — Operational Monitoring and Failure Notifications
 
-T-015 must make the real T-013 pipeline executable manually and on a schedule from GitHub Actions using a trusted self-hosted runner connected to the persistent local/V0 PostgreSQL and raw-content storage.
+T-016 should build a local/private operational monitoring layer from the persisted `PipelineRun`
+and `PipelineStageRun` history created by T-014 and exercised by T-015.
 
-T-015 must include:
+It should include:
 
-- self-hosted runner execution
-- workflow_dispatch
-- scheduled execution
-- GitHub Actions concurrency control
-- application/database overlap protection
-- persistent runtime configuration
-- external persistent raw-storage root
-- environment/secrets handling
-- Alembic upgrade before pipeline execution
-- T-013 pipeline invocation
-- PipelineRun history using GITHUB_ACTION/SCHEDULED trigger metadata
-- operational summary in GitHub Actions
-- safe handling of Human Review-required results
-- documentation for installing/running the Windows self-hosted runner as a service
+- deterministic stale/RUNNING and last-success/last-failure health evaluation
+- source-level operational status and recent stage-duration trends
+- bounded failure summaries without secrets or stack traces
+- configurable local notification routing for failed or stale scheduled executions
+- deduplicated notification events so repeated checks do not spam operators
+- links/references to the relevant PipelineRun and queued Human Review workload
+- a private read-only operational page or API suitable for local/V0 administration
+- tests using controlled history without live APSC access
 
-It must NOT expose the local Human Review UI publicly.
+T-016 must reuse the existing pipeline and operational-history domains. It must NOT make Human
+Review decisions, publish Recruitment Master records, expose the local UI publicly, or introduce a
+distributed observability platform.
 
-Do not implement T-015 in T-014.
+Do not implement T-016 now.

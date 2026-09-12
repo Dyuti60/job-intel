@@ -8,6 +8,7 @@ from app.core.logging import configure_logging, get_logger
 from app.db.session import SessionLocal
 from app.models.pipeline import PipelineTriggerType
 from app.services.pipeline_history import PipelineHistoryService
+from app.services.pipeline_lock import PipelineAdvisoryLock
 from app.services.pipeline_orchestrator import (
     PIPELINE_SOURCES,
     PipelineOrchestratorService,
@@ -22,6 +23,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--source", required=True, choices=tuple(PIPELINE_SOURCES))
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--trigger",
+        choices=tuple(PipelineTriggerType),
+        default=PipelineTriggerType.CLI,
+        type=PipelineTriggerType,
+        help="Operational trigger recorded on PipelineRun (default: CLI).",
+    )
     return parser
 
 
@@ -32,12 +40,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     logger = get_logger(__name__)
     try:
         with SessionLocal() as session:
-            summary, pipeline_run = PipelineHistoryService(session).execute(
-                PipelineOrchestratorService(session, settings, logger),
-                source=args.source,
-                dry_run=args.dry_run,
-                trigger_type=PipelineTriggerType.CLI,
-            )
+            engine = session.get_bind()
+            with PipelineAdvisoryLock(engine, args.source).acquire() as acquired:
+                if not acquired:
+                    logger.warning("pipeline_overlap_rejected source=%s", args.source)
+                    print(
+                        f"Pipeline overlap rejected for {args.source}: "
+                        "another execution currently holds the database advisory lock."
+                    )
+                    return 2
+                summary, pipeline_run = PipelineHistoryService(session).execute(
+                    PipelineOrchestratorService(session, settings, logger),
+                    source=args.source,
+                    dry_run=args.dry_run,
+                    trigger_type=args.trigger,
+                )
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as error:
         logger.exception("pipeline_worker_level_failure source=%s", args.source)
         print(f"Pipeline failed before a safe summary could be produced: {error}")

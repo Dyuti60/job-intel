@@ -35,7 +35,7 @@ jobs:
       AJI_APP_ENV: test
       AJI_DEBUG: "false"
       AJI_DATABASE_URL: postgresql+psycopg://aji_ci:ci_only_password@localhost:5432/assam_job_intelligence_ci
-      AJI_RAW_STORAGE_ROOT: ${{ runner.temp }}/assam-job-intelligence-raw
+      AJI_RAW_STORAGE_ROOT: /tmp/assam-job-intelligence-raw
 
     steps:
       - name: Check out repository

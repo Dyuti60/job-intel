@@ -578,3 +578,30 @@ GitHub-hosted Ubuntu runner with read-only contents permission, Python 3.12, uv,
 PostgreSQL service. It applies the full migration chain, checks drift, runs fixture-only tests, and
 Ruff. The disposable CI database/raw path are not the persistent local/V0 stores. CI never runs live
 APSC Discovery; a trusted self-hosted scheduled runtime remains a T-015 concern.
+
+## Trusted scheduled pipeline execution
+
+T-015 operationalizes the unchanged T-013 orchestrator on a trusted Windows x64 self-hosted GitHub
+Actions runner. `.github/workflows/scheduled-pipeline.yml` provides explicit manual dispatch and a
+daily cron invocation. It calls the existing CLI in process after `alembic upgrade head`; it does
+not duplicate Discovery, Verification, Confidence, Review, or Publisher behavior. Manual workflow
+runs persist `GITHUB_ACTION` and cron runs persist `SCHEDULED` in the existing PipelineRun history.
+
+Overlap protection has two layers. GitHub Actions concurrency serializes workflow jobs for the APSC
+source, while `PipelineAdvisoryLock` derives a stable signed 64-bit key from the normalized source
+code and holds a PostgreSQL session advisory lock on a dedicated connection for the entire CLI
+execution. This database guard also covers overlap with locally invoked commands. Lock contention
+fails before a PipelineRun or domain mutation begins. SQLite bypass exists only for isolated unit
+tests; the supported runtime database is PostgreSQL.
+
+The Actions checkout is disposable. Runtime configuration is resolved from the masked
+`AJI_DATABASE_URL` Actions secret or the external
+`D:\ASSAM_JOB_DATA\config\runtime.env`; raw content is rooted at
+`D:\ASSAM_JOB_DATA\raw`. The workflow verifies that raw storage is outside `GITHUB_WORKSPACE`.
+These persistent resources are distinct from the temporary PostgreSQL service and `/tmp` raw path
+used by hosted CI.
+
+Review-required pipeline results remain successful queued work. The scheduled workflow never starts
+the Review UI, never makes decisions, and never exposes localhost routes. Publisher eligibility and
+the asynchronous human-review boundary are unchanged. Secrets are masked and excluded from job
+summaries; bounded PipelineRun errors retain the existing redaction behavior.
