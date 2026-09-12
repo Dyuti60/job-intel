@@ -426,3 +426,82 @@ immutability; re-verification; and database constraints.
   database outside normal application behavior.
 - The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
   warnings.
+
+## T-007 — Explainable Confidence Scoring and Review Routing
+
+### Scope
+
+Implement immutable, policy-versioned field and candidate-revision confidence assessments from
+persisted T-006 Verification facts, with deterministic source weighting, criticality, aggregation,
+explainable breakdowns, and review-routing metadata. T-007 does not create Human Review records,
+approval, master data, crawling, or LLM scoring.
+
+### Implementation summary
+
+- Added immutable `FieldConfidenceAssessment` and `RevisionConfidenceAssessment` records with V1
+  policy identity, score/coverage constraints, input-integrity hashes, JSONB explanations, review
+  reasons, priorities, restricted foreign keys, and per-subject/policy uniqueness.
+- Implemented V1 outcome anchors, distinct-SourceEndpoint support and contradiction modifiers,
+  explicit caps, 0..100 clamping, and a maximum score of 25 for authoritative-conflict results.
+- Centralized deterministic CRITICAL/STANDARD field-path classification and configurable standard,
+  critical, and revision thresholds with defaults of 80, 90, and 85.
+- Added deterministic field routing and weighted revision aggregation. CRITICAL fields have weight
+  2, STANDARD fields weight 1, NOT_APPLICABLE is excluded from averaging, and verification coverage
+  multiplies the weighted average. Partial verification and any field review condition survive
+  aggregation.
+- Added field- and run-scoped confidence calculation/retrieval APIs. POST calculation is idempotent:
+  equivalent replay returns the original assessment, while a changed immutable-input fingerprint
+  raises an integrity conflict.
+- Preserved Verification, Evidence, candidate revision, and candidate field state; confidence
+  calculation only appends T-007 assessment records.
+
+### Validation performed
+
+- Dependency metadata did not change, so `uv sync` was not required for T-007.
+- Existing development PostgreSQL began at `20260912_0006`, upgraded to
+  `20260912_0007 (head)`, and passed `alembic check` with no model drift.
+- Existing database downgrade from T-007 to T-006 and re-upgrade to T-007 passed.
+- A separately named empty PostgreSQL database applied T-001 through T-007 in sequence, reported
+  T-007 head, and passed `alembic check`.
+- PostgreSQL inspection confirmed JSONB explanations/reasons, restricted foreign keys, policy and
+  routing vocabulary checks, score/coverage/count checks, per-policy uniqueness, and intended
+  indexes.
+- Complete test suite: 170 passed in 14.17 seconds with two upstream dependency deprecation
+  warnings and one non-functional pytest cache-permission warning.
+- Ruff: all checks passed.
+- `git diff --check`: passed with no whitespace errors; Git emitted informational LF-to-CRLF
+  conversion warnings for existing Windows working-tree settings.
+
+### Files created/changed
+
+- Created: `alembic/versions/20260912_0007_confidence_scoring.py`,
+  `app/models/confidence.py`, `app/repositories/confidence.py`,
+  `app/schemas/confidence.py`, `app/services/confidence.py`,
+  `app/services/confidence_policy.py`, `app/api/v1/routes/confidence.py`, and
+  `tests/test_confidence_api.py`.
+- Changed: `.env.example`, `app/core/config.py`, `app/models/__init__.py`,
+  `app/api/v1/router.py`, `tests/test_config.py`, `docs/architecture.md`,
+  `docs/workflow.md`, `docs/task_log.md`, and `docs/next_task.md`.
+
+### Test results
+
+170 passed: 150 existing T-001 through T-006 tests and 20 T-007 tests covering all anchors and
+review routes; authoritative precedence; criticality; endpoint deduplication; deterministic input
+ordering; threshold overrides; idempotent field/revision assessment; NOT_APPLICABLE exclusion;
+weighted and coverage-adjusted aggregation; partial runs; low-critical-field masking prevention;
+input immutability; and database score constraints.
+
+### Known limitations
+
+- V1 scores are deterministic reliability indicators, not statistically calibrated probabilities,
+  eligibility percentages, approvals, or publication decisions.
+- V1 criticality recognizes a documented baseline field-path set; unknown future paths default to
+  STANDARD until a new policy version expands the classification contract.
+- Thresholds are configuration-driven but are fingerprinted under V1. Changing thresholds after an
+  assessment exists produces an integrity conflict for replay; historical rescoring requires a new
+  policy version.
+- Review reasons are enum-validated in application schemas/services and stored as JSONB arrays for
+  multi-reason output; direct privileged database writes remain an administrative responsibility.
+- T-007 records routing metadata only and creates no Human Review queue item or decision.
+- The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
+  warnings.

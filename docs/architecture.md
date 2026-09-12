@@ -247,3 +247,58 @@ T-006 stores source-class support and contradiction counts, total evidence evalu
 reason codes, and human-readable findings. It deliberately stores no numeric confidence score.
 Verification never mutates candidates, revisions, fields, extraction links, Evidence, or source
 documents, and it does not approve or publish data.
+
+## Explainable confidence and review routing
+
+T-007 adds immutable `FieldConfidenceAssessment` and `RevisionConfidenceAssessment` records after
+Verification. Confidence means how strongly persisted verification facts support a CandidateField
+value's reliability. It is not a statistically calibrated probability, eligibility percentage,
+job-match score, approval, or publication decision.
+
+Every assessment records policy version `V1`, a SHA-256 fingerprint of its immutable inputs, the
+result, machine-readable review reasons, and a JSONB component breakdown. A field/policy pair and a
+verification-run/policy pair are each unique. Replaying the same calculation returns the existing
+record; a fingerprint mismatch reports an integrity conflict. A later algorithm must use a new
+policy version and create new historical assessments rather than reinterpret or overwrite V1.
+
+V1 field scores start from the finalized verification reason: authoritative support 90,
+authoritative conflict 15, source conflict 35, no evidence 20, secondary-only evidence 45, and
+other insufficient support 40. NOT_APPLICABLE has no reliability score and is excluded from score
+averaging. Distinct source endpoints, derived through
+`VerificationEvidenceAssessment -> Evidence -> SourceDocument -> SourceEndpoint`, drive modifiers:
+additional authoritative support is +3 each capped at +6; official supporting support is +2 each
+capped at +4; secondary support is +1 each capped at +2; secondary contradiction is -5 each capped
+at -10; and official supporting contradiction is -12 each capped at -24. Repeated Evidence from
+one endpoint cannot multiply a source bonus or penalty. Scores are clamped to 0..100, and an
+authoritative-conflict result is additionally capped at 25.
+
+The breakdown records the anchor, every capped modifier, distinct usable/context endpoint counts,
+authoritative-support presence, extraction-evidence availability, thresholds, and final score.
+These completeness facts are explainable inputs; V1 does not blindly reward raw evidence volume.
+
+Field criticality is policy-derived, never client supplied. V1 classifies known application
+start/end/deadline and application-URL paths, age limits/cutoffs/relaxations, qualification,
+domicile, experience, vacancies, and indexed post eligibility/vacancy paths as CRITICAL. Unknown
+paths default to STANDARD. Defaults configured through `AJI_CONFIDENCE_STANDARD_THRESHOLD`,
+`AJI_CONFIDENCE_CRITICAL_THRESHOLD`, and `AJI_CONFIDENCE_REVISION_THRESHOLD` are 80, 90, and 85.
+Thresholds affect deterministic routing, not the score algorithm, and are captured in the input
+fingerprint and breakdown.
+
+Conflicts and insufficient evidence always require review. A score below its standard/critical
+threshold requires review, and every critical field without authoritative-official support requires
+review regardless of its numeric score. Priorities are NONE, NORMAL, HIGH, and CRITICAL:
+authoritative conflict on a critical field is CRITICAL; other authoritative conflict, critical
+source conflict, critical missing authoritative support, and a very low critical score are HIGH;
+other review conditions are NORMAL.
+
+Revision confidence is scoped to one COMPLETED or PARTIAL VerificationRun. It weights CRITICAL
+scores by 2 and STANDARD scores by 1, excludes NOT_APPLICABLE scores, and multiplies the weighted
+average by `finalized fields / total revision fields`. Rounding is deterministic half-up to an
+integer. A partial run, any field requiring review, any authoritative conflict, or a revision score
+below threshold routes the revision to review; revision priority is the maximum field/aggregate
+severity. A high average can therefore never hide a dangerous low-confidence critical field.
+
+Confidence calculation only creates T-007 records. It never mutates VerificationRun,
+FieldVerification, VerificationEvidenceAssessment, Evidence, CandidateField, or CandidateRevision.
+Confidence does not approve data, and high confidence does not itself publish data. Human Review
+records and decisions remain a later domain.

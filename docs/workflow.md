@@ -169,3 +169,36 @@ what was evaluated, while Evidence and extraction associations remain unchanged.
 results and terminal runs reject mutation. Re-verification creates a new VerificationRun and
 preserves the earlier result. T-006 records deterministic inputs only; numeric confidence, review,
 approval, and publication remain later stages.
+
+## Confidence and review-routing workflow
+
+```text
+FINALIZED FieldVerification
+  -> V1 field confidence calculation
+  -> deterministic field review routing
+  -> COMPLETED/PARTIAL VerificationRun aggregation
+  -> revision confidence and review-required metadata
+  -> future Human Review
+```
+
+Field confidence is calculated only from finalized verification snapshots, assessments, Evidence,
+and registered source provenance. Source bonuses and penalties count distinct SourceEndpoints, so
+several excerpts from one site cannot manufacture independent agreement. The persisted breakdown
+shows the outcome anchor, capped support and contradiction modifiers, completeness signals,
+thresholds, criticality, final score, and review reasons.
+
+Criticality is derived from the CandidateField path under policy V1. Conflicts, insufficient
+evidence, threshold failures, and a critical field without authoritative support route the field to
+review with deterministic priority. Clients cannot submit criticality, source class, score, or
+review routing.
+
+For a COMPLETED or PARTIAL run, the service calculates missing eligible field assessments and then
+aggregates CRITICAL fields at weight 2 and STANDARD fields at weight 1. NOT_APPLICABLE fields do not
+enter the average. Verification coverage multiplies the weighted average; a PARTIAL run always
+requires review. Any field-level review condition also survives aggregation, preventing a high
+average from masking one dangerous field.
+
+Replaying V1 calculations returns the same immutable assessment. Changed policy requires a new
+policy version; changed persisted inputs after scoring are treated as an integrity conflict.
+Confidence calculation does not modify extracted or verified data. Confidence does not approve
+data, and high confidence does not itself publish data.

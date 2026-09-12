@@ -7,6 +7,14 @@ from app.models.candidates import (
     RecruitmentCandidate,
     RecruitmentCandidateRevision,
 )
+from app.models.confidence import (
+    ConfidencePolicyVersion,
+    FieldConfidenceAssessment,
+    FieldCriticality,
+    ReviewPriority,
+    ReviewReasonCode,
+    RevisionConfidenceAssessment,
+)
 from app.models.discovery import (
     DiscoveryObservation,
     DiscoveryRun,
@@ -46,6 +54,7 @@ __all__ = [
     "CandidateFieldEvidence",
     "CandidateStatus",
     "CandidateValueType",
+    "ConfidencePolicyVersion",
     "DiscoveryObservation",
     "DiscoveryRun",
     "DiscoveryRunStatus",
@@ -54,6 +63,8 @@ __all__ = [
     "Evidence",
     "EvidenceType",
     "EvidenceAssessmentType",
+    "FieldConfidenceAssessment",
+    "FieldCriticality",
     "FieldVerification",
     "FieldVerificationOutcome",
     "FieldVerificationStatus",
@@ -61,6 +72,9 @@ __all__ = [
     "RecruitmentCandidate",
     "RecruitmentCandidateRevision",
     "RecruitingAuthority",
+    "ReviewPriority",
+    "ReviewReasonCode",
+    "RevisionConfidenceAssessment",
     "SourceClass",
     "SourceEndpoint",
     "SourceDocument",

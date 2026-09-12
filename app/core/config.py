@@ -21,6 +21,9 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://assam_admin:assam_dev_password@localhost:5432/assam_job_intelligence",
         min_length=1,
     )
+    confidence_standard_threshold: int = Field(default=80, ge=0, le=100)
+    confidence_critical_threshold: int = Field(default=90, ge=0, le=100)
+    confidence_revision_threshold: int = Field(default=85, ge=0, le=100)
 
 
 @lru_cache
