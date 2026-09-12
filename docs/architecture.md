@@ -17,6 +17,8 @@ Source Registry
   -> Discovery Run
   -> Source Document
   -> Recruitment Candidate
+  -> Recruitment Candidate Revision
+  -> Candidate Field
   -> Evidence
   -> Verification
   -> Human Review
@@ -161,3 +163,32 @@ matches the source document endpoint's authority and rejects unavailable or fail
 Candidates, revisions, and fields remain unverified proposals. READY_FOR_VERIFICATION means only
 that a candidate has at least one structured revision ready to enter a future verification process;
 it is not verified, approved, publishable, or master data.
+
+## Candidate evidence and extraction provenance
+
+T-005 adds immutable extraction provenance after `CandidateField` and before independent
+Verification. An `Evidence` record retains one bounded piece of source context from exactly one
+immutable `SourceDocument` version. Its type is TEXT_EXCERPT, TABLE_FRAGMENT,
+STRUCTURED_FRAGMENT, DOCUMENT_METADATA, or OTHER; its provider-neutral locator is stored without
+interpretation. Excerpts are limited to 8,000 characters and optional surrounding context to
+16,000 characters. Evidence is not raw-document storage: complete source artifacts remain behind
+the T-003 provider-neutral `storage_uri` boundary.
+
+Evidence identity is SHA-256 over UTF-8 canonical JSON containing the source-document UUID and
+content hash, evidence type, normalized locator, excerpt, and context. Text uses Unicode NFC,
+CRLF/CR line endings become LF, and surrounding whitespace is trimmed without collapsing internal
+formatting. Locator normalization trims only surrounding whitespace. UUIDs, timestamps, and field
+links are excluded. The unique `(source_document_id, evidence_hash)` key makes equivalent recording
+idempotent while keeping evidence from changed document versions distinct. Evidence has no mutation
+API; corrections create a separate historical record.
+
+`CandidateFieldEvidence` is an explicit many-to-many association: one passage may support several
+fields, and one field may retain several passages. It repeats `source_document_id`, and composite
+restricted foreign keys to both parents enforce that an extraction-evidence link cannot cross the
+single-document boundary of its candidate revision. Duplicate field/evidence links are prevented
+and idempotently reused.
+
+Evidence answers which captured source context supports an extracted candidate value. **Evidence
+does not establish truth.** It does not verify a value, weight source authority, calculate
+confidence, resolve conflicts, change candidate readiness, or make data publishable. Those remain
+responsibilities of later Verification, review, approval, and master-publication domains.

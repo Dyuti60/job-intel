@@ -150,3 +150,33 @@ def create_revision(
     )
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def create_candidate_evidence_graph(client: TestClient) -> tuple[dict, dict, dict]:
+    authority, endpoint = create_discovery_source(client)
+    run = create_run(client, endpoint["id"])
+    document = observe_document(client, run["id"])["document"]
+    candidate = create_candidate(client, authority["id"])
+    revision = create_revision(client, candidate["id"], document["id"])
+    return document, candidate, revision
+
+
+def evidence_payload(document_id: str, **overrides) -> dict:
+    payload = {
+        "source_document_id": document_id,
+        "evidence_type": "TEXT_EXCERPT",
+        "source_locator": "page=4;section=Eligibility",
+        "excerpt": "Candidates must be between 21 and 38 years of age.",
+        "context": "Age limits as on 01-01-2026.",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def create_evidence(client: TestClient, document_id: str, **overrides) -> dict:
+    response = client.post(
+        "/api/v1/evidence",
+        json=evidence_payload(document_id, **overrides),
+    )
+    assert response.status_code == 201, response.text
+    return response.json()

@@ -162,6 +162,11 @@ class CandidateField(Base):
             "field_path",
             name="uq_candidate_fields_revision_path",
         ),
+        UniqueConstraint(
+            "id",
+            "source_document_id",
+            name="uq_candidate_fields_id_source_document",
+        ),
         Index("ix_candidate_fields_field_path", "field_path"),
     )
 

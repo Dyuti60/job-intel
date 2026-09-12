@@ -17,6 +17,7 @@ from app.models.discovery import (
     SourceDocument,
     SourceDocumentStatus,
 )
+from app.models.evidence import CandidateFieldEvidence, Evidence, EvidenceType
 from app.models.source_registry import (
     AuthorityStatus,
     AuthorityType,
@@ -31,6 +32,7 @@ __all__ = [
     "AuthorityStatus",
     "AuthorityType",
     "CandidateField",
+    "CandidateFieldEvidence",
     "CandidateStatus",
     "CandidateValueType",
     "DiscoveryObservation",
@@ -38,6 +40,8 @@ __all__ = [
     "DiscoveryRunStatus",
     "DiscoveryTriggerType",
     "DocumentType",
+    "Evidence",
+    "EvidenceType",
     "ObservationStatus",
     "RecruitmentCandidate",
     "RecruitmentCandidateRevision",

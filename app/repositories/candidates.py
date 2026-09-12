@@ -122,6 +122,9 @@ class CandidateFieldRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    def get(self, field_id: uuid.UUID) -> CandidateField | None:
+        return self.session.get(CandidateField, field_id)
+
     def list_for_revision(self, revision_id: uuid.UUID) -> list[CandidateField]:
         return list(
             self.session.scalars(

@@ -280,3 +280,73 @@ database constraints.
   validation; SQLite does not preserve timezone offsets when round-tripping timestamps.
 - The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
   warnings.
+
+## T-005 — Candidate Evidence and Extraction Provenance
+
+### Scope
+
+Implement immutable, bounded extraction Evidence for unverified CandidateFields, including exact
+SourceDocument provenance and idempotent many-to-many field associations. T-005 performs no
+Verification, confidence scoring, authority weighting, review, publication, crawling, or parsing.
+
+### Implementation summary
+
+- Added immutable Evidence records with constrained extraction-provenance types, uninterpreted
+  source locators, bounded excerpt/context, exact SourceDocument identity, and deterministic SHA-256
+  hashes.
+- Added explicit CandidateFieldEvidence associations supporting many fields per passage and many
+  passages per field, with idempotent service behavior and database-enforced same-document
+  provenance.
+- Added Unicode NFC and line-ending normalization without collapsing meaningful internal
+  whitespace; locators receive surrounding-whitespace normalization only.
+- Added explicit repositories, services, schemas, focused internal APIs, migration
+  `20260912_0005`, and comprehensive API, hashing, association, preservation, and persistence tests.
+- Kept evidence attachment independent from candidate readiness and preserved CandidateRevision and
+  CandidateField immutability.
+
+### Validation performed
+
+- Dependency metadata did not change, so `uv sync` was not required for T-005.
+- Existing development PostgreSQL began at `20260912_0004`, upgraded to
+  `20260912_0005 (head)`, and passed `alembic check` with no model drift.
+- Existing database downgrade from T-005 to T-004 and re-upgrade to T-005 passed.
+- A separately named empty PostgreSQL database applied T-001, T-002, T-003, T-004, and T-005 in
+  sequence, reported T-005 head, and passed `alembic check`; it was removed afterward.
+- PostgreSQL inspection confirmed evidence type/hash checks, document/hash and field/evidence
+  uniqueness, same-document composite restricted foreign keys, and intended indexes.
+- Complete test suite: 123 passed in 6.07 seconds with two upstream dependency warnings.
+- Ruff: all checks passed.
+- `git diff --check`: passed with no whitespace errors.
+
+### Files created/changed
+
+- Created: `alembic/versions/20260912_0005_candidate_evidence.py`,
+  `app/models/evidence.py`, `app/repositories/evidence.py`, `app/schemas/evidence.py`,
+  `app/services/evidence.py`, `app/services/evidence_values.py`,
+  `app/api/v1/routes/evidence.py`, `tests/test_evidence_api.py`,
+  `tests/test_evidence_hashing.py`, `tests/test_candidate_field_evidence_api.py`, and
+  `tests/test_evidence_persistence.py`.
+- Changed: `app/models/candidates.py`, `app/models/__init__.py`,
+  `app/repositories/candidates.py`, `app/api/v1/router.py`, `tests/factories.py`,
+  `docs/architecture.md`, `docs/workflow.md`, `docs/task_log.md`, and `docs/next_task.md`.
+
+### Test results
+
+123 passed: 101 existing T-001 through T-004 tests and 22 T-005 tests covering Evidence creation,
+retrieval and filtering, source eligibility, validation and bounds, normalization, deterministic
+hash identity, idempotent replay, exact document-version separation, multi-field/multi-evidence
+associations, same-document enforcement, historical preservation, and database constraints.
+
+### Known limitations
+
+- Evidence inputs come from controlled callers; T-005 does not fetch, parse, OCR, or extract source
+  material.
+- Excerpts and context are bounded provenance text, not raw-document storage; full artifacts remain
+  behind SourceDocument's provider-neutral storage boundary.
+- All evidence types require a nonblank excerpt in V0, including DOCUMENT_METADATA and OTHER.
+- Evidence immutability is enforced by append-only service/API behavior and the absence of mutation
+  routes; direct privileged database access remains an administrative responsibility.
+- Evidence records do not establish truth, change candidate readiness, calculate confidence, or
+  represent Verification.
+- The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
+  warnings.

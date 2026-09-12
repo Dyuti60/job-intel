@@ -1,25 +1,25 @@
-# T-005 — Candidate Evidence and Extraction Provenance
+# T-006 — Verification Runs and Field Verification
 
 ## Objective
 
-Establish the explicit evidence layer that supports unverified CandidateFields with bounded,
-integrity-protected source context before any Verification capability is introduced.
+Establish the independent Verification domain that evaluates a fixed RecruitmentCandidateRevision
+and produces explainable, field-level results without mutating candidate extraction history.
 
 ## Scope
 
-T-005 will introduce Evidence records linked to CandidateFields and their exact immutable
-`SourceDocument` versions. Evidence will retain a provider-neutral source locator, a bounded source
-excerpt or raw context, an explicit evidence type, provenance describing how the evidence was
-captured, and deterministic integrity/hash metadata where appropriate.
+T-006 will introduce `VerificationRun` and `FieldVerification`, verification statuses and outcomes,
+the exact CandidateRevision snapshot being verified, explicit relationships to Evidence evaluated
+during verification, source-authority-aware deterministic verification inputs, recorded reasons and
+findings, a conflict-detection baseline, repositories, services, internal APIs, a new Alembic
+migration, and comprehensive automated tests.
 
-T-005 will define CandidateField-to-Evidence relationships, constraints preventing cross-document
-provenance mismatches, idempotent evidence identity, repositories, services, internal APIs, a new
-Alembic migration, and automated tests. The design must preserve multiple evidence records when
-needed without treating evidence as a verified fact.
+The verification result for each field must remain explainable from immutable candidate values,
+evidence, source metadata, and deterministic findings. Verification must remain independent of
+Discovery and must not silently alter RecruitmentCandidateRevision, CandidateField, Evidence, or
+approved/master data.
 
 ## Boundaries
 
-T-005 will not implement Verification, confidence scoring, conflict resolution, Human Review,
-approval, Recruitment Master, live source crawling, HTML/PDF parsing, OCR, LLM extraction, or
-public/user-facing features. Evidence remains untrusted extraction provenance for later independent
-Verification.
+T-006 will not implement final confidence-scoring policy beyond minimal deterministic inputs needed
+for verification, Human Review UI, approval, Recruitment Master, publication, or live source
+crawling.

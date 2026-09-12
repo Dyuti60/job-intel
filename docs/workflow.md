@@ -110,3 +110,30 @@ cannot receive revisions.
 **READY_FOR_VERIFICATION does not mean verified.** Candidate data remains untrusted raw/discovery
 data and cannot enter Recruitment Master. Evidence, Verification, review, approval, and publication
 remain later independent stages.
+
+## Candidate evidence attachment workflow
+
+```text
+immutable SourceDocument
+  -> immutable CandidateRevision
+  -> typed CandidateField
+  -> bounded extraction Evidence attachment
+  -> READY_FOR_VERIFICATION
+  -> future independent Verification
+```
+
+Evidence is recorded idempotently from a usable SourceDocument version, with a controlled evidence
+type, uninterpreted locator, bounded excerpt, and optional bounded context. Canonical normalization
+and SHA-256 identity reuse an equivalent Evidence record. Changed context, locator, type, or exact
+SourceDocument version creates a different record rather than rewriting history.
+
+A CandidateField may link to several Evidence records, and one Evidence record may support several
+fields from the same candidate revision document. Composite database constraints and service checks
+reject cross-document extraction-evidence links. Replaying a link reuses the association and does
+not mutate the CandidateRevision, CandidateField value, or candidate status.
+
+T-005 Evidence is extraction provenance: it records the exact captured context that led to an
+unverified field proposal. Future Verification may evaluate this evidence and may introduce
+additional evidence concepts for corroboration or conflict analysis. Attaching extraction Evidence
+does not itself verify a field, establish authority, calculate confidence, or make a candidate ready
+or publishable.
