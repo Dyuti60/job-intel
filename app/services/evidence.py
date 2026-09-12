@@ -22,8 +22,9 @@ from app.services.exceptions import DomainConflictError, ResourceNotFoundError
 
 
 class EvidenceService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, commit: bool = True) -> None:
         self.session = session
+        self.commit = commit
         self.documents = SourceDocumentRepository(session)
         self.fields = CandidateFieldRepository(session)
         self.evidence = EvidenceRepository(session)
@@ -63,7 +64,7 @@ class EvidenceService:
         )
         self.evidence.add(evidence)
         try:
-            self.session.commit()
+            self._save()
         except IntegrityError as error:
             self.session.rollback()
             if (
@@ -116,7 +117,7 @@ class EvidenceService:
         )
         self.links.add(link)
         try:
-            self.session.commit()
+            self._save()
         except IntegrityError as error:
             self.session.rollback()
             if (existing := self.links.get_link(field.id, evidence.id)) is not None:
@@ -130,3 +131,6 @@ class EvidenceService:
         if self.fields.get(candidate_field_id) is None:
             raise ResourceNotFoundError("Candidate field not found")
         return self.links.list_evidence_for_field(candidate_field_id)
+
+    def _save(self) -> None:
+        self.session.commit() if self.commit else self.session.flush()

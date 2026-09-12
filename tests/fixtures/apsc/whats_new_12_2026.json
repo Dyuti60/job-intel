@@ -1,0 +1,14 @@
+{
+  "message": null,
+  "error": null,
+  "result": [
+    {
+      "advertisementNumber": "12/2026",
+      "notificationContent": "Research Assistant under Labour Welfare Department. [12/2026]",
+      "publishDate": "11 Aug 2026",
+      "applicationEndDate": "Application End Date : 10/09/2026 Midnight"
+    }
+  ],
+  "success": true,
+  "unAuthorizedRequest": false
+}

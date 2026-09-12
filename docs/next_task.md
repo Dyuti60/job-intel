@@ -1,29 +1,22 @@
-# T-011 — First Live Official Source Adapter: APSC
+# T-012 — Automated Verification and Confidence Worker
 
-## Objective
+T-012 should implement a one-shot worker that discovers CandidateRevisions ready for verification
+and drives the existing:
 
-Connect the existing trusted pipeline to the first real Assam Government recruitment source by
-implementing one narrowly defined APSC recruitment or notification flow.
+Verification
+→ FieldVerification
+→ Confidence
+→ Review routing
 
-## Scope
+domains.
 
-T-011 should implement:
+For the first APSC path it should use persisted official Evidence and Source provenance to produce
+deterministic VerificationEvidenceAssessments without modifying Candidate history.
 
-- source seeding and registration for APSC
-- an APSC-specific discovery adapter
-- HTTP fetching with bounded timeouts and retries
-- recruitment or notification listing discovery
-- SourceDocument persistence
-- deterministic NEW / UNCHANGED / CHANGED detection
-- a controlled raw-content persistence strategy
-- safe parsing of the selected APSC page or document type
-- generation of RecruitmentCandidate revisions and CandidateFields
-- extraction Evidence creation
-- no direct Verification truth assumptions
+It should create ReviewCases automatically when T-007 reports `review_required=true`.
 
-The initial adapter should support one narrowly defined real APSC recruitment/notification flow
-rather than attempting all APSC content.
+It must NOT make Human Review decisions automatically.
 
-## Boundaries
+It should leave approved/no-review data ready for the existing T-010B Master Publisher.
 
-T-011 must not automate Human Review or schedule recurring crawling.
+Do not implement T-012 now.

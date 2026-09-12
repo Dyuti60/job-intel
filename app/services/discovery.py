@@ -35,8 +35,9 @@ from app.services.url_normalization import normalize_http_url
 
 
 class DiscoveryService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, commit: bool = True) -> None:
         self.session = session
+        self.commit = commit
         self.endpoints = SourceEndpointRepository(session)
         self.runs = DiscoveryRunRepository(session)
         self.documents = SourceDocumentRepository(session)
@@ -66,7 +67,7 @@ class DiscoveryService:
             documents_unchanged=0,
         )
         self.runs.add(run)
-        self.session.commit()
+        self._save()
         self.session.refresh(run)
         return run
 
@@ -105,7 +106,7 @@ class DiscoveryService:
         run.completed_at = datetime.now(UTC)
         run.error_code = data.error_code
         run.error_message = data.error_message
-        self.session.commit()
+        self._save()
         self.session.refresh(run)
         return run
 
@@ -184,7 +185,7 @@ class DiscoveryService:
         self.observations.add(observation)
         self._increment_counters(run, classification)
         try:
-            self.session.commit()
+            self._save()
         except IntegrityError as error:
             self.session.rollback()
             raise DuplicateResourceError(
@@ -243,3 +244,6 @@ class DiscoveryService:
             run.documents_changed += 1
         elif classification == ObservationStatus.UNCHANGED:
             run.documents_unchanged += 1
+
+    def _save(self) -> None:
+        self.session.commit() if self.commit else self.session.flush()

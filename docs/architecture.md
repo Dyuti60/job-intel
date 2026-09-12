@@ -470,3 +470,34 @@ Dry-run uses the Publisher's read-only preview path. It revalidates the same imm
 constructs the same effective projection/hash, and reports whether content would create, update, or
 reuse a MasterRevision, then rolls back without Master mutations. T-010B adds no scheduler, queue
 broker, or database schema.
+
+## First live official-source adapter: APSC
+
+T-011 adds a narrow `APSCRecruitmentAdapter` for Advertisement 12/2026, Research Assistant under
+the Labour Welfare Department. Idempotent registry setup ensures an ACTIVE APSC COMMISSION and its
+ACTIVE, discovery-enabled APPLICATION_PORTAL at `https://apscrecruitment.in/`, classified
+`AUTHORITATIVE_OFFICIAL` with adapter key `apsc_recruitment`. Compatible rows are reused;
+conflicting manually maintained metadata is rejected rather than overwritten.
+
+The adapter performs only three official reads: portal HTML, the public
+`server/api/Advertisement/WhatsNew` JSON feed, and the official Advertisement 12/2026 PDF. The
+feed may no longer list a closed recruitment, so the stable official PDF is the narrow detailed
+source. No third-party page supplies CandidateFields. HTTPX uses explicit timeouts, redirects, an
+identifying user agent, OS trust-store TLS validation, a size ceiling, media-type checks, and two
+transient-only retries for network errors, 429, and 5xx.
+
+Exact bytes are SHA-256 hashed before existing T-003 observation handling. Content-addressed
+development storage writes below `data/raw/apsc/YYYY/MM/` and persists portable `raw://` URIs;
+PostgreSQL stores metadata rather than arbitrary raw bodies. Identical bytes reuse file/document
+identity. Changed bytes preserve the old SourceDocument. Dry-run executes the same domain workflow
+inside a rollback-only unit of work and performs no raw-file write.
+
+The parser is specific to the selected portal card and text-based PDF. It uses deterministic
+labels and pypdf without OCR. Only supported fields with bounded official context pass through the
+T-004 typed validators, and every field links to T-005 Evidence on the exact extraction document.
+The deterministic candidate key is `APSC_ADVT_12_2026`; SourceDocument identity remains in the
+revision hash, preserving changed provenance as immutable revisions.
+
+The worker composes existing Registry, Discovery, Candidate, and Evidence services in one
+transaction and stops at extraction Evidence. It never creates Verification, Confidence, Review,
+or Master records. Authoritative extraction remains unverified Candidate data.

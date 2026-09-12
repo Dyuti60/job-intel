@@ -46,3 +46,24 @@ and defaults to 100. The worker exits 0 after a completed batch, including norma
 domain/integrity failures that were reported per item. It exits nonzero for a worker-level failure
 such as unusable configuration or database connectivity. The command is independently executable;
 no recurring scheduler is included.
+
+## APSC discovery worker
+
+Run the narrow official APSC Advertisement 12/2026 discovery flow:
+
+```text
+uv run python -m workers.discovery --source APSC
+```
+
+Fetch and parse while rolling back database changes and skipping raw-file writes:
+
+```text
+uv run python -m workers.discovery --source APSC --dry-run
+```
+
+Raw bytes are content-addressed below `data/raw/` by default and referenced by portable `raw://`
+URIs. Override the root with `AJI_RAW_STORAGE_ROOT`. HTTP limits are configurable with
+`AJI_DISCOVERY_CONNECT_TIMEOUT_SECONDS`, `AJI_DISCOVERY_READ_TIMEOUT_SECONDS`,
+`AJI_DISCOVERY_HTTP_RETRIES`, and `AJI_DISCOVERY_MAX_RESPONSE_BYTES`. The command exits 0 for a
+successful or usable PARTIAL run and nonzero when discovery cannot safely execute. It creates no
+Verification or Master data.

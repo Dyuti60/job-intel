@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     confidence_critical_threshold: int = Field(default=90, ge=0, le=100)
     confidence_revision_threshold: int = Field(default=85, ge=0, le=100)
     master_publisher_batch_size: int = Field(default=100, ge=1, le=10_000)
+    raw_storage_root: str = "data/raw"
+    discovery_connect_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
+    discovery_read_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
+    discovery_http_retries: int = Field(default=2, ge=0, le=5)
+    discovery_max_response_bytes: int = Field(default=10_000_000, ge=1024)
 
 
 @lru_cache

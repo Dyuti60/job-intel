@@ -132,6 +132,39 @@ controlled updates, relationships, and database-level uniqueness.
 - The current FastAPI/Starlette test-client stack continues to emit two upstream deprecation
   warnings.
 
+## T-011 — First Live Official Source Adapter: APSC
+
+### Implementation summary
+
+- Added conflict-safe idempotent APSC registry setup, bounded official-only HTTP, portal/feed/PDF
+  adaptation, deterministic parsing, DD/MM/YYYY handling, pypdf, SHA-256 identities, OS trust-store
+  TLS, and content-addressed `raw://` storage.
+- Added a transactional one-shot worker with existing document classifications, Candidate/revision
+  reuse, typed fields, exact-document Evidence, partial reporting, safe exits, summaries, and
+  rollback-only dry-run. No migration was needed.
+- Added fixture parser, HTTP retry/failure/limit, raw storage, idempotency, versioning, partial,
+  provenance, dry-run, and no-truth-bypass tests.
+
+### Validation performed
+
+- Focused T-011 fixture tests: 11 passed.
+- Complete regression suite: 236 passed in 34.12 seconds; Ruff passed.
+- Live first run: all three official URLs returned HTTP 200; three NEW SourceDocuments,
+  `APSC_ADVT_12_2026` revision 1, 14 fields, 14 Evidence links, SUCCEEDED, no Verification.
+- Live second run: three UNCHANGED documents; Candidate and revision reused.
+- Live dry-run: three UNCHANGED predictions; database counts remained two runs, three documents,
+  one Candidate, one revision, 14 fields, nine shared Evidence records, zero VerificationRuns, and
+  zero RecruitmentMasters.
+- PostgreSQL joins traced registry through DiscoveryRun, PDF SourceDocument, Candidate, revision,
+  fields, and Evidence links. The schema remained at `20260912_0009`.
+
+### Known limitations
+
+- The live WhatsNew feed is empty because Advertisement 12/2026 closed; the verified official PDF
+  URL provides detailed extraction while portal/feed versions remain preserved.
+- PDF parsing is narrow and text-only. Unsupported/image-only content is reported or omitted; no
+  OCR, AI, third-party truth fallback, Verification, or publication is performed.
+
 ## T-003 — Source Documents and Discovery Runs
 
 ### Scope

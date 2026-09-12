@@ -337,3 +337,27 @@ when effective content matches an existing MasterRevision.
 `--dry-run` performs selection, review classification, Publisher integrity validation, projection
 hashing, and create/update/unchanged prediction without committing Master state. Scheduling remains
 outside T-010B; cron, Windows Task Scheduler, or another orchestrator may invoke the command later.
+
+## APSC Advertisement 12/2026 discovery workflow
+
+```text
+official APSC portal + public WhatsNew feed + official advertisement PDF
+  -> APSC Discovery worker
+  -> DiscoveryRun + NEW / UNCHANGED / CHANGED observations
+  -> immutable SourceDocuments + raw:// references
+  -> APSC_ADVT_12_2026 Candidate
+  -> immutable CandidateRevision
+  -> typed CandidateFields
+  -> exact-document extraction Evidence
+  -> STOP
+```
+
+The worker fetches only the official resources required by this narrow adapter. PDF failure after
+a usable portal entry yields PARTIAL and retains supported portal facts; gaps are never filled from
+third-party pages. Text PDFs are parsed deterministically without OCR. `10/09/2026` is explicitly
+DD/MM/YYYY and normalizes to `2026-09-10`.
+
+Identical bytes produce UNCHANGED observations and reuse Candidate, revision, Evidence, and links.
+Changed bytes create a SourceDocument version; changed extraction creates the next immutable
+CandidateRevision. Dry-run fetches/classifies but rolls back database changes and skips raw writes.
+Verification remains a separate later stage: discovery does not verify, score, review, or publish.

@@ -27,8 +27,9 @@ from app.services.url_normalization import normalize_http_url
 
 
 class SourceRegistryService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, commit: bool = True) -> None:
         self.session = session
+        self.commit = commit
         self.authorities = RecruitingAuthorityRepository(session)
         self.endpoints = SourceEndpointRepository(session)
 
@@ -75,7 +76,7 @@ class SourceRegistryService:
     ) -> RecruitingAuthority:
         authority = self.get_authority(authority_id)
         authority.status = data.status
-        self.session.commit()
+        self._save()
         self.session.refresh(authority)
         return authority
 
@@ -138,13 +139,16 @@ class SourceRegistryService:
         endpoint = self.get_endpoint(endpoint_id)
         for field_name in data.model_fields_set:
             setattr(endpoint, field_name, getattr(data, field_name))
-        self.session.commit()
+        self._save()
         self.session.refresh(endpoint)
         return endpoint
 
     def _commit_unique(self, message: str) -> None:
         try:
-            self.session.commit()
+            self._save()
         except IntegrityError as error:
             self.session.rollback()
             raise DuplicateResourceError(message) from error
+
+    def _save(self) -> None:
+        self.session.commit() if self.commit else self.session.flush()

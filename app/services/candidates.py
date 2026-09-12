@@ -31,8 +31,9 @@ from app.services.exceptions import (
 
 
 class CandidateService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, commit: bool = True) -> None:
         self.session = session
+        self.commit = commit
         self.authorities = RecruitingAuthorityRepository(session)
         self.candidates = RecruitmentCandidateRepository(session)
         self.revisions = CandidateRevisionRepository(session)
@@ -65,7 +66,7 @@ class CandidateService:
         )
         self.candidates.add(candidate)
         try:
-            self.session.commit()
+            self._save()
         except IntegrityError as error:
             self.session.rollback()
             raise DuplicateResourceError(
@@ -116,7 +117,7 @@ class CandidateService:
                 "Candidate requires at least one revision before readiness"
             )
         candidate.status = target_status
-        self.session.commit()
+        self._save()
         return self.get_candidate(candidate.id)
 
     def create_revision(
@@ -175,7 +176,7 @@ class CandidateService:
         ]
         self.revisions.add(revision)
         try:
-            self.session.commit()
+            self._save()
         except IntegrityError as error:
             self.session.rollback()
             if (
@@ -201,3 +202,6 @@ class CandidateService:
     def list_fields(self, revision_id: uuid.UUID) -> list[CandidateField]:
         self.get_revision(revision_id)
         return self.fields.list_for_revision(revision_id)
+
+    def _save(self) -> None:
+        self.session.commit() if self.commit else self.session.flush()
