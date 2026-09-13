@@ -39,6 +39,32 @@ def test_public_jobs_page_has_accessible_empty_and_filtered_results(client: Test
     assert '<link rel="canonical" href="http://testserver/jobs">' in page.text
 
 
+def test_public_jobs_form_accepts_blank_optional_filters(client: TestClient) -> None:
+    response = client.get(
+        "/jobs",
+        params={
+            "q": "",
+            "authority": "",
+            "application_status": "",
+            "application_end_from": "",
+            "application_end_to": "",
+            "minimum_vacancies": "",
+            "sort": "published_desc",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "No approved recruitments found" in response.text
+
+
+def test_public_jobs_form_renders_friendly_validation_error(client: TestClient) -> None:
+    response = client.get("/jobs", params={"application_end_from": "not-a-date"})
+
+    assert response.status_code == 422
+    assert "Invalid search" in response.text
+    assert "Application closing date must be a valid date" in response.text
+
+
 def test_public_jobs_pagination_preserves_filters(client: TestClient) -> None:
     _published(client, "PAGE_A")
     _published(client, "PAGE_B")

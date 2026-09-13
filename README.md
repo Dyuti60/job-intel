@@ -4,6 +4,10 @@ Foundation for a trustworthy master-data platform for Assam Government recruitme
 information. The current implementation includes source, discovery provenance, candidate,
 evidence, verification, confidence, and local Human Review capabilities.
 
+For a complete plain-language system walkthrough, local/browser startup guide, operator runbook,
+debugging checklist, and handover map, see
+[Knowledge Transfer and Operations Guide](docs/knowledge_transfer.md).
+
 ## Local setup
 
 1. Copy `.env.example` to `.env` and adjust local values if needed.
