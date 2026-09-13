@@ -1136,3 +1136,102 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
   hosting remain outside this local repository milestone.
 - The public API will remain empty for the live APSC record until a human resolves its existing
   ReviewCase and the Master Publisher successfully creates an ACTIVE RecruitmentMaster.
+
+## T-018 — Public Recruitment Web Interface
+
+### Result
+
+- Added a public, server-rendered `/jobs` browse page over the T-017 read service with deterministic
+  authority, application-status, closing-date, vacancy, text, ordering, and pagination controls.
+  Filter validation remains in the shared read service so the HTML and JSON transports enforce the
+  same approved-data contract.
+- Added `/jobs/{master_id}` recruitment detail pages showing current approved Master fields,
+  derived application state, authority and candidate identity, last-verified metadata, and safe
+  links to registered source documents. Internal candidate, verification, confidence, review,
+  publisher, and operational records are not exposed.
+- Added a focused presentation composition service that accepts only T-017 public DTOs. Templates
+  contain no database queries or business decisions, and every public web route is read-only.
+- Added local Jinja templates, CSS, and a favicon with responsive single-column behavior, keyboard
+  focus states, a skip link, semantic landmarks, explicit empty/error states, canonical local URLs,
+  and no JavaScript framework, CDN, iframe, or external asset dependency.
+- Added six end-to-end web tests covering empty and filtered lists, stable pagination, approved
+  detail/provenance rendering, inactive and unpublished isolation, output escaping, and proof that
+  GET rendering does not mutate domain data and that no POST mutation route exists.
+
+### Validation performed
+
+- Complete local test suite: 285 passed in 40.39 seconds. Only upstream FastAPI/Starlette and the
+  pre-existing inaccessible local pytest-cache warnings were emitted.
+- Ruff passed for the complete repository; `git diff --check` passed.
+- T-018 required no dependency or migration change. The configured local PostgreSQL database was
+  recreated after it was found absent, the complete migration chain applied successfully through
+  `20260912_0011 (head)`, and `alembic check` reported no schema drift.
+- Local HTTP smoke testing returned HTTP 200 for `/jobs` and its stylesheet. The empty state was the
+  correct trusted result for the available local database because no ACTIVE RecruitmentMaster was
+  present.
+- Desktop and narrow-width pages were rendered and visually inspected with Microsoft Edge in
+  headless mode. Layout, navigation, filters, empty state, and responsive single-column behavior
+  rendered cleanly. The interactive computer-use browser was unavailable in this environment, so
+  no claim is made for an interactive browser session.
+
+### Known limitations
+
+- The public website intentionally remains empty until approved RecruitmentMaster data exists; it
+  never falls back to Candidate, queued ReviewCase, or discovery data.
+- T-018 is a local presentation milestone. Production network separation, authentication of private
+  administration surfaces, TLS/forwarded-host hardening, rate limiting, security headers, cache
+  policy, deployment packaging, and release smoke tests remain for T-019.
+- Search and structured filtering retain the T-017 V0 in-process projection behavior, which is
+  appropriate for the initial Assam-sized dataset but is not a large-scale search index.
+
+## T-019 — Public Release Hardening and Deployment Baseline
+
+### Result
+
+- Added `app.public_main` as a separate production composition root. It exposes only `/jobs`,
+  `/api/public/v1`, `/static`, `/healthz`, and `/readyz`; internal `/api/v1`, `/review`,
+  `/operations`, OpenAPI, and documentation routes are absent rather than hidden by UI convention.
+- Added trusted-host enforcement, production wildcard-trust rejection, configured forwarded-proxy
+  trust, bounded request-target size, a bounded in-memory fixed-window request limiter, and CSP,
+  framing, MIME-sniffing, referrer, opener/resource, permissions, and HTTPS-only HSTS headers.
+- Added SHA-256 response ETags with short `must-revalidate` caching. Conditional requests compare
+  against a freshly rendered current-Master representation, preventing a superseded Master revision
+  from receiving a stale 304. Errors and health/non-public responses are `no-store`.
+- Added detail-free liveness/readiness probes. Readiness performs a database round trip but reports
+  only `ok` or `unavailable` without exposing connection, schema, or exception information.
+- Added a production public-server command, non-root/capability-free/read-only container baseline,
+  loopback-bound Compose service, container health check, strict build context exclusions, and CI
+  image build validation.
+- Added a fixture-safe release smoke command and deployment runbook covering public/private network
+  separation, least-privilege table grants, proxy/TLS requirements, release gates, cache/request
+  controls, coordinated PostgreSQL/raw-storage backup, isolated restore rehearsal, and rollback.
+- Added six public-release test functions plus two production configuration cases. Tests cover route
+  isolation, security headers, trusted hosts, HSTS, ETag revalidation across a changed current Master,
+  request/rate bounds, safe readiness failure, container constraints, and CI build enforcement.
+
+### Validation performed
+
+- Complete local suite: 293 passed in 42.88 seconds. Only upstream FastAPI/Starlette and the
+  pre-existing inaccessible local pytest-cache warnings were emitted.
+- Ruff passed for the entire repository and `git diff --check` passed.
+- The configured PostgreSQL reported `20260912_0011 (head)` and Alembic reported no drift. T-019
+  adds no migration. A separate empty validation database applied the complete T-001 through T-016
+  migration chain to `0011`, passed current/drift checks, and was removed afterward.
+- Docker built `assam-job-intelligence-public:t019` successfully. The image ran as non-root
+  `appuser`, reached healthy status through `/readyz`, and passed the release smoke command against
+  PostgreSQL.
+- Live local public-runtime smoke checks returned 200 for health, readiness, `/jobs`, and the public
+  API while `/review`, `/operations`, internal health, Swagger docs, and OpenAPI returned 404.
+  CSP and ETag response headers were observed directly.
+
+### Known limitations
+
+- The V0 application limiter is per process; deployment must also enforce distributed request and
+  connection bounds at its reverse proxy or edge.
+- T-019 provides a hardened deployable baseline and runbook, not a selected hosted environment,
+  managed DNS/TLS, registry promotion pipeline, or externally executed restore rehearsal. Those are
+  T-020 release-operations concerns.
+- The private application remains unauthenticated and must remain isolated. Only `app.public_main`
+  is suitable for public routing.
+- The public site remains empty until Human Review and the Master Publisher create an ACTIVE
+  RecruitmentMaster; no real queued ReviewCase was approved for validation.

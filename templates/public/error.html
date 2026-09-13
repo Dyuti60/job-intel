@@ -1,0 +1,9 @@
+{% extends "public/base.html" %}
+{% block content %}
+<section class="empty-state error-state">
+  <p class="eyebrow">Unable to show recruitment</p>
+  <h1>{{ title }}</h1>
+  <p>{{ message }}</p>
+  <a class="button-link" href="/jobs">Return to recruitments</a>
+</section>
+{% endblock %}

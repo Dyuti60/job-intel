@@ -1,19 +1,22 @@
-# T-018 — Public Recruitment Web Interface
+# T-020 — Controlled Public Deployment and Release Automation
 
-T-018 should implement a small, accessible, server-rendered public web interface over the T-017
-Public Recruitment API/read service.
+T-020 should deploy the hardened T-019 public ASGI/container surface to a selected controlled
+hosting environment and make releases repeatable without exposing the trusted administration
+runtime.
 
 It should include:
 
-- an Assam Government recruitment browse page with deterministic filters, ordering, and pagination
-- a recruitment detail page showing current approved fields, application status and dates,
-  vacancies, recruiting authority, and safe official-source links
-- clear empty, unknown-status, closed, upcoming, and open states
-- responsive, accessible HTML with no JavaScript framework or external asset dependency
-- search-engine-safe metadata and canonical local routes without exposing internal workflow data
-- tests proving the UI consumes only the T-017 approved public boundary and performs no mutations
+- an explicit hosting target and infrastructure configuration for the public container
+- automated immutable image build, provenance, vulnerability scanning, and release promotion
+- managed TLS/domain configuration and strict routing of only public paths
+- secure injection and rotation of the least-privilege public database credential
+- deployment health gates, fixture-safe smoke tests, rollback automation, and release audit history
+- verified PostgreSQL/raw-storage backup and isolated restore rehearsal
+- production logging and bounded public availability monitoring without sensitive operational data
+- a release checklist and evidence that `/review`, `/operations`, and internal `/api/v1` remain
+  unreachable from the public network
 
-T-018 must NOT implement eligibility matching, user profiles, alerts, preparation features, live
-crawling, Human Review, mutable public operations, or Recruitment Master publishing.
+T-020 must NOT implement eligibility matching, user accounts, alerts, preparation features, live
+source expansion, automated Human Review, or mutable public APIs.
 
-Do not implement T-018 now.
+Do not implement T-020 now.

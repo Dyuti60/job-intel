@@ -1,0 +1,84 @@
+{% extends "public/base.html" %}
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">Trusted Assam recruitment information</p>
+  <h1>Assam Government recruitments</h1>
+  <p>Browse current, approved records with direct provenance to registered sources.</p>
+</section>
+
+<form class="search-panel" method="get" action="/jobs" aria-label="Recruitment filters">
+  <div class="search-primary">
+    <label for="q">Search</label>
+    <input id="q" name="q" value="{{ filters.q }}" maxlength="100" placeholder="Recruitment, authority, or candidate key">
+  </div>
+  <div class="filter-grid">
+    <label>Authority code
+      <input name="authority" value="{{ filters.authority }}" placeholder="APSC">
+    </label>
+    <label>Application status
+      <select name="application_status">
+        <option value="">All statuses</option>
+        {% for status in statuses %}<option value="{{ status.value }}" {% if filters.application_status == status.value %}selected{% endif %}>{{ status.value|replace('_', ' ')|title }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Closing from
+      <input type="date" name="application_end_from" value="{{ filters.application_end_from }}">
+    </label>
+    <label>Closing to
+      <input type="date" name="application_end_to" value="{{ filters.application_end_to }}">
+    </label>
+    <label>Minimum vacancies
+      <input type="number" min="0" name="minimum_vacancies" value="{{ filters.minimum_vacancies }}">
+    </label>
+    <label>Order
+      <select name="sort">
+        {% for option in sort_options %}<option value="{{ option.value }}" {% if filters.sort == option.value %}selected{% endif %}>{{ option.value|replace('_', ' ')|title }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  <div class="form-actions">
+    <button type="submit">Apply filters</button>
+    <a href="/jobs">Clear</a>
+  </div>
+</form>
+
+<div class="result-heading">
+  <h2>Recruitments</h2>
+  <p>{{ result.total }} approved record{% if result.total != 1 %}s{% endif %}</p>
+</div>
+
+{% if result.items %}
+<div class="job-grid">
+  {% for job in result.items %}
+  <article class="job-card">
+    <div class="card-topline">
+      <span class="status status-{{ job.application.status.value|lower }}">{{ job.application.status.value|replace('_', ' ')|title }}</span>
+      <span class="candidate-key">{{ job.candidate_key }}</span>
+    </div>
+    <h3><a href="/jobs/{{ job.id }}{% if filters.as_of %}?as_of={{ filters.as_of }}{% endif %}">{{ job.display_name }}</a></h3>
+    <p class="authority">{{ job.authority.name }}</p>
+    {% if job.post_name %}<p>{{ job.post_name }}</p>{% endif %}
+    <dl class="job-facts">
+      <div><dt>Opens</dt><dd>{{ job.application.start_date or 'Not specified' }}</dd></div>
+      <div><dt>Closes</dt><dd>{{ job.application.end_date or 'Not specified' }}</dd></div>
+      <div><dt>Vacancies</dt><dd>{{ job.vacancies_total if job.vacancies_total is not none else 'Not specified' }}</dd></div>
+    </dl>
+    <a class="card-link" href="/jobs/{{ job.id }}{% if filters.as_of %}?as_of={{ filters.as_of }}{% endif %}">View approved details <span aria-hidden="true">→</span></a>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<section class="empty-state">
+  <h2>No approved recruitments found</h2>
+  <p>Try clearing the filters. Records appear here only after they cross the verification, review, and Master publication boundary.</p>
+</section>
+{% endif %}
+
+{% if result.pages > 1 %}
+<nav class="pagination" aria-label="Results pages">
+  {% if previous_url %}<a href="{{ previous_url }}" rel="prev">← Previous</a>{% else %}<span></span>{% endif %}
+  <span>Page {{ result.page }} of {{ result.pages }}</span>
+  {% if next_url %}<a href="{{ next_url }}" rel="next">Next →</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

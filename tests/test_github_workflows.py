@@ -13,6 +13,7 @@ def test_ci_uses_hosted_runner_and_temporary_postgresql() -> None:
     assert "uv run alembic check" in workflow
     assert "uv run pytest -q" in workflow
     assert "uv run ruff check ." in workflow
+    assert "docker build --tag assam-job-intelligence-public:ci ." in workflow
     assert "runner.temp" not in workflow
 
 

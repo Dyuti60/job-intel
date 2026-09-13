@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,6 +36,28 @@ class Settings(BaseSettings):
     monitor_trend_run_limit: int = Field(default=20, ge=1, le=500)
     monitor_notification_channels: str = "LOG"
     monitor_notification_file: str | None = None
+    public_allowed_hosts: str = "localhost,127.0.0.1,testserver"
+    public_forwarded_allow_ips: str = "127.0.0.1"
+    public_rate_limit_requests: int = Field(default=120, ge=1, le=100_000)
+    public_rate_limit_window_seconds: int = Field(default=60, ge=1, le=3_600)
+    public_cache_max_age_seconds: int = Field(default=60, ge=0, le=3_600)
+    public_max_request_target_bytes: int = Field(default=4_096, ge=512, le=65_536)
+
+    @property
+    def public_allowed_host_list(self) -> list[str]:
+        hosts = [host.strip() for host in self.public_allowed_hosts.split(",") if host.strip()]
+        if not hosts:
+            raise ValueError("AJI_PUBLIC_ALLOWED_HOSTS must contain at least one host")
+        return hosts
+
+    @model_validator(mode="after")
+    def reject_unbounded_production_proxy_trust(self) -> "Settings":
+        if self.app_env == "production":
+            if "*" in self.public_allowed_host_list:
+                raise ValueError("AJI_PUBLIC_ALLOWED_HOSTS cannot contain '*' in production")
+            if self.public_forwarded_allow_ips.strip() == "*":
+                raise ValueError("AJI_PUBLIC_FORWARDED_ALLOW_IPS cannot be '*' in production")
+        return self
 
 
 @lru_cache

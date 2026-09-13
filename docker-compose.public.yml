@@ -1,0 +1,37 @@
+services:
+  public-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      AJI_APP_ENV: production
+      AJI_DEBUG: "false"
+      AJI_DATABASE_URL: ${AJI_DATABASE_URL:?Set a read-only runtime database URL}
+      AJI_PUBLIC_ALLOWED_HOSTS: ${AJI_PUBLIC_ALLOWED_HOSTS:?Set the public hostname}
+      AJI_PUBLIC_FORWARDED_ALLOW_IPS: ${AJI_PUBLIC_FORWARDED_ALLOW_IPS:?Set trusted proxy addresses}
+      AJI_PUBLIC_RATE_LIMIT_REQUESTS: ${AJI_PUBLIC_RATE_LIMIT_REQUESTS:-120}
+      AJI_PUBLIC_RATE_LIMIT_WINDOW_SECONDS: ${AJI_PUBLIC_RATE_LIMIT_WINDOW_SECONDS:-60}
+      AJI_PUBLIC_CACHE_MAX_AGE_SECONDS: ${AJI_PUBLIC_CACHE_MAX_AGE_SECONDS:-60}
+      AJI_PUBLIC_MAX_REQUEST_TARGET_BYTES: ${AJI_PUBLIC_MAX_REQUEST_TARGET_BYTES:-4096}
+    ports:
+      - "127.0.0.1:${AJI_PUBLIC_BIND_PORT:-8001}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        - CMD
+        - .venv/bin/python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped

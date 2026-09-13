@@ -178,4 +178,42 @@ reproducible application-status view; otherwise status is evaluated on the curre
 Responses include approved typed values and bounded source-document/endpoint provenance. They do
 not expose drafts, historical non-current revisions, review decisions, confidence/verification
 internals, evidence bodies, storage locations, operational history, or mutation operations. This is
-an API baseline only; no public browser interface is included yet.
+the source of truth for the public browser interface.
+
+## Public Recruitment website
+
+After starting the application, open `http://localhost:8000/jobs`. The server-rendered interface
+provides an accessible recruitment browse page, GET-only filters, deterministic pagination, and
+approved recruitment detail pages with official-source links. It consumes the same T-017 public
+read service and cannot query or mutate Candidate, Verification, Confidence, Review, monitoring,
+or Publisher state.
+
+The current live page is intentionally empty until at least one ReviewCase is resolved as
+publishable and the Master Publisher creates an ACTIVE RecruitmentMaster. T-018 adds no JavaScript
+framework, external CSS dependency, account system, eligibility matching, or public mutation API.
+
+## Public release runtime
+
+Production exposure must use the bounded public ASGI entry point, never `app.main`:
+
+```text
+uv run python -m workers.public_server
+```
+
+That process exposes only `/jobs`, `/api/public/v1`, `/static`, `/healthz`, and `/readyz`; internal
+APIs plus `/review` and `/operations` are absent. Configure `AJI_PUBLIC_ALLOWED_HOSTS` with the real
+hostname and trust forwarded headers only from the TLS reverse proxy through
+`AJI_PUBLIC_FORWARDED_ALLOW_IPS`.
+
+Build and run the hardened container locally behind a reverse proxy:
+
+```text
+docker compose -f docker-compose.public.yml build
+docker compose -f docker-compose.public.yml up -d
+uv run python scripts/public_release_smoke.py --base-url http://127.0.0.1:8001
+```
+
+The compose service binds only to loopback, runs as a non-root user with a read-only filesystem,
+drops Linux capabilities, and expects a separately supplied read-only PostgreSQL URL. See
+[Public deployment and recovery](docs/public_deployment.md) for database grants, TLS/proxy rules,
+cache behavior, backup/restore, rollback, and release validation.

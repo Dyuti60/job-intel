@@ -76,3 +76,6 @@ jobs:
 
       - name: Run Ruff
         run: uv run ruff check .
+
+      - name: Build bounded public container
+        run: docker build --tag assam-job-intelligence-public:ci .

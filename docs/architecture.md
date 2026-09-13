@@ -664,3 +664,52 @@ or field row is rewritten when time changes.
 The public service and repository are read-only and separate from the existing internal
 `/api/v1/recruitment-master` administration/publisher contract. T-017 adds no database object,
 mutation route, public HTML interface, eligibility policy, profile, alert, or crawler behavior.
+
+## Public Recruitment web interface
+
+T-018 adds a server-rendered `/jobs` presentation layer over the T-017 public read service. The web
+router supplies transport inputs, the public service enforces Master-only selection and filtering,
+and a small view formatter produces display labels and deterministic JSON/typed-value text.
+Templates receive composed public DTOs and perform no database access or trust decisions.
+
+`GET /jobs` renders the approved recruitment count, status/date/vacancy filters, deterministic
+ordering, bounded pagination, and explicit empty state. `GET /jobs/{master_id}` renders current
+approved values, application-window status, recruiting authority, last-verified date, and registered
+source provenance. External document links open explicitly with `noopener noreferrer`; remote pages
+are never embedded or interpreted.
+
+The pages use semantic headings, labels, landmarks, skip navigation, visible focus styles,
+responsive layouts, escaped Jinja output, a local stylesheet, descriptive metadata, and canonical
+URLs without query strings. All forms use GET. There are no decisions, uploads, sessions, cookies,
+accounts, or mutation handlers, and internal workflow identifiers remain absent. T-018 introduces
+no database migration and does not change the T-017 API contract.
+
+## Public release boundary and hardening
+
+T-019 introduces `app.public_main` as a separate production ASGI composition root. It mounts only
+the public Recruitment API, `/jobs`, static assets, and bounded `/healthz` and `/readyz` probes.
+The full `app.main` composition retains internal APIs, Human Review, and operations for trusted
+local use, but is never the public deployment target. This route-level absence is the primary
+public/private network boundary; a loopback-only container port behind a TLS reverse proxy adds the
+deployment boundary.
+
+The public application disables OpenAPI documentation and debug mode, validates Host headers,
+trusts forwarded client/scheme data only from configured proxy addresses, rejects oversized request
+targets, applies a fixed-window per-client request bound, and emits CSP, clickjacking, MIME-sniffing,
+referrer, opener/resource, and permissions headers. HSTS is emitted only when the trusted proxy has
+established an HTTPS request scheme. The V0 limiter is deliberately single-process and in-memory;
+an edge proxy remains responsible for distributed abuse control.
+
+Successful public HTML/API responses receive a SHA-256 strong ETag and short configurable
+`public, must-revalidate` caching. The application resolves the current Master and renders the body
+before testing `If-None-Match`; therefore a superseded current Master revision cannot be answered
+with an old 304. Error, health, mutation, and non-public responses use `no-store`. Liveness reveals
+only process availability, and readiness executes a database round trip while returning only `ok`
+or `unavailable`, never connection or schema details.
+
+The release container is non-root, capability-free, read-only, and contains no `.env`, raw source
+storage, tests, or Git metadata. Its database identity should have SELECT on only the Master/public
+provenance tables. Migrations and publisher operations remain responsibilities of the private
+trusted runtime. PostgreSQL and external raw-content backups cover the authoritative runtime;
+public containers are replaceable artifacts. T-019 adds no migration and no recruitment-domain
+state.

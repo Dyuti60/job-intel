@@ -539,3 +539,52 @@ MasterField. The response keeps the original source URL, document type, endpoint
 and authority identity, but omits evidence text, raw storage, reviewer data, internal verification
 and confidence records, hashes, changes, and operational history. Every public route is GET-only;
 T-017 performs no publishing or other state transition.
+
+## Public Recruitment website workflow
+
+```text
+GET /jobs or /jobs/{master_id}
+  -> T-017 PublicRecruitmentService
+  -> ACTIVE current RecruitmentMaster DTOs only
+  -> presentation-only view formatting
+  -> escaped server-rendered HTML
+  -> safe explicit official-source links
+```
+
+Browse filters and pagination are ordinary GET query parameters and therefore remain bookmarkable
+and read-only. Detail pages render typed approved values without exposing Candidate, Evidence,
+Verification, Confidence, Review, MasterChange, publication-event, or operational records.
+Templates never query the database and never derive approval or confidence.
+
+An empty page is a valid trusted state when no RecruitmentMaster has been published. The interface
+does not promote the existing queued APSC ReviewCase, trigger the Publisher, or manufacture sample
+public data. Human Review and operations remain separate private/local interfaces.
+
+## Public release workflow
+
+```text
+Internet client
+  -> TLS-terminating reverse proxy / edge request limits
+  -> loopback/private container port
+  -> app.public_main trusted-host and security middleware
+       -> /jobs or /api/public/v1 only
+       -> current ACTIVE RecruitmentMaster read
+       -> body-derived ETag + must-revalidate cache policy
+  -> response
+
+private operator network
+  -> app.main
+       -> /review, /operations, and /api/v1
+```
+
+`app.public_main` does not mount the private routes, so proxy configuration cannot accidentally
+make them reachable through the public process. Health probes disclose only `ok` or `unavailable`.
+The public database role is read-only and migrations continue through the trusted administration
+runtime.
+
+Release preparation builds an immutable public container, applies migrations through the trusted
+runtime, runs fixture-based tests and the public smoke script, then switches the reverse proxy to
+the new container. Rollback restores the prior container image; database/raw-storage restoration is
+used only for data-loss recovery and follows the documented coordinated backup procedure. Public
+cache revalidation prevents a prior Master representation from masking a newly published current
+revision.

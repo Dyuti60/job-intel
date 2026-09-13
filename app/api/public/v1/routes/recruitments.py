@@ -40,24 +40,6 @@ def list_public_recruitments(
     page_size: Annotated[int, Query(ge=1, le=100)] = 25,
     as_of: date | None = None,
 ) -> PublicRecruitmentPage:
-    if (
-        application_start_from is not None
-        and application_start_to is not None
-        and application_start_from > application_start_to
-    ):
-        raise HTTPException(status_code=422, detail="application start-date range is invalid")
-    if (
-        application_end_from is not None
-        and application_end_to is not None
-        and application_end_from > application_end_to
-    ):
-        raise HTTPException(status_code=422, detail="application end-date range is invalid")
-    if (
-        minimum_vacancies is not None
-        and maximum_vacancies is not None
-        and minimum_vacancies > maximum_vacancies
-    ):
-        raise HTTPException(status_code=422, detail="vacancy range is invalid")
     try:
         return PublicRecruitmentService(session).list_recruitments(
             filters=PublicRecruitmentFilters(

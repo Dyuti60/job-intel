@@ -1,0 +1,54 @@
+{% extends "public/base.html" %}
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Recruitments</a><span aria-hidden="true">/</span><span>Details</span></nav>
+
+<section class="detail-hero">
+  <div>
+    <p class="eyebrow">{{ view.recruitment.authority.code }} · {{ view.recruitment.candidate_key }}</p>
+    <h1>{{ view.recruitment.display_name }}</h1>
+    <p>{{ view.recruitment.authority.name }}</p>
+  </div>
+  <span class="status status-{{ view.recruitment.application.status.value|lower }}">{{ view.recruitment.application.status.value|replace('_', ' ')|title }}</span>
+</section>
+
+<section class="summary-panel" aria-labelledby="application-heading">
+  <h2 id="application-heading">Application overview</h2>
+  <dl class="summary-grid">
+    <div><dt>Application opens</dt><dd>{{ view.recruitment.application.start_date or 'Not specified' }}</dd></div>
+    <div><dt>Application closes</dt><dd>{{ view.recruitment.application.end_date or 'Not specified' }}</dd></div>
+    <div><dt>Vacancies</dt><dd>{{ view.recruitment.vacancies_total if view.recruitment.vacancies_total is not none else 'Not specified' }}</dd></div>
+    <div><dt>Last verified</dt><dd>{{ view.recruitment.last_verified_at.strftime('%Y-%m-%d') }}</dd></div>
+  </dl>
+  <p class="as-of">Application status evaluated on {{ view.recruitment.application.evaluated_on }}.</p>
+</section>
+
+<section class="detail-section" aria-labelledby="fields-heading">
+  <h2 id="fields-heading">Approved recruitment details</h2>
+  <div class="field-list">
+    {% for field in view.fields %}
+    <article class="field-row">
+      <div>
+        <h3>{{ field.label }}</h3>
+        <span class="type-label">{{ field.value_type }}</span>
+      </div>
+      <pre>{{ field.display_value }}</pre>
+      <a href="{{ field.source_url }}" target="_blank" rel="noopener noreferrer">Official source <span aria-hidden="true">↗</span></a>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="detail-section" aria-labelledby="sources-heading">
+  <h2 id="sources-heading">Source provenance</h2>
+  <p>These registered sources underpin the approved values above.</p>
+  <div class="source-list">
+    {% for source in view.recruitment.sources %}
+    <article>
+      <h3>{{ source.endpoint_name }}</h3>
+      <p><span class="source-class">{{ source.source_class.value|replace('_', ' ')|title }}</span> · {{ source.document_type.value }}</p>
+      <a href="{{ source.document_url }}" target="_blank" rel="noopener noreferrer">Open source document <span aria-hidden="true">↗</span></a>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

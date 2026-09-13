@@ -10,6 +10,7 @@ from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.operations_web.router import router as operations_web_router
+from app.public_web.router import router as public_web_router
 from app.review_web.router import router as review_web_router
 
 
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     )
     application.include_router(api_router, prefix="/api/v1")
     application.include_router(public_api_router, prefix="/api/public/v1")
+    application.include_router(public_web_router)
     application.include_router(operations_web_router)
     application.include_router(review_web_router)
     application.mount(

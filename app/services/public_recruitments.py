@@ -66,6 +66,7 @@ class PublicRecruitmentService:
         as_of: date | None = None,
     ) -> PublicRecruitmentPage:
         evaluated_on = as_of or datetime.now(UTC).date()
+        self._validate_filters(filters)
         authority_code = self._normalize_identifier(
             filters.authority_code, "authority_code", _AUTHORITY_CODE
         )
@@ -91,6 +92,27 @@ class PublicRecruitmentService:
             total=total,
             pages=math.ceil(total / page_size) if total else 0,
         )
+
+    @staticmethod
+    def _validate_filters(filters: PublicRecruitmentFilters) -> None:
+        if (
+            filters.application_start_from is not None
+            and filters.application_start_to is not None
+            and filters.application_start_from > filters.application_start_to
+        ):
+            raise ValueError("application start-date range is invalid")
+        if (
+            filters.application_end_from is not None
+            and filters.application_end_to is not None
+            and filters.application_end_from > filters.application_end_to
+        ):
+            raise ValueError("application end-date range is invalid")
+        if (
+            filters.minimum_vacancies is not None
+            and filters.maximum_vacancies is not None
+            and filters.minimum_vacancies > filters.maximum_vacancies
+        ):
+            raise ValueError("vacancy range is invalid")
 
     def get_recruitment(
         self, master_id: uuid.UUID, *, as_of: date | None = None
