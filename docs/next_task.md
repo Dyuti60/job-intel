@@ -1,17 +1,18 @@
-# V1-M2 — Deterministic multi-post extraction
+# V1-M3 — Confidence V2 and separate review routing
 
-Implement deterministic extraction that can populate the Advertisement/Post foundation from
-official vacancy tables and clearly bounded post-wise sections.
+Preserve every Confidence V1 assessment unchanged and add deterministic, explainable Confidence V2
+over verified advertisement and post facts.
 
 The milestone should include:
 
-- a reusable extraction result with separate advertisement facts and post facts
-- explicit vacancy-table and post-section parsing with stable post keys
-- shared advertisement facts such as application dates without copying their provenance
-- post-specific vacancy, qualification, age, pay, reservation, and other supported facts
-- `AMBIGUOUS` output with source locators when row/column or post ownership cannot be decided safely
-- deterministic fixtures covering a multi-post SLPRB-style advertisement and ambiguous layouts
-- Evidence attached to every emitted CandidateField and no live-site dependency in CI
+- immutable `V2` confidence assessments with an explicit component breakdown
+- reliability components for authoritative source quality, extraction method/reliability,
+  authoritative support, supporting evidence, conflicts, ambiguity, and completeness
+- a separately versioned, persisted Human Review routing assessment
+- routing for conflicts, ambiguous post splits/details, unclear critical meaning, uncertain
+  vacancy/category mapping, and values that may belong to the wrong Post
+- no review solely because an optional field is absent
+- no publication decision embedded in either confidence or routing
+- post-aware field and revision summaries with deterministic fixtures and API/worker coverage
 
-Do not publish Posts to Master or implement Confidence V2 in this milestone. Those changes follow
-after extraction shape and provenance are proven.
+Do not reinterpret, update, or delete V1 rows. Do not publish Posts to Master in this milestone.

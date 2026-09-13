@@ -1390,3 +1390,33 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
   is the next milestone.
 - Confidence V1, Review, Master, public jobs, and scheduling remain advertisement-level until their
   dedicated V1 milestones.
+
+## V1-M2 — Deterministic multi-post extraction — 2026-09-14
+
+### Result
+
+- Added adapter-neutral parsed Advertisement, Post, and Fact result types.
+- Added a bounded deterministic vacancy/category table parser with row-shape, numeric-total, full
+  primary-category-total, duplicate-key, and maximum-row safeguards.
+- Added post-wise qualification, subject/specialisation, age, pay, grade-pay, and experience table
+  mapping when a row identifies exactly one vacancy Post.
+- Persisted uncertain detail ownership as an evidence-backed `extraction.ambiguities` fact and
+  emitted no Posts for damaged/ambiguous vacancy splits.
+- Updated the generic official archive worker to persist Posts, PostFacts, and Evidence
+  idempotently.
+- Updated the supported APSC 12/2026 extraction to emit its one explicit Research Assistant Post.
+
+### Validation performed
+
+- Added deterministic SLPRB-style fixtures for a three-Post vacancy/category/detail table, a
+  damaged vacancy row, and ambiguous qualification ownership.
+- Verified one advertisement persists three Posts, 36 PostFacts, 37 distinct Evidence records, and
+  43 field/evidence links, with an idempotent second discovery run.
+- `uv run pytest -q`: 321 tests passed.
+- `uv run ruff check .`, `uv run alembic check`, and `git diff --check`: passed.
+
+### Known limitations
+
+- Post table extraction currently requires bounded pipe-delimited text after PDF extraction; image
+  PDFs and layouts that lose column boundaries remain legacy-unsplit or ambiguous.
+- Confidence and review routing still use immutable V1 behavior and are the next milestone.

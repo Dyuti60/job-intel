@@ -20,6 +20,7 @@ from app.schemas.candidates import (
     CandidateFieldCreate,
     RecruitmentCandidateCreate,
     RecruitmentCandidateRevisionCreate,
+    RecruitmentPostCreate,
 )
 from app.schemas.discovery import DiscoveryRunComplete, DocumentObservationCreate
 from app.schemas.evidence import EvidenceCreate
@@ -235,6 +236,8 @@ class APSCDiscoveryWorkerService:
                 extraction_note=(
                     "Deterministic extraction from persisted official APSC source bytes."
                 ),
+                split_status=result.split_status,
+                split_note=result.split_note,
                 fields=[
                     CandidateFieldCreate(
                         field_path=field.field_path,
@@ -245,12 +248,39 @@ class APSCDiscoveryWorkerService:
                     )
                     for field in result.fields
                 ],
+                posts=[
+                    RecruitmentPostCreate(
+                        post_key=post.post_key,
+                        ordinal=post.ordinal,
+                        name=post.name,
+                        normalized_name=post.normalized_name,
+                        source_locator=post.source_locator,
+                        facts=[
+                            CandidateFieldCreate(
+                                field_path=fact.field_path,
+                                value_type=fact.value_type,
+                                value=fact.value,
+                                raw_value=fact.raw_value,
+                                source_locator=fact.source_locator,
+                            )
+                            for fact in post.facts
+                        ],
+                    )
+                    for post in result.posts
+                ],
             ),
         )
         evidence_ids = set()
-        for field_model, parsed in zip(
-            revision.fields, sorted(result.fields, key=lambda f: f.field_path), strict=True
-        ):
+        parsed_by_path = {field.field_path: field for field in result.fields}
+        parsed_by_path.update(
+            {
+                f"posts.{post.post_key}.{fact.field_path}": fact
+                for post in result.posts
+                for fact in post.facts
+            }
+        )
+        for field_model in revision.fields:
+            parsed = parsed_by_path[field_model.field_path]
             evidence_model, _ = evidence.create_evidence(
                 EvidenceCreate(
                     source_document_id=source_document.id,
@@ -272,7 +302,7 @@ class APSCDiscoveryWorkerService:
             candidates_reused=int(not candidate_created),
             revisions_created=int(revision_created),
             revisions_reused=int(not revision_created),
-            fields_extracted=len(result.fields),
+            fields_extracted=len(parsed_by_path),
             evidence_records=len(evidence_ids),
             warnings=(),
             dry_run=False,

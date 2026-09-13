@@ -382,6 +382,22 @@ Verification remains a separate later stage: discovery does not verify, score, r
 
 ## Additional official archive workflow
 
+For extractable table text, the archive family separates shared advertisement facts from post rows:
+
+```text
+validated vacancy table
+  -> explicit Post per row + category facts
+  -> uniquely matched post-detail rows add qualification / age / pay / experience
+  -> namespaced CandidateFields + exact row/column Evidence
+
+damaged vacancy row -> AMBIGUOUS advertisement revision, no Posts
+uncertain detail ownership -> keep valid Posts, add evidence-backed ambiguity fact
+```
+
+The parser is bounded to 100 rows and supported headers. Unknown headers and absent optional cells
+stay unknown. It does not infer zeros from blanks/dashes, does not use a language model, and does
+not fetch anything beyond the registered adapter workflow.
+
 ```text
 official SLPRB / DEE / DME recruitment archive
   -> select explicit advertisements dated 2024 onward (for the 2026 two-year lookback)

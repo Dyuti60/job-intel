@@ -527,6 +527,24 @@ or Master records. Authoritative extraction remains unverified Candidate data.
 
 ## Additional official recruitment archives
 
+### Deterministic multi-post extraction
+
+The shared archive adapter now returns an adapter-neutral `ParsedAdvertisement` containing separate
+advertisement facts, zero or more `ParsedPost` objects, split status, and warnings. A bounded table
+parser recognizes an explicit post-name and total-vacancy header, validates row width and numeric
+totals, checks a complete UR/OBC-MOBC/SC/ST(P)/ST(H)/EWS breakup against the stated total, and
+creates stable post keys from post plus organisation/department.
+
+Post-wise tables may add minimum/desirable qualification, subject/specialisation, minimum/maximum
+age, pay scale, grade pay, and experience only when the row maps to exactly one detected Post.
+Uncertain ownership becomes an `extraction.ambiguities` advertisement fact with a source locator;
+the value is not attached to any Post. A damaged vacancy table marks the interpretation
+`AMBIGUOUS` and creates no Posts. All emitted advertisement and post fields receive extraction
+Evidence through the same immutable SourceDocument.
+
+The narrow APSC 12/2026 adapter deterministically emits its single named Research Assistant as an
+explicit Post. Existing advertisement-level APSC revisions remain immutable history.
+
 The live source universe also includes the State Level Police Recruitment Board, Directorate of
 Elementary Education, and Directorate of Medical Education. A small explicit configuration maps
 `SLPRB_ASSAM`, `DEE_ASSAM`, and `DME_ASSAM` to their official authority identity, archive URL, and

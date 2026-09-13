@@ -14,6 +14,7 @@ from app.schemas.candidates import (
     CandidateFieldCreate,
     RecruitmentCandidateCreate,
     RecruitmentCandidateRevisionCreate,
+    RecruitmentPostCreate,
 )
 from app.schemas.discovery import DiscoveryRunComplete, DocumentObservationCreate
 from app.schemas.evidence import EvidenceCreate
@@ -223,7 +224,7 @@ class OfficialArchiveDiscoveryWorkerService:
         for notice, source_document in zip(
             result.notices, persisted_documents[1:], strict=True
         ):
-            if not notice.fields:
+            if not notice.fields and not notice.posts:
                 continue
             candidate = repository.get_by_identity(authority_id, notice.candidate_key)
             if candidate is None:
@@ -246,6 +247,8 @@ class OfficialArchiveDiscoveryWorkerService:
                         "Conservative deterministic extraction from a persisted official "
                         "recruitment advertisement."
                     ),
+                    split_status=notice.split_status,
+                    split_note=notice.split_note,
                     fields=[
                         CandidateFieldCreate(
                             field_path=field.field_path,
@@ -256,16 +259,41 @@ class OfficialArchiveDiscoveryWorkerService:
                         )
                         for field in notice.fields
                     ],
+                    posts=[
+                        RecruitmentPostCreate(
+                            post_key=post.post_key,
+                            ordinal=post.ordinal,
+                            name=post.name,
+                            normalized_name=post.normalized_name,
+                            source_locator=post.source_locator,
+                            facts=[
+                                CandidateFieldCreate(
+                                    field_path=fact.field_path,
+                                    value_type=fact.value_type,
+                                    value=fact.value,
+                                    raw_value=fact.raw_value,
+                                    source_locator=fact.source_locator,
+                                )
+                                for fact in post.facts
+                            ],
+                        )
+                        for post in notice.posts
+                    ],
                 ),
             )
             revisions_created += int(created)
             revisions_reused += int(not created)
-            fields_extracted += len(notice.fields)
-            for field_model, parsed in zip(
-                revision.fields,
-                sorted(notice.fields, key=lambda field: field.field_path),
-                strict=True,
-            ):
+            parsed_by_path = {field.field_path: field for field in notice.fields}
+            parsed_by_path.update(
+                {
+                    f"posts.{post.post_key}.{fact.field_path}": fact
+                    for post in notice.posts
+                    for fact in post.facts
+                }
+            )
+            fields_extracted += len(parsed_by_path)
+            for field_model in revision.fields:
+                parsed = parsed_by_path[field_model.field_path]
                 evidence_model, _ = evidence.create_evidence(
                     EvidenceCreate(
                         source_document_id=source_document.id,

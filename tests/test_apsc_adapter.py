@@ -7,6 +7,7 @@ import pytest
 
 from app.models.candidates import CandidateValueType
 from sources.adapters.apsc_recruitment import (
+    _partition_apsc_fields,
     candidate_key,
     parse_advertisement_text,
     parse_portal_feed,
@@ -48,6 +49,31 @@ def test_bounded_official_pdf_text_fixture_parses_supported_typed_fields() -> No
     assert fields["eligibility.maximum_age"].value == 38
     assert fields["eligibility.age_cutoff_date"].value == "2026-01-01"
     assert fields["pay.scale"].source_locator == "pdf:label=pay.scale"
+
+
+def test_supported_apsc_advertisement_is_partitioned_into_one_explicit_post() -> None:
+    text = (FIXTURE.parent / "advertisement_12_2026.txt").read_text(encoding="utf-8")
+
+    advertisement_fields, posts = _partition_apsc_fields(parse_advertisement_text(text))
+
+    assert {field.field_path for field in advertisement_fields} == {
+        "application.end_date",
+        "application.mode",
+        "application.start_date",
+        "notification.date",
+        "notification.number",
+        "recruitment_name",
+    }
+    assert len(posts) == 1
+    assert posts[0].post_key == "research_assistant_labour_welfare"
+    assert {fact.field_path for fact in posts[0].facts} >= {
+        "name",
+        "vacancies.total",
+        "qualification.minimum",
+        "age.minimum",
+        "age.maximum",
+        "pay.scale",
+    }
 
 
 def _client(handler, *, retries: int = 2, limit: int = 1024) -> BoundedHttpClient:

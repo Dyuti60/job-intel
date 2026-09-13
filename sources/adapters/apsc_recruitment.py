@@ -7,8 +7,9 @@ from typing import Any
 
 from pypdf import PdfReader
 
-from app.models.candidates import CandidateValueType
+from app.models.candidates import AdvertisementSplitStatus, CandidateValueType
 from app.models.discovery import DocumentType
+from sources.extraction import ParsedField, ParsedPost
 from sources.http import BoundedHttpClient, FetchedResource
 
 APSC_PORTAL_URL = "https://apscrecruitment.in/"
@@ -16,17 +17,6 @@ APSC_FEED_URL = "https://apscrecruitment.in/server/api/Advertisement/WhatsNew"
 APSC_ADVERTISEMENT_URL = "https://apsc.nic.in/advt_2026/Advt_no_12-2026_website.pdf"
 TARGET_ADVERTISEMENT = "12/2026"
 TARGET_TITLE = "Research Assistant under Labour Welfare Department"
-
-
-@dataclass(frozen=True)
-class ParsedField:
-    field_path: str
-    value_type: CandidateValueType
-    value: Any
-    raw_value: str
-    source_locator: str
-    excerpt: str
-    context: str | None = None
 
 
 @dataclass(frozen=True)
@@ -42,6 +32,9 @@ class AdapterResult:
     extraction_document_index: int
     fields: tuple[ParsedField, ...]
     warnings: tuple[str, ...]
+    posts: tuple[ParsedPost, ...] = ()
+    split_status: AdvertisementSplitStatus = AdvertisementSplitStatus.LEGACY_UNSPLIT
+    split_note: str | None = None
 
 
 def candidate_key(advertisement_number: str) -> str:
@@ -84,7 +77,16 @@ class APSCRecruitmentAdapter:
             warnings.append(f"Official advertisement unavailable: {type(error).__name__}: {error}")
         if not fields:
             raise ValueError("APSC Advertisement 12/2026 was not found in official source content")
-        return AdapterResult(tuple(documents), extraction_index, tuple(fields), tuple(warnings))
+        advertisement_fields, posts = _partition_apsc_fields(fields)
+        return AdapterResult(
+            tuple(documents),
+            extraction_index,
+            advertisement_fields,
+            tuple(warnings),
+            posts,
+            AdvertisementSplitStatus.EXPLICIT,
+            "The supported APSC advertisement names one explicit Research Assistant post.",
+        )
 
 
 def parse_portal_feed(content: bytes) -> list[ParsedField]:
@@ -255,6 +257,59 @@ def _identity_fields(excerpt: str, locator: str) -> list[ParsedField]:
             "application.mode", CandidateValueType.STRING, "ONLINE", "online", locator, excerpt
         ),
     ]
+
+
+def _partition_apsc_fields(
+    fields: list[ParsedField],
+) -> tuple[tuple[ParsedField, ...], tuple[ParsedPost, ...]]:
+    post_prefixes = (
+        "post.",
+        "organization.",
+        "department.",
+        "vacancies.",
+        "eligibility.",
+        "pay.",
+    )
+    canonical_fact_keys = {
+        "post.name": "name",
+        "organization.name": "organisation.name",
+        "eligibility.minimum_age": "age.minimum",
+        "eligibility.maximum_age": "age.maximum",
+        "eligibility.age_cutoff_date": "age.reference_date",
+        "eligibility.qualification.summary": "qualification.minimum",
+        "eligibility.domicile.summary": "domicile.requirement",
+    }
+    advertisement_fields: list[ParsedField] = []
+    post_facts: list[ParsedField] = []
+    for field in fields:
+        if field.field_path.startswith(post_prefixes):
+            fact_key = canonical_fact_keys.get(field.field_path, field.field_path)
+            post_facts.append(
+                ParsedField(
+                    fact_key,
+                    field.value_type,
+                    field.value,
+                    field.raw_value,
+                    field.source_locator,
+                    field.excerpt,
+                    field.context,
+                )
+            )
+        else:
+            advertisement_fields.append(field)
+    post_name = next(
+        (str(fact.value) for fact in post_facts if fact.field_path == "name"),
+        "Research Assistant",
+    )
+    post = ParsedPost(
+        post_key="research_assistant_labour_welfare",
+        ordinal=1,
+        name=post_name,
+        normalized_name=" ".join(post_name.casefold().split()),
+        source_locator="pdf:advt=12/2026;post=research-assistant",
+        facts=tuple(sorted(post_facts, key=lambda fact: fact.field_path)),
+    )
+    return tuple(sorted(advertisement_fields, key=lambda field: field.field_path)), (post,)
 
 
 def _string_values(value: Any) -> list[str]:

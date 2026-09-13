@@ -9,6 +9,11 @@ advertisement-level revisions are preserved as `LEGACY_UNSPLIT` and are never gu
 new deterministic extractors can persist explicit Posts and PostFacts while retaining the existing
 CandidateField-to-Evidence provenance chain.
 
+The official archive family deterministically recognizes bounded vacancy/category tables and
+post-wise qualification, age, experience, and pay tables. It emits Posts only for structurally
+valid rows with exact totals; damaged splits and uncertain post ownership are retained as
+evidence-backed ambiguity instead of guessed.
+
 For a complete plain-language system walkthrough, local/browser startup guide, operator runbook,
 debugging checklist, and handover map, see
 [Knowledge Transfer and Operations Guide](docs/knowledge_transfer.md).
