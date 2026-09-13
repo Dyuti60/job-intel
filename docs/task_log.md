@@ -1223,6 +1223,9 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
 - Live local public-runtime smoke checks returned 200 for health, readiness, `/jobs`, and the public
   API while `/review`, `/operations`, internal health, Swagger docs, and OpenAPI returned 404.
   CSP and ETag response headers were observed directly.
+- GitHub-hosted CI run `34748397007` completed successfully for implementation commit `a206f2d`.
+  Its temporary PostgreSQL migration/current/drift checks, complete test suite, Ruff check, and
+  independent bounded public-container build all passed.
 
 ### Known limitations
 
