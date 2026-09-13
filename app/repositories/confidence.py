@@ -1,7 +1,7 @@
 import uuid
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, exists, or_, select
+from sqlalchemy.orm import Session, aliased
 
 from app.models.confidence import (
     ConfidencePolicyVersion,
@@ -58,9 +58,7 @@ class RevisionConfidenceRepository:
     def add(self, assessment: RevisionConfidenceAssessment) -> None:
         self.session.add(assessment)
 
-    def get(
-        self, assessment_id: uuid.UUID
-    ) -> RevisionConfidenceAssessment | None:
+    def get(self, assessment_id: uuid.UUID) -> RevisionConfidenceAssessment | None:
         return self.session.get(RevisionConfidenceAssessment, assessment_id)
 
     def get_for_policy(
@@ -77,6 +75,13 @@ class RevisionConfidenceRepository:
 
     def list_pending_publication_ids(self, *, limit: int) -> list[uuid.UUID]:
         """Return completed-run assessments without a successful publication event."""
+        newer = aliased(RevisionConfidenceAssessment)
+        has_v2 = exists(
+            select(newer.id).where(
+                newer.verification_run_id == VerificationRun.id,
+                newer.policy_version == ConfidencePolicyVersion.V2,
+            )
+        )
         return list(
             self.session.scalars(
                 select(RevisionConfidenceAssessment.id)
@@ -91,7 +96,14 @@ class RevisionConfidenceRepository:
                 )
                 .where(
                     VerificationRun.status == VerificationRunStatus.COMPLETED,
-                    RevisionConfidenceAssessment.policy_version == ConfidencePolicyVersion.V1,
+                    or_(
+                        RevisionConfidenceAssessment.policy_version == ConfidencePolicyVersion.V2,
+                        and_(
+                            RevisionConfidenceAssessment.policy_version
+                            == ConfidencePolicyVersion.V1,
+                            ~has_v2,
+                        ),
+                    ),
                     MasterPublicationEvent.id.is_(None),
                 )
                 .order_by(

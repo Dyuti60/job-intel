@@ -694,3 +694,25 @@ manual restore rehearsal
 
 Neither availability nor restore validation changes recruitment or review state. Deployment does
 not publish Master data; it only serves Master records already approved by the trusted pipeline.
+
+## Confidence V2 routing to Post-aware Master
+
+```text
+finalized VerificationRun
+  -> immutable Confidence V2 assessment
+  -> immutable independent Routing V1 assessment
+       -> no semantic risk: shared publisher may publish directly
+       -> semantic risk: routing-linked ReviewCase
+            -> Advertisement-wide decision blocks all Posts
+            -> Post field decision blocks only that Post
+            -> valid sibling Post proceeds unchanged
+  -> immutable Master revision + approved Master fields
+       -> ordered MasterPost snapshots
+       -> MasterPostFact provenance links
+```
+
+The verification worker creates the Confidence V2/routing pair and queues the routing-linked case
+when required. The Master Publisher worker prefers V2 whenever it exists and otherwise processes
+historical V1. Pending or cancelled routed review is skipped safely. Resolved review is projected by
+scope, and every stored review snapshot is checked against re-derived confidence and routing inputs
+before Master writes occur. API replay returns the existing publication event and revision.

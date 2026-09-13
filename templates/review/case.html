@@ -60,7 +60,10 @@
 
 <section>
   <div class="section-heading"><h2>Review items</h2><span>{{ resolved_items }} / {{ total_items }} resolved</span></div>
-  {% for item in items %}
+  {% for group in review_groups %}
+  <div class="section-heading"><h3>{{ group['name'] }}</h3><span>{{ group['scope'] }}{% if group['key'] %} · {{ group['key'] }}{% endif %}</span></div>
+  {% if not group['items'] %}<article class="card"><p class="muted">No review action is required for this Post; it may proceed independently.</p></article>{% endif %}
+  {% for item in group['items'] %}
   <article class="review-item card" id="item-{{ item.id }}">
     <header class="item-header">
       <div>
@@ -142,6 +145,7 @@
     {% endif %}
   </article>
   {% endfor %}
+  {% endfor %}
 </section>
 
 {% if projection %}
@@ -150,7 +154,7 @@
   <h2>Approved Projection</h2>
   <p class="outcome-large">{{ projection.outcome | replace('_', ' ') }}</p>
   {% if projection.master_eligible %}
-  <p>This reviewed revision is eligible for a future Master Publisher. Nothing has been published.</p>
+  <p>This reviewed Advertisement has at least one publishable approved Post or field set.</p>
   <div class="table-wrap"><table>
     <thead><tr><th>Field</th><th>Type</th><th>Effective value</th><th>Origin</th><th>References</th></tr></thead>
     <tbody>{% for field in projection.fields %}<tr>

@@ -26,6 +26,7 @@ from app.models.confidence import (
     ReviewPriority,
     RevisionConfidenceAssessment,
 )
+from app.models.review_routing import ReviewRoutingAssessment
 from app.models.source_registry import constrained_enum
 
 
@@ -67,6 +68,7 @@ class ReviewCase(Base):
             "revision_confidence_assessment_id",
             name="uq_review_cases_revision_confidence",
         ),
+        UniqueConstraint("review_routing_assessment_id", name="uq_review_cases_review_routing"),
         CheckConstraint(
             "(status = 'QUEUED' AND started_at IS NULL AND resolved_at IS NULL "
             "AND outcome IS NULL) OR "
@@ -105,6 +107,9 @@ class ReviewCase(Base):
         ForeignKey("revision_confidence_assessments.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    review_routing_assessment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("review_routing_assessments.id", ondelete="RESTRICT")
+    )
     status: Mapped[ReviewCaseStatus] = mapped_column(
         constrained_enum(ReviewCaseStatus, "ck_review_cases_status"), nullable=False
     )
@@ -139,6 +144,7 @@ class ReviewCase(Base):
     )
 
     revision_confidence_assessment: Mapped[RevisionConfidenceAssessment] = relationship()
+    review_routing_assessment: Mapped[ReviewRoutingAssessment | None] = relationship()
     items: Mapped[list["ReviewItem"]] = relationship(
         back_populates="review_case", order_by="ReviewItem.created_at"
     )

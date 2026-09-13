@@ -115,8 +115,8 @@ def test_review_routing_does_not_use_score_or_missing_optional_fields(
         "/api/v1/recruitment-master/publish",
         json={"revision_confidence_assessment_id": confidence["id"]},
     )
-    assert publish.status_code == 409
-    assert "Post-aware Master" in publish.json()["detail"]
+    assert publish.status_code == 201
+    assert publish.json()["master_revision"]["posts"] == []
 
 
 def test_authoritative_conflict_routes_independently_of_v2_score(client: TestClient) -> None:

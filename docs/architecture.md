@@ -831,3 +831,22 @@ temporary database, validates the Alembic revision and up to 1,000 raw reference
 rehearsal database in all outcomes. A GitHub-hosted scheduled availability workflow checks public
 health, readiness, `/jobs`, and continued private-route exclusion without runtime database access.
 These operational layers never invoke pipeline, Review, or Publisher mutations and add no schema.
+
+## Post-grouped review and Post-aware Master
+
+Routing V1 is the operational review contract for Confidence V2. A routing-driven ReviewCase links
+to its immutable `ReviewRoutingAssessment` and snapshots only the routed field risks plus any
+advertisement-wide reasons. The case, item set, confidence values, reasons, priorities, and routing
+components are re-derived and integrity-checked before publication. Historical Confidence V1 cases
+retain their original contract and remain publishable through the legacy path.
+
+Review projection is scoped by deterministic CandidateField paths. A rejected or reverify decision
+for `posts.<post_key>.*` blocks that Post only; advertisement-scoped or revision-scoped rejection
+blocks the entire projection. Unrouted sibling Posts remain eligible. Decisions are immutable and
+never delete Candidate, Evidence, Verification, Confidence, routing, or review history.
+
+Each immutable `RecruitmentMasterRevision` may own ordered `MasterPost` snapshots. A `MasterPost`
+retains its source `RecruitmentPost`; each `MasterPostFact` joins the approved `MasterField` to its
+source `PostFact`. Only Posts with at least one approved fact are materialized. The API and worker
+both call `MasterPublisherService`, so eligibility, tamper checks, transactionality, change history,
+and replay behavior have one implementation. The public read layer does not expose these Posts yet.

@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.candidates import CandidateValueType
-from app.models.confidence import ConfidencePolicyVersion, ReviewPriority, ReviewReasonCode
+from app.models.confidence import ConfidencePolicyVersion, ReviewPriority
 from app.models.review import (
     ReviewCaseOutcome,
     ReviewCaseStatus,
@@ -85,7 +85,7 @@ class ReviewItemRead(ReviewSchema):
     candidate_value_type_snapshot: CandidateValueType | None
     candidate_value_snapshot: Any
     confidence_score_snapshot: int | None
-    review_reason_codes_snapshot: list[ReviewReasonCode]
+    review_reason_codes_snapshot: list[str]
     component_breakdown_snapshot: dict[str, Any]
     created_at: datetime
     resolved_at: datetime | None
@@ -97,11 +97,12 @@ class ReviewCaseSummary(ReviewSchema):
     candidate_revision_id: uuid.UUID
     verification_run_id: uuid.UUID
     revision_confidence_assessment_id: uuid.UUID
+    review_routing_assessment_id: uuid.UUID | None
     status: ReviewCaseStatus
     priority: ReviewPriority
     policy_version: ConfidencePolicyVersion
     revision_score_snapshot: int | None
-    revision_review_reason_codes_snapshot: list[ReviewReasonCode]
+    revision_review_reason_codes_snapshot: list[str]
     component_breakdown_snapshot: dict[str, Any]
     outcome: ReviewCaseOutcome | None
     opened_at: datetime
@@ -131,4 +132,6 @@ class ApprovedProjectionRead(ReviewSchema):
     candidate_revision_id: uuid.UUID
     outcome: ReviewCaseOutcome
     master_eligible: bool
+    approved_post_keys: list[str] = Field(default_factory=list)
+    blocked_post_keys: list[str] = Field(default_factory=list)
     fields: list[ApprovedProjectionField]

@@ -5,7 +5,12 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.candidates import RecruitmentCandidate, RecruitmentCandidateRevision
+from app.models.candidates import (
+    AdvertisementRevision,
+    RecruitmentCandidate,
+    RecruitmentCandidateRevision,
+    RecruitmentPost,
+)
 from app.models.confidence import ReviewPriority
 from app.models.discovery import SourceDocument
 from app.models.evidence import CandidateFieldEvidence, Evidence
@@ -133,9 +138,7 @@ class ReviewCaseViewService:
                     and case.priority.value == "HIGH"
                     for case in all_cases
                 ),
-                "in_review": sum(
-                    case.status == ReviewCaseStatus.IN_REVIEW for case in all_cases
-                ),
+                "in_review": sum(case.status == ReviewCaseStatus.IN_REVIEW for case in all_cases),
             },
         }
 
@@ -146,6 +149,12 @@ class ReviewCaseViewService:
         authority = candidate.recruiting_authority
         source_document = revision.source_document
         revision_confidence = review_case.revision_confidence_assessment
+        posts = (
+            revision.advertisement_revision.posts
+            if revision.advertisement_revision is not None
+            else []
+        )
+        post_names = {post.post_key: post.name for post in posts}
 
         items = []
         for item in review_case.items:
@@ -173,7 +182,9 @@ class ReviewCaseViewService:
                 "criticality": None,
                 "extraction_evidence": [],
                 "verification": None,
+                "post_key": ReviewService._post_key(item.field_path_snapshot),
             }
+            item_view["post_name"] = post_names.get(item_view["post_key"])
             if item.scope == ReviewItemScope.FIELD:
                 confidence = item.field_confidence_assessment
                 item_view["criticality"] = confidence.criticality.value
@@ -202,6 +213,30 @@ class ReviewCaseViewService:
             items.append(item_view)
 
         resolved = sum(item["status"] == ReviewItemStatus.RESOLVED.value for item in items)
+        advertisement_items = [item for item in items if item["post_key"] is None]
+        review_groups = []
+        if advertisement_items:
+            review_groups.append(
+                {
+                    "scope": "ADVERTISEMENT",
+                    "key": None,
+                    "name": "Advertisement",
+                    "items": advertisement_items,
+                }
+            )
+        for post in posts:
+            review_groups.append(
+                {
+                    "scope": "POST",
+                    "key": post.post_key,
+                    "name": post.name,
+                    "items": [item for item in items if item["post_key"] == post.post_key],
+                }
+            )
+        if not review_groups:
+            review_groups.append(
+                {"scope": "ADVERTISEMENT", "key": None, "name": "Advertisement", "items": items}
+            )
         result = {
             "case": review_case,
             "case_id": review_case.id,
@@ -229,6 +264,7 @@ class ReviewCaseViewService:
                 "source_document_type": source_document.document_type.value,
             },
             "items": items,
+            "review_groups": review_groups,
             "projection": None,
         }
         if review_case.status == ReviewCaseStatus.RESOLVED:
@@ -259,6 +295,9 @@ class ReviewCaseViewService:
                 selectinload(RecruitmentCandidateRevision.source_document)
                 .selectinload(SourceDocument.source_endpoint)
                 .selectinload(SourceEndpoint.recruiting_authority),
+                selectinload(RecruitmentCandidateRevision.advertisement_revision)
+                .selectinload(AdvertisementRevision.posts)
+                .selectinload(RecruitmentPost.facts),
             )
             .where(RecruitmentCandidateRevision.id == revision_id)
         )

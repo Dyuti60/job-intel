@@ -20,6 +20,8 @@ from app.models.master import (
     MasterChangeType,
     MasterField,
     MasterFieldValueOrigin,
+    MasterPost,
+    MasterPostFact,
     MasterPublicationEvent,
     PublicationPath,
     PublicationResult,
@@ -47,8 +49,10 @@ from app.repositories.review import ReviewCaseRepository
 from app.repositories.verification import FieldVerificationRepository, VerificationRunRepository
 from app.services.candidate_values import compute_persisted_revision_hash, normalize_typed_value
 from app.services.confidence import ConfidenceService
+from app.services.confidence_v2 import ConfidenceV2Service
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
 from app.services.review import ReviewService
+from app.services.review_routing import ReviewRoutingService
 
 
 @dataclass(frozen=True)
@@ -105,10 +109,6 @@ class MasterPublisherService:
         assessment = self.confidence.get(revision_confidence_assessment_id)
         if assessment is None:
             raise ResourceNotFoundError("Revision confidence assessment not found")
-        if assessment.policy_version != ConfidencePolicyVersion.V1:
-            raise DomainConflictError(
-                "Confidence V2 publication is unavailable until Post-aware Master consumes routing"
-            )
         revision, run, field_assessments = self._validate_verification(assessment)
         candidate = revision.recruitment_candidate
         effective_fields, publication_path, review_case = self._effective_projection(
@@ -180,19 +180,21 @@ class MasterPublisherService:
                 )
                 self.master_revisions.add(master_revision)
                 self.session.flush()
+                master_fields = []
                 for item in effective_fields:
-                    self.session.add(
-                        MasterField(
-                            master_revision_id=master_revision.id,
-                            field_path=item["field_path"],
-                            value_type=item["value_type"],
-                            value=copy.deepcopy(item["value"]),
-                            source_candidate_field_id=item["source_candidate_field_id"],
-                            review_decision_id=item["review_decision_id"],
-                            value_origin=item["value_origin"],
-                        )
+                    master_field = MasterField(
+                        master_revision_id=master_revision.id,
+                        field_path=item["field_path"],
+                        value_type=item["value_type"],
+                        value=copy.deepcopy(item["value"]),
+                        source_candidate_field_id=item["source_candidate_field_id"],
+                        review_decision_id=item["review_decision_id"],
+                        value_origin=item["value_origin"],
                     )
+                    self.session.add(master_field)
+                    master_fields.append(master_field)
                 self.session.flush()
+                self._persist_master_posts(revision, master_revision, master_fields)
                 self._record_changes(master, previous_revision, master_revision)
                 master.display_name = candidate.display_name
                 master.current_revision_id = master_revision.id
@@ -254,8 +256,7 @@ class MasterPublisherService:
             candidate_key=candidate.candidate_key,
             display_name=candidate.display_name,
             fields=[
-                (item["field_path"], item["value_type"], item["value"])
-                for item in effective_fields
+                (item["field_path"], item["value_type"], item["value"]) for item in effective_fields
             ],
         )
         master = self.masters.get_by_identity(
@@ -269,9 +270,7 @@ class MasterPublisherService:
                 master is not None
                 and self.master_revisions.get_by_hash(master.id, projection_hash) is not None
             ),
-            already_processed=(
-                self.events.get_by_confidence_assessment(assessment.id) is not None
-            ),
+            already_processed=(self.events.get_by_confidence_assessment(assessment.id) is not None),
         )
 
     def get_master(self, master_id: uuid.UUID) -> RecruitmentMaster:
@@ -315,6 +314,39 @@ class MasterPublisherService:
         self.get_master(master_id)
         return self.events.list_for_master(master_id)
 
+    def _persist_master_posts(self, revision, master_revision, master_fields) -> None:
+        interpretation = revision.advertisement_revision
+        if interpretation is None or not interpretation.posts:
+            return
+        fields_by_source = {item.source_candidate_field_id: item for item in master_fields}
+        for post in interpretation.posts:
+            approved_facts = [
+                fact for fact in post.facts if fact.candidate_field_id in fields_by_source
+            ]
+            if not approved_facts:
+                continue
+            master_post = MasterPost(
+                master_revision_id=master_revision.id,
+                source_recruitment_post_id=post.id,
+                post_key=post.post_key,
+                ordinal=post.ordinal,
+                name=post.name,
+                normalized_name=post.normalized_name,
+            )
+            self.session.add(master_post)
+            self.session.flush()
+            for fact in approved_facts:
+                self.session.add(
+                    MasterPostFact(
+                        master_post_id=master_post.id,
+                        master_revision_id=master_revision.id,
+                        master_field_id=fields_by_source[fact.candidate_field_id].id,
+                        source_post_fact_id=fact.id,
+                        fact_key=fact.fact_key,
+                    )
+                )
+        self.session.flush()
+
     def _validate_verification(
         self, assessment: RevisionConfidenceAssessment
     ) -> tuple[Any, Any, list[FieldConfidenceAssessment]]:
@@ -341,9 +373,16 @@ class MasterPublisherService:
         if run.candidate_revision_hash_snapshot != revision.revision_hash:
             raise DomainConflictError("VerificationRun revision hash snapshot mismatch")
 
-        field_assessments = ConfidenceService.validate_persisted_revision_assessment(
-            self.session, assessment
-        )
+        if assessment.policy_version == ConfidencePolicyVersion.V2:
+            validated, field_assessments, _ = ConfidenceV2Service(
+                self.session, commit=False
+            ).score_run(run.id)
+            if validated.id != assessment.id:
+                raise DomainConflictError("Confidence V2 identity mismatch")
+        else:
+            field_assessments = ConfidenceService.validate_persisted_revision_assessment(
+                self.session, assessment
+            )
         verifications = self.field_verifications.list_for_run(run.id)
         revision_field_ids = {field.id for field in revision.fields}
         verification_field_ids = {item.candidate_field_id for item in verifications}
@@ -372,6 +411,8 @@ class MasterPublisherService:
         revision: Any,
         field_assessments: list[FieldConfidenceAssessment],
     ) -> tuple[list[dict[str, Any]], PublicationPath, ReviewCase | None]:
+        if assessment.policy_version == ConfidencePolicyVersion.V2:
+            return self._effective_routing_projection(assessment, revision)
         if not assessment.review_required:
             return (
                 [
@@ -438,6 +479,160 @@ class MasterPublisherService:
             else PublicationPath.HUMAN_APPROVED
         )
         return effective_fields, path, review_case
+
+    def _effective_routing_projection(
+        self, assessment: RevisionConfidenceAssessment, revision: Any
+    ) -> tuple[list[dict[str, Any]], PublicationPath, ReviewCase | None]:
+        routing, _ = ReviewRoutingService(self.session, commit=False).assess(assessment.id)
+        if not routing.review_required:
+            return (
+                [
+                    self._effective_field(
+                        field.field_path,
+                        field.value_type,
+                        field.value,
+                        field.id,
+                        None,
+                        MasterFieldValueOrigin.CANDIDATE_VERIFIED,
+                    )
+                    for field in revision.fields
+                ],
+                PublicationPath.VERIFIED_NO_REVIEW,
+                None,
+            )
+        case_row = self.review_cases.get_by_routing_assessment(routing.id)
+        if case_row is None:
+            raise DomainConflictError("Required routing-driven ReviewCase is missing")
+        review_case = ReviewService(self.session).get_case(case_row.id)
+        if review_case.status != ReviewCaseStatus.RESOLVED:
+            raise DomainConflictError("Required routing-driven ReviewCase is not resolved")
+        if (
+            review_case.candidate_revision_id != assessment.candidate_revision_id
+            or review_case.verification_run_id != assessment.verification_run_id
+            or review_case.review_routing_assessment_id != routing.id
+            or review_case.revision_confidence_assessment_id != assessment.id
+            or review_case.policy_version != assessment.policy_version
+            or review_case.revision_score_snapshot != assessment.score
+            or review_case.revision_review_reason_codes_snapshot != routing.reason_codes
+            or review_case.priority != routing.priority
+            or review_case.component_breakdown_snapshot != routing.component_breakdown
+        ):
+            raise DomainConflictError(
+                "Routing-driven ReviewCase snapshot fails integrity validation"
+            )
+        field_confidences = ConfidenceV2Service(self.session, commit=False).get_revision_assessment(
+            assessment.verification_run_id
+        )[1]
+        self._validate_routing_review_items(
+            review_case, routing.field_routes, routing.reason_codes, field_confidences
+        )
+        projection = ReviewService(self.session).approved_projection(review_case.id)
+        if not projection["master_eligible"]:
+            raise DomainConflictError("Routing review has no publishable Advertisement or Post")
+        items_by_field = {
+            item.candidate_field_id: item
+            for item in review_case.items
+            if item.scope == ReviewItemScope.FIELD
+        }
+        effective_fields = []
+        any_correction = False
+        for projected in projection["fields"]:
+            if not projected["approved"]:
+                continue
+            item = items_by_field.get(projected["candidate_field_id"])
+            decision = item.decision if item is not None else None
+            if projected["corrected"]:
+                origin = MasterFieldValueOrigin.HUMAN_CORRECTED
+                any_correction = True
+            elif decision is not None:
+                origin = MasterFieldValueOrigin.HUMAN_APPROVED_AS_IS
+            else:
+                origin = MasterFieldValueOrigin.CANDIDATE_VERIFIED
+            effective_fields.append(
+                self._effective_field(
+                    projected["field_path"],
+                    projected["value_type"],
+                    projected["effective_value"],
+                    projected["candidate_field_id"],
+                    decision.id if decision is not None else None,
+                    origin,
+                )
+            )
+        return (
+            effective_fields,
+            (PublicationPath.HUMAN_CORRECTED if any_correction else PublicationPath.HUMAN_APPROVED),
+            review_case,
+        )
+
+    @staticmethod
+    def _validate_routing_review_items(
+        review_case: ReviewCase,
+        field_routes: list[dict[str, Any]],
+        routing_reasons: list[str],
+        field_confidences: list[FieldConfidenceAssessment],
+    ) -> None:
+        routes_by_confidence = {
+            route["field_confidence_assessment_id"]: route for route in field_routes
+        }
+        confidences_by_id = {str(item.id): item for item in field_confidences}
+        field_items = [item for item in review_case.items if item.scope == ReviewItemScope.FIELD]
+        if {str(item.field_confidence_assessment_id) for item in field_items} != set(
+            routes_by_confidence
+        ):
+            raise DomainConflictError("Routing-driven ReviewCase items fail integrity validation")
+        covered_reasons: set[str] = set()
+        for item in field_items:
+            route = routes_by_confidence[str(item.field_confidence_assessment_id)]
+            confidence = confidences_by_id.get(str(item.field_confidence_assessment_id))
+            if confidence is None:
+                raise DomainConflictError("Routing-driven ReviewCase confidence is unavailable")
+            verification = confidence.field_verification
+            reasons = list(route["reason_codes"])
+            covered_reasons.update(reasons)
+            if (
+                item.item_key != f"FIELD:{confidence.id}"
+                or str(item.candidate_field_id) != route["candidate_field_id"]
+                or item.candidate_field_id != verification.candidate_field_id
+                or item.policy_version != ConfidencePolicyVersion.V2
+                or item.priority.value != route["priority"]
+                or item.field_path_snapshot != route["field_path"]
+                or item.field_path_snapshot != verification.candidate_field_path_snapshot
+                or item.candidate_value_type_snapshot != verification.candidate_field_type_snapshot
+                or item.candidate_value_snapshot != verification.candidate_field_value_snapshot
+                or item.confidence_score_snapshot != confidence.score
+                or item.review_reason_codes_snapshot != reasons
+                or item.component_breakdown_snapshot
+                != {
+                    "confidence": confidence.component_breakdown,
+                    "routing": route,
+                }
+            ):
+                raise DomainConflictError(
+                    "Routing-driven ReviewCase item snapshot fails integrity validation"
+                )
+        expected_revision_reasons = [
+            reason for reason in routing_reasons if reason not in covered_reasons
+        ]
+        revision_items = [
+            item for item in review_case.items if item.scope == ReviewItemScope.REVISION
+        ]
+        if len(revision_items) != bool(expected_revision_reasons):
+            raise DomainConflictError(
+                "Routing-driven ReviewCase revision item fails integrity validation"
+            )
+        if revision_items:
+            item = revision_items[0]
+            if (
+                item.item_key != "REVISION"
+                or item.policy_version != ConfidencePolicyVersion.V2
+                or item.priority != review_case.priority
+                or item.confidence_score_snapshot != review_case.revision_score_snapshot
+                or item.review_reason_codes_snapshot != expected_revision_reasons
+                or item.component_breakdown_snapshot != review_case.component_breakdown_snapshot
+            ):
+                raise DomainConflictError(
+                    "Routing-driven ReviewCase revision snapshot fails integrity validation"
+                )
 
     @staticmethod
     def _effective_field(

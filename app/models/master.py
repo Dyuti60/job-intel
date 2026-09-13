@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -166,12 +167,16 @@ class RecruitmentMasterRevision(Base):
     fields: Mapped[list["MasterField"]] = relationship(
         back_populates="master_revision", order_by="MasterField.field_path"
     )
+    posts: Mapped[list["MasterPost"]] = relationship(
+        back_populates="master_revision", order_by="MasterPost.ordinal"
+    )
 
 
 class MasterField(Base):
     __tablename__ = "master_fields"
     __table_args__ = (
         UniqueConstraint("master_revision_id", "field_path", name="uq_master_fields_revision_path"),
+        UniqueConstraint("id", "master_revision_id", name="uq_master_fields_id_revision"),
         CheckConstraint(
             "(value_origin = 'CANDIDATE_VERIFIED' AND review_decision_id IS NULL) OR "
             "(value_origin IN ('HUMAN_APPROVED_AS_IS', 'HUMAN_CORRECTED') "
@@ -207,6 +212,77 @@ class MasterField(Base):
     )
 
     master_revision: Mapped[RecruitmentMasterRevision] = relationship(back_populates="fields")
+
+
+class MasterPost(Base):
+    """An approved immutable Post snapshot inside one Master revision."""
+
+    __tablename__ = "master_posts"
+    __table_args__ = (
+        UniqueConstraint("master_revision_id", "post_key", name="uq_master_posts_revision_key"),
+        UniqueConstraint("master_revision_id", "ordinal", name="uq_master_posts_revision_ordinal"),
+        UniqueConstraint("id", "master_revision_id", name="uq_master_posts_id_revision"),
+        CheckConstraint("ordinal >= 1", name="ck_master_posts_positive_ordinal"),
+        Index("ix_master_posts_source_post", "source_recruitment_post_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    master_revision_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("recruitment_master_revisions.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_recruitment_post_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("recruitment_posts.id", ondelete="RESTRICT"), nullable=False
+    )
+    post_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(500), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    master_revision: Mapped[RecruitmentMasterRevision] = relationship(back_populates="posts")
+    facts: Mapped[list["MasterPostFact"]] = relationship(
+        back_populates="master_post", order_by="MasterPostFact.fact_key"
+    )
+
+
+class MasterPostFact(Base):
+    """Post-scoped meaning for an approved MasterField."""
+
+    __tablename__ = "master_post_facts"
+    __table_args__ = (
+        UniqueConstraint("master_post_id", "fact_key", name="uq_master_post_facts_post_key"),
+        UniqueConstraint("master_field_id", name="uq_master_post_facts_master_field"),
+        ForeignKeyConstraint(
+            ["master_post_id", "master_revision_id"],
+            ["master_posts.id", "master_posts.master_revision_id"],
+            name="fk_master_post_facts_post_revision",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["master_field_id", "master_revision_id"],
+            ["master_fields.id", "master_fields.master_revision_id"],
+            name="fk_master_post_facts_field_revision",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_master_post_facts_source_fact", "source_post_fact_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    master_post_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    master_revision_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    master_field_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    source_post_fact_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("post_facts.id", ondelete="RESTRICT"), nullable=False
+    )
+    fact_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    master_post: Mapped[MasterPost] = relationship(back_populates="facts", overlaps="master_field")
+    master_field: Mapped[MasterField] = relationship(overlaps="master_post,facts")
 
 
 class MasterPublicationEvent(Base):

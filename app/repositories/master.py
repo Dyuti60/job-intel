@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.master import (
     MasterChange,
+    MasterPost,
     MasterPublicationEvent,
     RecruitmentMaster,
     RecruitmentMasterRevision,
@@ -26,7 +27,10 @@ class RecruitmentMasterRepository:
             .options(
                 selectinload(RecruitmentMaster.current_revision).selectinload(
                     RecruitmentMasterRevision.fields
-                )
+                ),
+                selectinload(RecruitmentMaster.current_revision)
+                .selectinload(RecruitmentMasterRevision.posts)
+                .selectinload(MasterPost.facts),
             )
             .where(RecruitmentMaster.id == master_id)
         )
@@ -40,7 +44,10 @@ class RecruitmentMasterRepository:
             .options(
                 selectinload(RecruitmentMaster.current_revision).selectinload(
                     RecruitmentMasterRevision.fields
-                )
+                ),
+                selectinload(RecruitmentMaster.current_revision)
+                .selectinload(RecruitmentMasterRevision.posts)
+                .selectinload(MasterPost.facts),
             )
             .where(
                 RecruitmentMaster.recruiting_authority_id == recruiting_authority_id,
@@ -83,7 +90,10 @@ class MasterRevisionRepository:
     def get(self, revision_id: uuid.UUID) -> RecruitmentMasterRevision | None:
         return self.session.scalar(
             select(RecruitmentMasterRevision)
-            .options(selectinload(RecruitmentMasterRevision.fields))
+            .options(
+                selectinload(RecruitmentMasterRevision.fields),
+                selectinload(RecruitmentMasterRevision.posts).selectinload(MasterPost.facts),
+            )
             .where(RecruitmentMasterRevision.id == revision_id)
         )
 
@@ -92,7 +102,10 @@ class MasterRevisionRepository:
     ) -> RecruitmentMasterRevision | None:
         return self.session.scalar(
             select(RecruitmentMasterRevision)
-            .options(selectinload(RecruitmentMasterRevision.fields))
+            .options(
+                selectinload(RecruitmentMasterRevision.fields),
+                selectinload(RecruitmentMasterRevision.posts).selectinload(MasterPost.facts),
+            )
             .where(
                 RecruitmentMasterRevision.recruitment_master_id == master_id,
                 RecruitmentMasterRevision.projection_hash == projection_hash,
@@ -103,7 +116,10 @@ class MasterRevisionRepository:
         return list(
             self.session.scalars(
                 select(RecruitmentMasterRevision)
-                .options(selectinload(RecruitmentMasterRevision.fields))
+                .options(
+                    selectinload(RecruitmentMasterRevision.fields),
+                    selectinload(RecruitmentMasterRevision.posts).selectinload(MasterPost.facts),
+                )
                 .where(RecruitmentMasterRevision.recruitment_master_id == master_id)
                 .order_by(RecruitmentMasterRevision.revision_number)
             )

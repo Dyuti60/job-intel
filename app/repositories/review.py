@@ -36,6 +36,11 @@ class ReviewCaseRepository:
             select(ReviewCase).where(ReviewCase.revision_confidence_assessment_id == assessment_id)
         )
 
+    def get_by_routing_assessment(self, assessment_id: uuid.UUID) -> ReviewCase | None:
+        return self.session.scalar(
+            select(ReviewCase).where(ReviewCase.review_routing_assessment_id == assessment_id)
+        )
+
     def list(
         self,
         *,

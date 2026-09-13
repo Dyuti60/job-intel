@@ -6,12 +6,15 @@ from dataclasses import dataclass, field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.models.confidence import ConfidencePolicyVersion
 from app.models.master import PublicationPath
 from app.models.review import ReviewCaseOutcome, ReviewCaseStatus
 from app.repositories.confidence import RevisionConfidenceRepository
 from app.repositories.review import ReviewCaseRepository
+from app.repositories.review_routing import ReviewRoutingRepository
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
 from app.services.master import MasterPublisherService
+from app.services.review import ReviewService
 
 
 class PublicationCandidateKind(enum.StrEnum):
@@ -58,6 +61,7 @@ class MasterPublisherWorkerService:
         self.logger = logger or logging.getLogger(__name__)
         self.confidence = RevisionConfidenceRepository(session)
         self.review_cases = ReviewCaseRepository(session)
+        self.routing = ReviewRoutingRepository(session)
 
     def run(self, *, batch_size: int, dry_run: bool = False) -> MasterPublisherWorkerSummary:
         summary = MasterPublisherWorkerSummary(dry_run=dry_run)
@@ -149,6 +153,8 @@ class MasterPublisherWorkerService:
             self._failed(summary, assessment_id, str(error))
 
     def _classify(self, assessment) -> PublicationCandidateKind:
+        if assessment.policy_version == ConfidencePolicyVersion.V2:
+            return self._classify_routing(assessment)
         if not assessment.review_required:
             return PublicationCandidateKind.DIRECT
         review_case = self.review_cases.get_by_confidence_assessment(assessment.id)
@@ -170,6 +176,34 @@ class MasterPublisherWorkerService:
             return PublicationCandidateKind.REVERIFICATION_REQUESTED
         raise DomainConflictError("Resolved ReviewCase has no supported outcome")
 
+    def _classify_routing(self, assessment) -> PublicationCandidateKind:
+        from app.models.review_routing import ReviewRoutingPolicyVersion
+
+        routing = self.routing.get_for_policy(assessment.id, ReviewRoutingPolicyVersion.V1)
+        if routing is None:
+            return PublicationCandidateKind.REVIEW_MISSING
+        if not routing.review_required:
+            return PublicationCandidateKind.DIRECT
+        review_case = self.review_cases.get_by_routing_assessment(routing.id)
+        if review_case is None:
+            return PublicationCandidateKind.REVIEW_MISSING
+        if review_case.status in {ReviewCaseStatus.QUEUED, ReviewCaseStatus.IN_REVIEW}:
+            return PublicationCandidateKind.REVIEW_PENDING
+        if review_case.status == ReviewCaseStatus.CANCELLED:
+            return PublicationCandidateKind.REVIEW_CANCELLED
+        if review_case.status != ReviewCaseStatus.RESOLVED:
+            raise DomainConflictError("ReviewCase has an unsupported publication state")
+        projection = ReviewService(self.session, commit=False).approved_projection(review_case.id)
+        if projection["master_eligible"]:
+            if any(item["corrected"] and item["approved"] for item in projection["fields"]):
+                return PublicationCandidateKind.HUMAN_CORRECTED
+            return PublicationCandidateKind.HUMAN_APPROVED
+        if review_case.outcome == ReviewCaseOutcome.REVERIFICATION_REQUESTED:
+            return PublicationCandidateKind.REVERIFICATION_REQUESTED
+        if review_case.outcome == ReviewCaseOutcome.REJECTED:
+            return PublicationCandidateKind.REJECTED
+        raise DomainConflictError("Resolved routing ReviewCase has no publishable result")
+
     def _skip(
         self,
         summary: MasterPublisherWorkerSummary,
@@ -184,9 +218,7 @@ class MasterPublisherWorkerService:
             PublicationCandidateKind.REVERIFICATION_REQUESTED: "reverification_requested",
         }[kind]
         setattr(summary, attribute, getattr(summary, attribute) + 1)
-        self.logger.info(
-            "master_publication_skipped id=%s reason=%s", assessment_id, kind.value
-        )
+        self.logger.info("master_publication_skipped id=%s reason=%s", assessment_id, kind.value)
 
     def _failed(
         self,
@@ -195,9 +227,7 @@ class MasterPublisherWorkerService:
         reason: str,
     ) -> None:
         summary.failed += 1
-        self.logger.error(
-            "master_publication_failed id=%s reason=%s", assessment_id, reason
-        )
+        self.logger.error("master_publication_failed id=%s reason=%s", assessment_id, reason)
 
     @staticmethod
     def _assert_path(kind: PublicationCandidateKind, path: PublicationPath) -> None:

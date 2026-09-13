@@ -1457,3 +1457,38 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
 - Existing ReviewCases remain tied to V1 until the next milestone introduces Post-grouped review
   and publisher consumption of Routing V1.
 - No Post has entered Master or the public product yet.
+
+## V1-M4 — Post-grouped review and Post-aware Master — 2026-09-14
+
+### Result
+
+- Linked new Confidence V2 ReviewCases to immutable Routing V1 assessments without changing
+  historical V1 cases.
+- Generated review items only for routed field risks, grouped the private detail page into
+  Advertisement and explicit Post sections, and showed valid sibling Posts as independently
+  publishable.
+- Added scoped review projection: a rejected Post is excluded while approved/unrouted sibling Posts
+  and shared advertisement facts proceed; advertisement-wide rejection still fails closed.
+- Extended immutable Master revisions with ordered `MasterPost` and `MasterPostFact` provenance
+  snapshots linked to the exact approved CandidateField, RecruitmentPost, and PostFact.
+- Enabled Confidence V2 publication through the existing shared `MasterPublisherService`; API,
+  worker, and pipeline use the same routing validation and projection behavior. Historical V1
+  publication remains supported.
+- Added fail-closed validation of routing case and item snapshots before any Master mutation.
+
+### Validation performed
+
+- Added end-to-end coverage proving one conflicted Post can be rejected while its valid sibling is
+  published, rendered in the Review UI, replayed idempotently, and persisted with exact PostFact
+  provenance. Added an adversarial test proving a tampered routed item cannot publish.
+- Downgrade from `20260914_0014` to `20260914_0013` and re-upgrade succeeded on PostgreSQL.
+- A separately named fresh PostgreSQL database applied the complete migration chain through
+  `20260914_0014`; `alembic current` and `alembic check` passed, and the database was removed.
+- `uv run pytest -q`: 327 tests passed.
+- `uv run ruff check .`, migration drift checking, and `git diff --check`: passed.
+
+### Known limitations
+
+- The public API and `/jobs` still use RecruitmentMaster as the result unit; the next milestone
+  makes approved Master Posts independently discoverable.
+- Deterministic applicant eligibility is not implemented yet.

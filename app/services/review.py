@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.confidence import (
+    ConfidencePolicyVersion,
     FieldConfidenceAssessment,
     ReviewPriority,
     ReviewReasonCode,
@@ -32,7 +33,9 @@ from app.repositories.review import (
 from app.schemas.review import ReviewDecisionCreate
 from app.services.candidate_values import normalize_typed_value
 from app.services.confidence import ConfidenceService
+from app.services.confidence_v2 import ConfidenceV2Service
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
+from app.services.review_routing import ReviewRoutingService
 
 REVISION_ITEM_REASONS = {
     ReviewReasonCode.PARTIAL_VERIFICATION.value,
@@ -54,6 +57,8 @@ class ReviewService:
         assessment = self.confidence.get(revision_confidence_assessment_id)
         if assessment is None:
             raise ResourceNotFoundError("Revision confidence assessment not found")
+        if assessment.policy_version == ConfidencePolicyVersion.V2:
+            return self._create_routing_case(assessment)
         if not assessment.review_required:
             raise DomainConflictError(
                 "Revision confidence assessment does not require Human Review"
@@ -141,6 +146,98 @@ class ReviewService:
                 return self.get_case(existing.id), False
             raise DomainConflictError(
                 "Review case conflicted with concurrent queue generation; retry"
+            ) from error
+        return self.get_case(review_case.id), True
+
+    def _create_routing_case(
+        self, assessment: RevisionConfidenceAssessment
+    ) -> tuple[ReviewCase, bool]:
+        routing, _ = ReviewRoutingService(self.session, commit=False).assess(assessment.id)
+        if not routing.review_required:
+            raise DomainConflictError("Review-routing assessment does not require Human Review")
+        field_assessments = ConfidenceV2Service(self.session, commit=False).get_revision_assessment(
+            assessment.verification_run_id
+        )[1]
+        existing = self.cases.get_by_routing_assessment(routing.id)
+        if existing is not None:
+            return self.get_case(existing.id), False
+
+        now = datetime.now(UTC)
+        review_case = ReviewCase(
+            candidate_revision_id=assessment.candidate_revision_id,
+            verification_run_id=assessment.verification_run_id,
+            revision_confidence_assessment_id=assessment.id,
+            review_routing_assessment_id=routing.id,
+            status=ReviewCaseStatus.QUEUED,
+            priority=routing.priority,
+            policy_version=assessment.policy_version,
+            revision_score_snapshot=assessment.score,
+            revision_review_reason_codes_snapshot=copy.deepcopy(routing.reason_codes),
+            component_breakdown_snapshot=copy.deepcopy(routing.component_breakdown),
+            opened_at=now,
+        )
+        self.cases.add(review_case)
+        self.session.flush()
+        confidence_by_id = {str(item.id): item for item in field_assessments}
+        covered_reasons: set[str] = set()
+        for route in routing.field_routes:
+            field_assessment = confidence_by_id.get(route["field_confidence_assessment_id"])
+            if field_assessment is None:
+                raise DomainConflictError("Routing references an unavailable field confidence")
+            verification = field_assessment.field_verification
+            reasons = list(route["reason_codes"])
+            covered_reasons.update(reasons)
+            self.items.add(
+                ReviewItem(
+                    review_case_id=review_case.id,
+                    item_key=f"FIELD:{field_assessment.id}",
+                    scope=ReviewItemScope.FIELD,
+                    field_confidence_assessment_id=field_assessment.id,
+                    candidate_field_id=verification.candidate_field_id,
+                    status=ReviewItemStatus.PENDING,
+                    priority=ReviewPriority(route["priority"]),
+                    policy_version=assessment.policy_version,
+                    field_path_snapshot=verification.candidate_field_path_snapshot,
+                    candidate_value_type_snapshot=verification.candidate_field_type_snapshot,
+                    candidate_value_snapshot=copy.deepcopy(
+                        verification.candidate_field_value_snapshot
+                    ),
+                    confidence_score_snapshot=field_assessment.score,
+                    review_reason_codes_snapshot=reasons,
+                    component_breakdown_snapshot={
+                        "confidence": copy.deepcopy(field_assessment.component_breakdown),
+                        "routing": copy.deepcopy(route),
+                    },
+                )
+            )
+        revision_reasons = [
+            reason for reason in routing.reason_codes if reason not in covered_reasons
+        ]
+        if revision_reasons:
+            self.items.add(
+                ReviewItem(
+                    review_case_id=review_case.id,
+                    item_key="REVISION",
+                    scope=ReviewItemScope.REVISION,
+                    status=ReviewItemStatus.PENDING,
+                    priority=routing.priority,
+                    policy_version=assessment.policy_version,
+                    confidence_score_snapshot=assessment.score,
+                    review_reason_codes_snapshot=revision_reasons,
+                    component_breakdown_snapshot=copy.deepcopy(routing.component_breakdown),
+                )
+            )
+        if not routing.field_routes and not revision_reasons:
+            raise DomainConflictError("Review routing produced no review items")
+        try:
+            self._save()
+        except IntegrityError as error:
+            self.session.rollback()
+            existing = self.cases.get_by_routing_assessment(routing.id)
+            if existing is not None:
+                return self.get_case(existing.id), False
+            raise DomainConflictError(
+                "Review case conflicted with concurrent routing; retry"
             ) from error
         return self.get_case(review_case.id), True
 
@@ -268,6 +365,8 @@ class ReviewService:
         revision = self.revisions.get(review_case.candidate_revision_id)
         if revision is None:
             raise DomainConflictError("Review case candidate revision is unavailable")
+        if review_case.review_routing_assessment_id is not None:
+            return self._routing_approved_projection(review_case, revision)
 
         master_eligible = review_case.outcome in {
             ReviewCaseOutcome.APPROVED,
@@ -310,9 +409,92 @@ class ReviewService:
             "fields": fields,
         }
 
+    @staticmethod
+    def _routing_approved_projection(review_case: ReviewCase, revision) -> dict[str, Any]:
+        decisions_by_field = {
+            item.candidate_field_id: item.decision
+            for item in review_case.items
+            if item.scope == ReviewItemScope.FIELD
+        }
+        blocked_posts: set[str] = set()
+        global_block = False
+        for item in review_case.items:
+            decision = item.decision
+            if decision is None or decision.decision not in {
+                ReviewDecisionType.REJECT,
+                ReviewDecisionType.REQUEST_REVERIFICATION,
+            }:
+                continue
+            post_key = ReviewService._post_key(item.field_path_snapshot)
+            if item.scope == ReviewItemScope.REVISION or post_key is None:
+                global_block = True
+            else:
+                blocked_posts.add(post_key)
+
+        fields = []
+        approved_post_keys: set[str] = set()
+        for field in revision.fields:
+            post_key = ReviewService._post_key(field.field_path)
+            approved = not global_block and (post_key is None or post_key not in blocked_posts)
+            decision = decisions_by_field.get(field.id)
+            corrected = bool(
+                approved
+                and decision is not None
+                and decision.decision == ReviewDecisionType.CORRECT_AND_APPROVE
+            )
+            if approved and post_key is not None:
+                approved_post_keys.add(post_key)
+            fields.append(
+                {
+                    "candidate_field_id": field.id,
+                    "field_path": field.field_path,
+                    "value_type": field.value_type,
+                    "original_value": copy.deepcopy(field.value),
+                    "effective_value": (
+                        copy.deepcopy(decision.corrected_value if corrected else field.value)
+                        if approved
+                        else None
+                    ),
+                    "approved": approved,
+                    "corrected": corrected,
+                    "review_decision_id": decision.id if decision is not None else None,
+                }
+            )
+        explicit_posts = (
+            revision.advertisement_revision.posts
+            if revision.advertisement_revision is not None
+            else []
+        )
+        master_eligible = not global_block and (
+            bool(approved_post_keys) if explicit_posts else any(item["approved"] for item in fields)
+        )
+        return {
+            "review_case_id": review_case.id,
+            "candidate_revision_id": review_case.candidate_revision_id,
+            "outcome": review_case.outcome,
+            "master_eligible": master_eligible,
+            "approved_post_keys": sorted(approved_post_keys),
+            "blocked_post_keys": sorted(blocked_posts),
+            "fields": fields,
+        }
+
+    @staticmethod
+    def _post_key(field_path: str | None) -> str | None:
+        if field_path is None or not field_path.startswith("posts."):
+            return None
+        parts = field_path.split(".", 2)
+        return parts[1] if len(parts) == 3 else None
+
     def _validate_confidence_integrity(
         self, assessment: RevisionConfidenceAssessment
     ) -> list[FieldConfidenceAssessment]:
+        if assessment.policy_version == ConfidencePolicyVersion.V2:
+            validated, fields, _ = ConfidenceV2Service(self.session, commit=self.commit).score_run(
+                assessment.verification_run_id
+            )
+            if validated.id != assessment.id:
+                raise DomainConflictError("Confidence V2 identity mismatch")
+            return fields
         return ConfidenceService.validate_persisted_revision_assessment(
             self.session, assessment, commit=self.commit
         )

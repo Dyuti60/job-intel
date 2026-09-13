@@ -14,6 +14,11 @@ post-wise qualification, age, experience, and pay tables. It emits Posts only fo
 valid rows with exact totals; damaged splits and uncertain post ownership are retained as
 evidence-backed ambiguity instead of guessed.
 
+Confidence V2 now feeds a separately versioned deterministic review-routing policy. The private
+review application groups routed risk by Advertisement and Post, and the shared publisher can
+exclude a rejected Post while preserving approved sibling Posts. Published Master revisions retain
+immutable Post/PostFact-to-CandidateField provenance; legacy V1 publication remains supported.
+
 For a complete plain-language system walkthrough, local/browser startup guide, operator runbook,
 debugging checklist, and handover map, see
 [Knowledge Transfer and Operations Guide](docs/knowledge_transfer.md).

@@ -165,8 +165,7 @@ class VerificationWorkerService:
             select(func.max(ReviewCase.resolved_at))
             .join(
                 RevisionConfidenceAssessment,
-                RevisionConfidenceAssessment.id
-                == ReviewCase.revision_confidence_assessment_id,
+                RevisionConfidenceAssessment.id == ReviewCase.revision_confidence_assessment_id,
             )
             .where(
                 RevisionConfidenceAssessment.candidate_revision_id == revision_id,
@@ -235,9 +234,7 @@ class VerificationWorkerService:
                         assessment_note=interpretation.note,
                     ),
                 )
-            verification.finalize_field_verification(
-                field_verification.id, not_applicable=False
-            )
+            verification.finalize_field_verification(field_verification.id, not_applicable=False)
         run = verification.complete_run(
             run.id, VerificationRunComplete(status=VerificationRunStatus.COMPLETED)
         )
@@ -245,16 +242,16 @@ class VerificationWorkerService:
         confidence_v2, _, _ = ConfidenceV2Service(self.session, commit=False).score_run(run.id)
         routing, _ = ReviewRoutingService(self.session, commit=False).assess(confidence_v2.id)
         review_case_id = None
-        if confidence.review_required:
-            review_case, _ = ReviewService(self.session, commit=False).create_case(confidence.id)
+        if routing.review_required:
+            review_case, _ = ReviewService(self.session, commit=False).create_case(confidence_v2.id)
             review_case_id = review_case.id
         self.logger.info(
             "verification_revision_completed candidate_revision_id=%s run_id=%s "
             "score=%s review_required=%s",
             revision.id,
             run.id,
-            confidence.score,
-            confidence.review_required,
+            confidence_v2.score,
+            routing.review_required,
         )
         return VerificationWorkerItemResult(
             candidate_revision_id=revision.id,
@@ -263,12 +260,12 @@ class VerificationWorkerService:
             confidence_v2_assessment_id=confidence_v2.id,
             review_routing_assessment_id=routing.id,
             review_case_id=review_case_id,
-            score=confidence.score,
+            score=confidence_v2.score,
             fields_confirmed=run.fields_confirmed,
             fields_conflicted=run.fields_conflicted,
             fields_insufficient=run.fields_insufficient,
             fields_not_applicable=run.fields_not_applicable,
-            review_required=confidence.review_required,
+            review_required=routing.review_required,
         )
 
     @staticmethod
@@ -299,7 +296,7 @@ def format_verification_summary(summary: VerificationWorkerSummary) -> str:
     errors = "\n".join(f"  - {item}" for item in summary.errors) or "  None"
     return f"""================================================
  Assam Job Intelligence - Verification ({mode})
- Authority: {summary.authority or 'ALL'}
+ Authority: {summary.authority or "ALL"}
 ================================================
 Candidate revisions scanned: {summary.revisions_scanned}
 
@@ -324,5 +321,5 @@ MASTER PUBLISHER READY:      {summary.master_publisher_ready}
 
 Errors:
 {errors}
-Status: {'SUCCESS' if summary.failed == 0 else 'PARTIAL_FAILURE'}
+Status: {"SUCCESS" if summary.failed == 0 else "PARTIAL_FAILURE"}
 ================================================"""

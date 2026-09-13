@@ -34,6 +34,27 @@ class MasterFieldRead(MasterSchema):
     created_at: datetime
 
 
+class MasterPostFactRead(MasterSchema):
+    id: uuid.UUID
+    master_post_id: uuid.UUID
+    master_field_id: uuid.UUID
+    source_post_fact_id: uuid.UUID
+    fact_key: str
+    created_at: datetime
+
+
+class MasterPostRead(MasterSchema):
+    id: uuid.UUID
+    master_revision_id: uuid.UUID
+    source_recruitment_post_id: uuid.UUID
+    post_key: str
+    ordinal: int
+    name: str
+    normalized_name: str
+    facts: list[MasterPostFactRead]
+    created_at: datetime
+
+
 class MasterRevisionSummary(MasterSchema):
     id: uuid.UUID
     recruitment_master_id: uuid.UUID
@@ -52,6 +73,7 @@ class MasterRevisionSummary(MasterSchema):
 
 class MasterRevisionRead(MasterRevisionSummary):
     fields: list[MasterFieldRead]
+    posts: list[MasterPostRead]
 
 
 class RecruitmentMasterSummary(MasterSchema):
