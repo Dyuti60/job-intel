@@ -129,7 +129,7 @@ def test_public_web_hides_unpublished_and_inactive_records(
     assert candidate["candidate_key"] not in listing.text
     assert inactive_detail.status_code == 404
     assert unknown.status_code == 404
-    assert "This approved recruitment is not available" in unknown.text
+    assert "This approved job is not available" in unknown.text
 
 
 def test_public_web_escapes_master_and_source_content(
