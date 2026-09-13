@@ -30,7 +30,7 @@ class _RateBucket:
 
 
 class PublicRateLimiter:
-    """Small-process fixed-window guard for the V0 public read surface."""
+    """Small-process fixed-window guard for the bounded V0 public surface."""
 
     def __init__(
         self,

@@ -2,8 +2,8 @@
 {% block content %}
 <section class="hero">
   <p class="eyebrow">Trusted Assam recruitment information</p>
-  <h1>Assam Government recruitments</h1>
-  <p>Browse current, approved records with direct provenance to registered sources.</p>
+  <h1>Assam Government jobs</h1>
+  <p>Browse approved Posts with their parent Advertisement and registered-source provenance.</p>
 </section>
 
 <form class="search-panel" method="get" action="/jobs" aria-label="Recruitment filters">
@@ -12,6 +12,15 @@
     <input id="q" name="q" value="{{ filters.q }}" maxlength="100" placeholder="Recruitment, authority, or candidate key">
   </div>
   <div class="filter-grid">
+    <label>Post name
+      <input name="post_name" value="{{ filters.post_name }}" maxlength="100">
+    </label>
+    <label>Department
+      <input name="department" value="{{ filters.department }}" maxlength="100">
+    </label>
+    <label>Qualification
+      <input name="qualification" value="{{ filters.qualification }}" maxlength="100">
+    </label>
     <label>Authority code
       <input name="authority" value="{{ filters.authority }}" placeholder="APSC">
     </label>
@@ -43,8 +52,8 @@
 </form>
 
 <div class="result-heading">
-  <h2>Recruitments</h2>
-  <p>{{ result.total }} approved record{% if result.total != 1 %}s{% endif %}</p>
+  <h2>Jobs</h2>
+  <p>{{ result.total }} approved job{% if result.total != 1 %}s{% endif %}</p>
 </div>
 
 {% if result.items %}
@@ -57,7 +66,7 @@
     </div>
     <h3><a href="/jobs/{{ job.id }}{% if filters.as_of %}?as_of={{ filters.as_of }}{% endif %}">{{ job.display_name }}</a></h3>
     <p class="authority">{{ job.authority.name }}</p>
-    {% if job.post_name %}<p>{{ job.post_name }}</p>{% endif %}
+    {% if job.post_key %}<p>Advertisement: {{ job.advertisement_title }}</p>{% endif %}
     <dl class="job-facts">
       <div><dt>Opens</dt><dd>{{ job.application.start_date or 'Not specified' }}</dd></div>
       <div><dt>Closes</dt><dd>{{ job.application.end_date or 'Not specified' }}</dd></div>
@@ -69,7 +78,7 @@
 </div>
 {% else %}
 <section class="empty-state">
-  <h2>No approved recruitments found</h2>
+  <h2>No approved jobs found</h2>
   <p>Try clearing the filters. Records appear here only after they cross the verification, review, and Master publication boundary.</p>
 </section>
 {% endif %}

@@ -26,7 +26,12 @@ def _explicit_two_post_run(client) -> dict:
     authority, endpoint = create_discovery_source(client)
     discovery = create_run(client, endpoint["id"])
     document = observe_document(client, discovery["id"])["document"]
-    candidate = create_candidate(client, authority["id"], candidate_key="APSC_TWO_POSTS")
+    candidate = create_candidate(
+        client,
+        authority["id"],
+        candidate_key="APSC_TWO_POSTS",
+        display_name="Two Post Recruitment",
+    )
     revision = create_revision(
         client,
         candidate["id"],
@@ -49,6 +54,28 @@ def _explicit_two_post_run(client) -> dict:
                 "facts": [
                     {"field_path": "name", "value_type": "STRING", "value": "Valid Post"},
                     {"field_path": "vacancies.total", "value_type": "INTEGER", "value": 10},
+                    {"field_path": "age.minimum", "value_type": "INTEGER", "value": 21},
+                    {"field_path": "age.maximum", "value_type": "INTEGER", "value": 38},
+                    {
+                        "field_path": "age.reference_date",
+                        "value_type": "DATE",
+                        "value": "2026-01-01",
+                    },
+                    {
+                        "field_path": "qualification.minimum",
+                        "value_type": "STRING",
+                        "value": "Bachelor Degree",
+                    },
+                    {
+                        "field_path": "domicile.requirement",
+                        "value_type": "STRING",
+                        "value": "Permanent resident of Assam",
+                    },
+                    {
+                        "field_path": "experience.minimum_months",
+                        "value_type": "INTEGER",
+                        "value": 12,
+                    },
                 ],
             },
             {
@@ -137,17 +164,22 @@ def test_rejected_post_does_not_block_valid_sibling_master(client, db_session) -
     assert replay.json()["master_revision"]["id"] == first.json()["master_revision"]["id"]
     revision = first.json()["master_revision"]
     assert [post["post_key"] for post in revision["posts"]] == ["valid_post"]
-    assert [fact["fact_key"] for fact in revision["posts"][0]["facts"]] == [
+    expected_post_facts = {
+        "age.maximum",
+        "age.minimum",
+        "age.reference_date",
+        "domicile.requirement",
+        "experience.minimum_months",
         "name",
+        "qualification.minimum",
         "vacancies.total",
-    ]
+    }
+    assert {fact["fact_key"] for fact in revision["posts"][0]["facts"]} == expected_post_facts
     assert {field["field_path"] for field in revision["fields"]} == {
         "recruitment_name",
-        "posts.valid_post.name",
-        "posts.valid_post.vacancies.total",
-    }
+    } | {f"posts.valid_post.{fact}" for fact in expected_post_facts}
     assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 1
-    assert db_session.scalar(select(func.count()).select_from(MasterPostFact)) == 2
+    assert db_session.scalar(select(func.count()).select_from(MasterPostFact)) == 8
     fact = db_session.scalar(select(MasterPostFact))
     assert fact is not None
     fact.master_revision_id = uuid.uuid4()

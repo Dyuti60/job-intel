@@ -1492,3 +1492,44 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
 - The public API and `/jobs` still use RecruitmentMaster as the result unit; the next milestone
   makes approved Master Posts independently discoverable.
 - Deterministic applicant eligibility is not implemented yet.
+
+## V1-M5 — Public Post product and deterministic eligibility — 2026-09-14
+
+### Result
+
+- Added deterministic UUIDv5 public identities to immutable Master Post snapshots so a logical Post
+  keeps the same public address across later Advertisement revisions.
+- Changed the public list/detail projection so every explicit approved Post is a separate job with
+  parent Advertisement context, shared approved fields, selected Post facts, and registered-source
+  provenance. Legacy-unsplit history remains one compatibility result without invented Posts.
+- Added bounded Post-name, department, and qualification filters alongside existing authority,
+  application-window, vacancy, search, sort, and pagination behavior.
+- Added stateless Eligibility Policy V1 for exact approved Master Posts. Age, Assam domicile, exact
+  qualification text, and structured experience produce explained criterion outcomes and a
+  conservative overall `ELIGIBLE`, `NOT_ELIGIBLE`, `UNKNOWN`, or `REVIEW_REQUIRED` result.
+- Added equivalent JSON API and server-rendered eligibility forms. Applicant profiles and results
+  are never stored, POST responses are never cached, and private workflow/audit data remains absent.
+- Expanded `AGENTS.md` with the permanent Advertisement/Post, policy separation, deterministic V1,
+  scheduler, eligibility, public/private, and historical-document rules from the ownership brief.
+
+### Validation performed
+
+- Added Post-first public API/UI tests using a two-Post Advertisement where the conflicted Post is
+  excluded and the approved sibling alone becomes public.
+- Covered stable public identity, selected-Post field isolation, filtering, exact eligible and
+  underage failures, missing-input UNKNOWN, missing-relaxation REVIEW_REQUIRED, validation bounds,
+  404 behavior, HTML rendering, statelessness, and public-runtime no-store behavior.
+- Downgrade to `20260914_0014` and re-upgrade to `20260914_0015` passed on PostgreSQL.
+- A fresh isolated PostgreSQL database applied the full migration chain to `20260914_0015` and
+  reported no schema drift before removal.
+- `uv run pytest -q`: 330 tests passed.
+- `uv run ruff check .` and `git diff --check`: passed.
+
+### Known limitations
+
+- Free-text qualification equivalence intentionally routes to REVIEW_REQUIRED unless the supplied
+  text exactly matches; V1 does not guess credential equivalence.
+- Category relaxation and experience are deterministic only when approved facts use structured
+  values. Missing or prose-only rules remain UNKNOWN/REVIEW_REQUIRED.
+- Broad official-source onboarding, two-year backfill, and multi-source due scheduling are the next
+  milestone.

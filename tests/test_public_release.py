@@ -109,6 +109,19 @@ def test_public_etag_revalidates_against_current_master(
         assert "2026-10-27" in refreshed.text
 
 
+def test_public_eligibility_post_is_stateless_and_never_cached(client, test_engine) -> None:
+    graph = _published(client, "RELEASE_ELIGIBILITY")
+    master_id = graph["publication"]["master"]["id"]
+    with _public_client(test_engine) as public_client:
+        response = public_client.post(
+            f"/api/public/v1/recruitments/{master_id}/eligibility", json={}
+        )
+        assert response.status_code == 200
+        assert response.json()["overall_outcome"] == "UNKNOWN"
+        assert response.headers["cache-control"] == "no-store"
+        assert "etag" not in response.headers
+
+
 def test_public_rate_limit_and_request_target_bound(test_engine) -> None:
     with _public_client(
         test_engine,

@@ -27,6 +27,22 @@ These rules apply to all future work in this repository.
 23. Prefer deterministic code for crawling, hashing, deduplication, state transitions, deadlines, and other rule-based behavior.
 24. External AI is optional and should be used only where it genuinely improves extraction or verification.
 25. Keep raw/discovery data separate from cleansed/approved master data.
+26. Advertisement is not Post; approved Post-level Master data is the canonical public job unit.
+27. Missing optional facts and low confidence do not by themselves invalidate a recruitment.
+28. Confidence, Review routing, and Publication policy are separate; policy versions are immutable.
+29. Rejection never deletes immutable source, candidate, evidence, verification, or review history.
+30. V1 must remain deterministic and LLM-independent; agentic Internet discovery is V2 scope.
+31. Prefer reusable bounded adapter families and respectful, rate-limited crawling.
+32. Scheduling must be idempotent, deterministically ordered, and failure-isolated by source.
+33. Eligibility operates only on approved Post-level Master facts and is tied to an exact rule and
+    Master revision.
+34. Missing or ambiguous eligibility facts produce UNKNOWN or REVIEW_REQUIRED, never assumed
+    eligibility.
+35. Public runtime must not expose private Review, operations, Candidate, or audit capabilities.
+36. Operational UI actions must invoke bounded services and never arbitrary shell commands.
+37. Results, merit lists, admit cards, appointments, and similar lifecycle documents are not new
+    jobs; historical advertisements do not imply recurrence.
+38. Migrations and backfills must never fabricate unsupported Post splits or facts.
 26. Advertisement and Post are distinct; one advertisement may produce multiple independently usable Posts.
 27. The approved canonical Master and deterministic eligibility unit is a Post, with its parent Advertisement provenance retained.
 28. Missing optional facts and low confidence do not by themselves invalidate a recruitment.

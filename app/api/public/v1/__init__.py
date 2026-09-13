@@ -1,1 +1,1 @@
-"""Version 1 of the public read API."""
+"""Version 1 of the public jobs and stateless eligibility API."""

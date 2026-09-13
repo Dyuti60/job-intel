@@ -1,12 +1,13 @@
 {% extends "public/base.html" %}
 {% block content %}
-<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Recruitments</a><span aria-hidden="true">/</span><span>Details</span></nav>
+<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Jobs</a><span aria-hidden="true">/</span><span>Details</span></nav>
 
 <section class="detail-hero">
   <div>
     <p class="eyebrow">{{ view.recruitment.authority.code }} · {{ view.recruitment.candidate_key }}</p>
     <h1>{{ view.recruitment.display_name }}</h1>
     <p>{{ view.recruitment.authority.name }}</p>
+    {% if view.recruitment.post_key %}<p>Advertisement: {{ view.recruitment.advertisement_title }}</p>{% endif %}
   </div>
   <span class="status status-{{ view.recruitment.application.status.value|lower }}">{{ view.recruitment.application.status.value|replace('_', ' ')|title }}</span>
 </section>
@@ -20,6 +21,58 @@
     <div><dt>Last verified</dt><dd>{{ view.recruitment.last_verified_at.strftime('%Y-%m-%d') }}</dd></div>
   </dl>
   <p class="as-of">Application status evaluated on {{ view.recruitment.application.evaluated_on }}.</p>
+</section>
+
+<section class="detail-section" aria-labelledby="eligibility-heading">
+  <h2 id="eligibility-heading">Check deterministic eligibility</h2>
+  <p>This check uses only approved structured facts. Missing or text-only rules return Unknown or Review required.</p>
+  <form class="search-panel" method="post" action="/jobs/{{ view.recruitment.id }}/eligibility">
+    <div class="filter-grid">
+      <label>Date of birth
+        <input type="date" name="date_of_birth">
+      </label>
+      <label>Category
+        <select name="category">
+          <option value="">Not supplied</option>
+          <option value="GENERAL">General</option>
+          <option value="OBC_MOBC">OBC/MOBC</option>
+          <option value="SC">SC</option>
+          <option value="ST_P">ST(P)</option>
+          <option value="ST_H">ST(H)</option>
+          <option value="EWS">EWS</option>
+          <option value="PWBD">PwBD</option>
+        </select>
+      </label>
+      <label>Assam domicile
+        <select name="assam_domicile">
+          <option value="">Not supplied</option>
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+      </label>
+      <label>Experience in months
+        <input type="number" min="0" max="1200" name="experience_months">
+      </label>
+    </div>
+    <label>Qualifications, one per line
+      <textarea name="qualifications" rows="3" maxlength="10000"></textarea>
+    </label>
+    <div class="form-actions"><button type="submit">Evaluate eligibility</button></div>
+  </form>
+  {% if eligibility %}
+  <div class="summary-panel" aria-live="polite">
+    <h3>Overall: {{ eligibility.overall_outcome.value|replace('_', ' ')|title }}</h3>
+    <p>Rule {{ eligibility.rule_version }} · Master revision {{ eligibility.master_revision_number }}</p>
+    <div class="field-list">
+      {% for criterion in eligibility.criteria %}
+      <article class="field-row">
+        <h4>{{ criterion.criterion|title }} — {{ criterion.outcome.value|replace('_', ' ')|title }}</h4>
+        <p>{{ criterion.explanation }}</p>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 </section>
 
 <section class="detail-section" aria-labelledby="fields-heading">

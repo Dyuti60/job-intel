@@ -6,12 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.schemas.eligibility import EligibilityEvaluation, EligibilityProfile
 from app.schemas.public_recruitments import (
     PublicApplicationStatus,
     PublicRecruitmentDetail,
     PublicRecruitmentPage,
     PublicRecruitmentSort,
 )
+from app.services.eligibility import EligibilityService
 from app.services.exceptions import ResourceNotFoundError
 from app.services.public_recruitments import (
     PublicRecruitmentFilters,
@@ -28,6 +30,9 @@ def list_public_recruitments(
     authority: str | None = None,
     candidate_key: str | None = None,
     query: Annotated[str | None, Query(alias="q")] = None,
+    post_name: Annotated[str | None, Query(max_length=100)] = None,
+    department: Annotated[str | None, Query(max_length=100)] = None,
+    qualification: Annotated[str | None, Query(max_length=100)] = None,
     application_status: PublicApplicationStatus | None = None,
     application_start_from: date | None = None,
     application_start_to: date | None = None,
@@ -46,6 +51,9 @@ def list_public_recruitments(
                 authority_code=authority,
                 candidate_key=candidate_key,
                 query=query,
+                post_name=post_name,
+                department=department,
+                qualification=qualification,
                 application_status=application_status,
                 application_start_from=application_start_from,
                 application_start_to=application_start_to,
@@ -71,5 +79,17 @@ def get_public_recruitment(
 ) -> PublicRecruitmentDetail:
     try:
         return PublicRecruitmentService(session).get_recruitment(master_id, as_of=as_of)
+    except ResourceNotFoundError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+
+
+@router.post("/{job_id}/eligibility", response_model=EligibilityEvaluation)
+def evaluate_public_job_eligibility(
+    job_id: uuid.UUID,
+    payload: EligibilityProfile,
+    session: DatabaseSession,
+) -> EligibilityEvaluation:
+    try:
+        return EligibilityService(session).evaluate(job_id, payload)
     except ResourceNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error

@@ -850,3 +850,22 @@ retains its source `RecruitmentPost`; each `MasterPostFact` joins the approved `
 source `PostFact`. Only Posts with at least one approved fact are materialized. The API and worker
 both call `MasterPublisherService`, so eligibility, tamper checks, transactionality, change history,
 and replay behavior have one implementation. The public read layer does not expose these Posts yet.
+
+## Public Post projection and Eligibility V1
+
+`MasterPost.public_id` is a deterministic UUIDv5 of logical RecruitmentMaster identity and
+`post_key`. Immutable snapshots in later Master revisions therefore retain one durable public job
+address while their internal snapshot rows remain append-only. The public repository joins only an
+ACTIVE Master's current revision; explicit Posts become separate results and legacy-unsplit Master
+history remains a single compatibility result. Post detail combines approved advertisement-shared
+MasterFields with only the selected Post's MasterPostFacts and strips the internal Post path prefix.
+
+Eligibility V1 is a stateless deterministic read/evaluation boundary. A JSON or HTML POST supplies
+a bounded transient applicant profile; no profile or evaluation is stored or echoed wholesale.
+The response identifies the durable job, current Master revision number, immutable rule version,
+and field-level outcomes. Structured age and experience values are compared exactly, recognized
+Assam domicile text is evaluated against the supplied assertion, and qualification text is accepted
+only on a normalized exact match. Ambiguous text or a potentially applicable missing relaxation
+returns `REVIEW_REQUIRED`; missing rules or inputs return `UNKNOWN`; neither is treated as eligible.
+Any definitive failure makes the overall outcome `NOT_ELIGIBLE`. Eligibility responses are
+`no-store` and expose no Candidate, Evidence, Confidence, Review, or internal provenance IDs.

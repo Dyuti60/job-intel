@@ -193,40 +193,44 @@ page. JSON clients can use `GET /api/v1/operational-status/{source_code}` and
 `GET /api/v1/operational-notifications`. Like `/review`, this local administration surface has no
 production authentication or CSRF boundary and must not be exposed publicly.
 
-## Public Recruitment API
+## Public Jobs API
 
-T-017 provides a read-only public contract sourced exclusively from ACTIVE RecruitmentMaster
-records and each master's current immutable revision:
+The public contract is sourced exclusively from ACTIVE RecruitmentMaster records and each master's
+current immutable revision. An explicit approved Master Post is one result; legacy-unsplit history
+remains one bounded recruitment result without fabricating a Post:
 
 ```text
 GET /api/public/v1/recruitments
-GET /api/public/v1/recruitments/{master_id}
+GET /api/public/v1/recruitments/{job_id}
+POST /api/public/v1/recruitments/{job_id}/eligibility
 ```
 
-The list supports `authority`, normalized `candidate_key`, literal text `q`, derived
+The list supports `authority`, normalized `candidate_key`, literal text `q`, Post name, department,
+qualification, derived
 `application_status`, application start/end ranges, vacancy ranges, deterministic `sort`, and
 page-based pagination (`page_size` is capped at 100). Use optional `as_of=YYYY-MM-DD` for a
 reproducible application-status view; otherwise status is evaluated on the current UTC date.
 
 Responses include approved typed values and bounded source-document/endpoint provenance. They do
 not expose drafts, historical non-current revisions, review decisions, confidence/verification
-internals, evidence bodies, storage locations, operational history, or mutation operations. This is
-the source of truth for the public browser interface.
+internals, evidence bodies, storage locations, operational history, or write operations. Eligibility
+POSTs are stateless, never persisted, never cached, and return versioned field-level explanations.
 
 ## Public Recruitment website
 
 After starting the application, open `http://localhost:8000/jobs`. The server-rendered interface
-provides an accessible recruitment browse page, GET-only filters, deterministic pagination, and
-approved recruitment detail pages with official-source links. It consumes the same T-017 public
+provides an accessible Post-first browse page, GET-only filters, deterministic pagination, and
+approved job detail pages with official-source links. It consumes the same public
 read service and cannot query or mutate Candidate, Verification, Confidence, Review, monitoring,
 or Publisher state.
 
-The current live page is intentionally empty until at least one ReviewCase is resolved as
-publishable and the Master Publisher creates an ACTIVE RecruitmentMaster. T-018 adds no JavaScript
-framework, external CSS dependency, account system, eligibility matching, or public mutation API.
+The page remains empty until at least one ReviewCase is resolved as publishable and the Master
+Publisher creates an ACTIVE RecruitmentMaster. It adds no JavaScript framework, external CSS
+dependency, or account system. A stateless form evaluates age, domicile, exact qualification text,
+and structured experience rules against the selected approved Post.
+
 Approved historical recruitments remain visible and may derive a `CLOSED` application status from
-their approved dates. Planned T-021 eligibility matching will operate only on approved Master data;
-current ingestion does not infer that a past examination will recur.
+their approved dates. Current ingestion does not infer that a past examination will recur.
 
 ## Confidence V2 and independent routing
 
@@ -234,7 +238,7 @@ New completed verification runs also produce immutable Confidence V2 assessments
 Routing V1 assessment. V2 explains reliability from official provenance, extraction, support,
 conflict, ambiguity, and completeness components; it does not approve, publish, or decide review.
 Routing records semantic risks independently and never routes solely because an optional field is
-absent. The existing publisher accepts V1 only until Post-aware Master support is introduced.
+absent. The shared publisher consumes Routing V1 for Confidence V2 and retains legacy V1 support.
 
 ## Public release runtime
 

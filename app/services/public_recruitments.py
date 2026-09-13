@@ -35,6 +35,9 @@ class PublicRecruitmentFilters:
     authority_code: str | None = None
     candidate_key: str | None = None
     query: str | None = None
+    post_name: str | None = None
+    department: str | None = None
+    qualification: str | None = None
     application_status: PublicApplicationStatus | None = None
     application_start_from: date | None = None
     application_start_to: date | None = None
@@ -50,6 +53,8 @@ class _DerivedRecord:
     application: PublicApplicationWindowRead
     vacancies_total: int | None
     post_name: str | None
+    department: str | None
+    qualification: str | None
 
 
 class PublicRecruitmentService:
@@ -95,6 +100,13 @@ class PublicRecruitmentService:
 
     @staticmethod
     def _validate_filters(filters: PublicRecruitmentFilters) -> None:
+        for name, value in {
+            "post name": filters.post_name,
+            "department": filters.department,
+            "qualification": filters.qualification,
+        }.items():
+            if value is not None and len(" ".join(value.split())) > 100:
+                raise ValueError(f"{name} filter must contain at most 100 characters")
         if (
             filters.application_start_from is not None
             and filters.application_start_to is not None
@@ -115,25 +127,26 @@ class PublicRecruitmentService:
             raise ValueError("vacancy range is invalid")
 
     def get_recruitment(
-        self, master_id: uuid.UUID, *, as_of: date | None = None
+        self, public_id: uuid.UUID, *, as_of: date | None = None
     ) -> PublicRecruitmentDetail:
-        record = self.repository.get_current_active(master_id)
+        record = self.repository.get_current_active(public_id)
         if record is None:
             raise ResourceNotFoundError("Public recruitment not found")
         derived = self._derive(record, as_of or datetime.now(UTC).date())
-        sources = self.repository.field_sources(record.revision.fields)
-        if len(sources) != len(record.revision.fields) or any(
+        visible_fields = self._visible_fields(record)
+        sources = self.repository.field_sources(visible_fields)
+        if len(sources) != len(visible_fields) or any(
             source.authority.id != record.authority.id for source in sources.values()
         ):
             raise ResourceNotFoundError("Public recruitment provenance is unavailable")
         public_fields = [
             PublicRecruitmentFieldRead(
-                field_path=field.field_path,
+                field_path=self._public_path(record, field),
                 value_type=field.value_type,
                 value=field.value,
                 source=self._source(sources[field.source_candidate_field_id]),
             )
-            for field in sorted(record.revision.fields, key=lambda item: item.field_path)
+            for field in sorted(visible_fields, key=lambda item: self._public_path(record, item))
             if field.source_candidate_field_id in sources
         ]
         unique_sources = {
@@ -151,9 +164,7 @@ class PublicRecruitmentService:
         )
 
     @staticmethod
-    def _normalize_identifier(
-        value: str | None, name: str, pattern: re.Pattern[str]
-    ) -> str | None:
+    def _normalize_identifier(value: str | None, name: str, pattern: re.Pattern[str]) -> str | None:
         if value is None:
             return None
         normalized = value.strip().upper()
@@ -173,7 +184,7 @@ class PublicRecruitmentService:
         return normalized
 
     def _derive(self, record: PublicMasterRecord, evaluated_on: date) -> _DerivedRecord:
-        fields = {field.field_path: field for field in record.revision.fields}
+        fields = {self._public_path(record, field): field for field in self._visible_fields(record)}
         start = self._date_value(fields.get("application.start_date"))
         end = self._date_value(fields.get("application.end_date"))
         return _DerivedRecord(
@@ -185,8 +196,35 @@ class PublicRecruitmentService:
                 evaluated_on=evaluated_on,
             ),
             vacancies_total=self._integer_value(fields.get("vacancies.total")),
-            post_name=self._string_value(fields.get("post.name")),
+            post_name=(
+                record.post.name
+                if record.post is not None
+                else self._string_value(fields.get("post.name"))
+            ),
+            department=self._string_value(
+                fields.get("department") if "department" in fields else fields.get("organisation")
+            ),
+            qualification=self._string_value(
+                fields.get("qualification.minimum")
+                if "qualification.minimum" in fields
+                else fields.get("eligibility.qualification.summary")
+            ),
         )
+
+    @staticmethod
+    def _visible_fields(record: PublicMasterRecord) -> list[MasterField]:
+        if record.post is None:
+            return list(record.revision.fields)
+        shared = [
+            field for field in record.revision.fields if not field.field_path.startswith("posts.")
+        ]
+        return shared + [fact.master_field for fact in record.post.facts]
+
+    @staticmethod
+    def _public_path(record: PublicMasterRecord, field: MasterField) -> str:
+        if record.post is None:
+            return field.field_path
+        return field.field_path.removeprefix(f"posts.{record.post.post_key}.")
 
     @staticmethod
     def _date_value(field: MasterField | None) -> date | None:
@@ -232,12 +270,10 @@ class PublicRecruitmentService:
         app = item.application
         return all(
             (
-                filters.application_status is None
-                or app.status == filters.application_status,
+                filters.application_status is None or app.status == filters.application_status,
                 filters.application_start_from is None
                 or (
-                    app.start_date is not None
-                    and app.start_date >= filters.application_start_from
+                    app.start_date is not None and app.start_date >= filters.application_start_from
                 ),
                 filters.application_start_to is None
                 or (app.start_date is not None and app.start_date <= filters.application_start_to),
@@ -255,13 +291,22 @@ class PublicRecruitmentService:
                     item.vacancies_total is not None
                     and item.vacancies_total <= filters.maximum_vacancies
                 ),
+                PublicRecruitmentService._contains(item.post_name, filters.post_name),
+                PublicRecruitmentService._contains(item.department, filters.department),
+                PublicRecruitmentService._contains(item.qualification, filters.qualification),
             )
         )
 
     @staticmethod
+    def _contains(actual: str | None, expected: str | None) -> bool:
+        if expected is None or not " ".join(expected.split()):
+            return True
+        return actual is not None and " ".join(expected.split()).casefold() in actual.casefold()
+
+    @staticmethod
     def _sort_key(item: _DerivedRecord, sort: PublicRecruitmentSort) -> tuple:
         master = item.record.master
-        stable = str(master.id)
+        stable = str(item.record.post.public_id if item.record.post is not None else master.id)
         if sort == PublicRecruitmentSort.PUBLISHED_ASC:
             return (master.last_published_at, stable)
         if sort == PublicRecruitmentSort.APPLICATION_END_ASC:
@@ -274,7 +319,13 @@ class PublicRecruitmentService:
             ordinal = -(item.application.end_date.toordinal()) if item.application.end_date else 0
             return (item.application.end_date is None, ordinal, stable)
         if sort == PublicRecruitmentSort.DISPLAY_NAME_ASC:
-            return (master.display_name.casefold(), master.candidate_key, stable)
+            return (
+                (
+                    item.record.post.name if item.record.post is not None else master.display_name
+                ).casefold(),
+                master.candidate_key,
+                stable,
+            )
         if sort == PublicRecruitmentSort.VACANCIES_DESC:
             vacancies = -item.vacancies_total if item.vacancies_total is not None else 0
             return (item.vacancies_total is None, vacancies, stable)
@@ -282,10 +333,13 @@ class PublicRecruitmentService:
 
     @staticmethod
     def _summary(item: _DerivedRecord) -> PublicRecruitmentSummary:
+        post = item.record.post
         return PublicRecruitmentSummary(
-            id=item.record.master.id,
+            id=post.public_id if post is not None else item.record.master.id,
             candidate_key=item.record.master.candidate_key,
-            display_name=item.record.revision.display_name,
+            display_name=post.name if post is not None else item.record.revision.display_name,
+            advertisement_title=item.record.revision.display_name,
+            post_key=post.post_key if post is not None else None,
             authority=PublicAuthorityRead(
                 code=item.record.authority.code,
                 name=item.record.authority.name,

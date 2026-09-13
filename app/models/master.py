@@ -221,9 +221,13 @@ class MasterPost(Base):
     __table_args__ = (
         UniqueConstraint("master_revision_id", "post_key", name="uq_master_posts_revision_key"),
         UniqueConstraint("master_revision_id", "ordinal", name="uq_master_posts_revision_ordinal"),
+        UniqueConstraint(
+            "master_revision_id", "public_id", name="uq_master_posts_revision_public_id"
+        ),
         UniqueConstraint("id", "master_revision_id", name="uq_master_posts_id_revision"),
         CheckConstraint("ordinal >= 1", name="ck_master_posts_positive_ordinal"),
         Index("ix_master_posts_source_post", "source_recruitment_post_id"),
+        Index("ix_master_posts_public_id", "public_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -233,6 +237,7 @@ class MasterPost(Base):
     source_recruitment_post_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("recruitment_posts.id", ondelete="RESTRICT"), nullable=False
     )
+    public_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     post_key: Mapped[str] = mapped_column(String(128), nullable=False)
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
     name: Mapped[str] = mapped_column(String(500), nullable=False)

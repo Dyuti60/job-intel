@@ -328,6 +328,11 @@ class MasterPublisherService:
             master_post = MasterPost(
                 master_revision_id=master_revision.id,
                 source_recruitment_post_id=post.id,
+                public_id=uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    "assam-job-intelligence:master-post:"
+                    f"{master_revision.recruitment_master_id}:{post.post_key}",
+                ),
                 post_key=post.post_key,
                 ordinal=post.ordinal,
                 name=post.name,

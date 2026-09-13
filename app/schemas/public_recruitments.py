@@ -55,6 +55,8 @@ class PublicRecruitmentSummary(PublicSchema):
     id: uuid.UUID
     candidate_key: str
     display_name: str
+    advertisement_title: str
+    post_key: str | None
     authority: PublicAuthorityRead
     current_revision_number: int
     published_at: datetime

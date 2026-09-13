@@ -16,7 +16,7 @@ from tests.test_public_recruitments_api import _published
 def test_public_jobs_page_has_accessible_empty_and_filtered_results(client: TestClient) -> None:
     empty = client.get("/jobs")
     assert empty.status_code == 200
-    assert "No approved recruitments found" in empty.text
+    assert "No approved jobs found" in empty.text
     assert 'href="#main-content"' in empty.text
 
     first = _published(client, "WEB_A", end="2026-10-20", vacancies=25)
@@ -54,7 +54,7 @@ def test_public_jobs_form_accepts_blank_optional_filters(client: TestClient) -> 
     )
 
     assert response.status_code == 200
-    assert "No approved recruitments found" in response.text
+    assert "No approved jobs found" in response.text
 
 
 def test_public_jobs_form_renders_friendly_validation_error(client: TestClient) -> None:
@@ -107,9 +107,7 @@ def test_public_web_hides_unpublished_and_inactive_records(
     client: TestClient, db_session: Session
 ) -> None:
     published = _published(client, "WEB_INACTIVE")
-    master = db_session.get(
-        RecruitmentMaster, UUID(published["publication"]["master"]["id"])
-    )
+    master = db_session.get(RecruitmentMaster, UUID(published["publication"]["master"]["id"]))
     assert master is not None
     master.status = RecruitmentMasterStatus.ARCHIVED
     db_session.commit()
@@ -144,9 +142,7 @@ def test_public_web_escapes_master_and_source_content(
     )
     publication = _publish(client, graph["confidence"]["id"]).json()
     master = db_session.get(RecruitmentMaster, UUID(publication["master"]["id"]))
-    revision = db_session.get(
-        RecruitmentMasterRevision, UUID(publication["master_revision"]["id"])
-    )
+    revision = db_session.get(RecruitmentMasterRevision, UUID(publication["master_revision"]["id"]))
     document = db_session.get(SourceDocument, UUID(graph["document"]["id"]))
     assert master is not None and revision is not None and document is not None
     endpoint = db_session.get(SourceEndpoint, document.source_endpoint_id)

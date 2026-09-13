@@ -604,13 +604,13 @@ public detail response after a newer revision becomes current.
 Public provenance is composed from the source document and registered endpoint behind each current
 MasterField. The response keeps the original source URL, document type, endpoint name, source class,
 and authority identity, but omits evidence text, raw storage, reviewer data, internal verification
-and confidence records, hashes, changes, and operational history. Every public route is GET-only;
-T-017 performs no publishing or other state transition.
+and confidence records, hashes, changes, and operational history. Public browse/detail routes are
+GET-only; Eligibility V1 adds a bounded stateless POST that performs no state transition.
 
 ## Public Recruitment website workflow
 
 ```text
-GET /jobs or /jobs/{master_id}
+GET /jobs or /jobs/{job_id}
   -> T-017 PublicRecruitmentService
   -> ACTIVE current RecruitmentMaster DTOs only
   -> presentation-only view formatting
@@ -716,3 +716,24 @@ when required. The Master Publisher worker prefers V2 whenever it exists and oth
 historical V1. Pending or cancelled routed review is skipped safely. Resolved review is projected by
 scope, and every stored review snapshot is checked against re-derived confidence and routing inputs
 before Master writes occur. API replay returns the existing publication event and revision.
+
+## Public Post and eligibility flow
+
+```text
+ACTIVE RecruitmentMaster + current immutable revision
+  -> each approved MasterPost is one public job
+       -> stable UUIDv5 public identity across Master revisions
+       -> parent Advertisement title and authority
+       -> shared approved fields + selected Post facts only
+  -> GET list/detail and server-rendered /jobs
+  -> optional stateless Eligibility V1 POST
+       -> structured comparisons where deterministic
+       -> ELIGIBLE / NOT_ELIGIBLE / UNKNOWN / REVIEW_REQUIRED per criterion
+       -> conservative overall outcome
+       -> no applicant profile persistence
+```
+
+Legacy-unsplit Master records remain visible as one compatibility result, because migration cannot
+invent a Post. Public filtering is deterministic across Post name, department, qualification,
+application window, vacancies, authority, and bounded literal search. Eligibility always resolves
+the supplied public job ID back through the current ACTIVE Master boundary before evaluating.

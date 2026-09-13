@@ -32,9 +32,7 @@ def _published(
             {"field_path": "application.start_date", "value_type": "DATE", "value": start}
         )
     if end is not None:
-        fields.append(
-            {"field_path": "application.end_date", "value_type": "DATE", "value": end}
-        )
+        fields.append({"field_path": "application.end_date", "value_type": "DATE", "value": end})
     if vacancies is not None:
         fields.append(
             {"field_path": "vacancies.total", "value_type": "INTEGER", "value": vacancies}
@@ -102,9 +100,7 @@ def test_unpublished_rejected_unresolved_and_inactive_records_never_leak(
 ) -> None:
     active = _published(client, "VISIBLE")
     inactive = _published(client, "INACTIVE")
-    inactive_row = db_session.get(
-        RecruitmentMaster, UUID(inactive["publication"]["master"]["id"])
-    )
+    inactive_row = db_session.get(RecruitmentMaster, UUID(inactive["publication"]["master"]["id"]))
     assert inactive_row is not None
     inactive_row.status = RecruitmentMasterStatus.INACTIVE
     db_session.commit()
@@ -128,9 +124,7 @@ def test_unpublished_rejected_unresolved_and_inactive_records_never_leak(
 
     assert result.status_code == 200
     assert ids == {active["publication"]["master"]["id"]}
-    assert client.get(
-        f"{PUBLIC_URL}/{inactive['publication']['master']['id']}"
-    ).status_code == 404
+    assert client.get(f"{PUBLIC_URL}/{inactive['publication']['master']['id']}").status_code == 404
     assert client.get(f"{PUBLIC_URL}/{uuid4()}").status_code == 404
 
 
@@ -167,9 +161,7 @@ def test_filters_ordering_and_pagination_are_deterministic(
     second = _published(client, "B", end="2026-10-20", vacancies=50)
     third = _published(client, "C", start="2026-11-01", end="2026-11-20", vacancies=500)
     for index, graph in enumerate((first, second, third), start=1):
-        master = db_session.get(
-            RecruitmentMaster, UUID(graph["publication"]["master"]["id"])
-        )
+        master = db_session.get(RecruitmentMaster, UUID(graph["publication"]["master"]["id"]))
         assert master is not None
         master.last_published_at = datetime(2026, 9, index, tzinfo=UTC)
     db_session.commit()
@@ -186,26 +178,36 @@ def test_filters_ordering_and_pagination_are_deterministic(
     assert ordered["total"] == 3 and ordered["pages"] == 3
     assert ordered["items"][0]["candidate_key"] == second["candidate"]["candidate_key"]
 
-    assert client.get(
-        PUBLIC_URL,
-        params={"authority": second["authority"]["code"].lower()},
-    ).json()["total"] == 1
-    assert client.get(
-        PUBLIC_URL,
-        params={"candidate_key": third["candidate"]["candidate_key"].lower()},
-    ).json()["total"] == 1
-    assert client.get(PUBLIC_URL, params={"q": "master authority public_b"}).json()[
-        "total"
-    ] == 1
+    assert (
+        client.get(
+            PUBLIC_URL,
+            params={"authority": second["authority"]["code"].lower()},
+        ).json()["total"]
+        == 1
+    )
+    assert (
+        client.get(
+            PUBLIC_URL,
+            params={"candidate_key": third["candidate"]["candidate_key"].lower()},
+        ).json()["total"]
+        == 1
+    )
+    assert client.get(PUBLIC_URL, params={"q": "master authority public_b"}).json()["total"] == 1
     assert client.get(PUBLIC_URL, params={"q": "%"}).json()["total"] == 0
-    assert client.get(
-        PUBLIC_URL,
-        params={"as_of": "2026-09-10", "application_status": "OPEN"},
-    ).json()["total"] == 2
-    assert client.get(
-        PUBLIC_URL,
-        params={"application_end_from": "2026-10-01", "minimum_vacancies": 40},
-    ).json()["total"] == 2
+    assert (
+        client.get(
+            PUBLIC_URL,
+            params={"as_of": "2026-09-10", "application_status": "OPEN"},
+        ).json()["total"]
+        == 2
+    )
+    assert (
+        client.get(
+            PUBLIC_URL,
+            params={"application_end_from": "2026-10-01", "minimum_vacancies": 40},
+        ).json()["total"]
+        == 2
+    )
     vacancies = client.get(PUBLIC_URL, params={"sort": "vacancies_desc"}).json()["items"]
     assert [item["vacancies_total"] for item in vacancies] == [500, 50, 5]
 
@@ -230,21 +232,15 @@ def test_mismatched_current_revision_pointer_fails_closed(
 ) -> None:
     first = _published(client, "POINTER_A")
     second = _published(client, "POINTER_B")
-    first_master = db_session.get(
-        RecruitmentMaster, UUID(first["publication"]["master"]["id"])
-    )
+    first_master = db_session.get(RecruitmentMaster, UUID(first["publication"]["master"]["id"]))
     assert first_master is not None
     first_master.current_revision_id = UUID(second["publication"]["master_revision"]["id"])
     db_session.commit()
 
     listed = client.get(PUBLIC_URL).json()["items"]
 
-    assert {item["id"] for item in listed} == {
-        second["publication"]["master"]["id"]
-    }
-    assert client.get(
-        f"{PUBLIC_URL}/{first['publication']['master']['id']}"
-    ).status_code == 404
+    assert {item["id"] for item in listed} == {second["publication"]["master"]["id"]}
+    assert client.get(f"{PUBLIC_URL}/{first['publication']['master']['id']}").status_code == 404
 
 
 def test_public_validation_is_bounded_and_gets_are_read_only(
@@ -259,17 +255,25 @@ def test_public_validation_is_bounded_and_gets_are_read_only(
     assert client.get(PUBLIC_URL, params={"page_size": 101}).status_code == 422
     assert client.get(PUBLIC_URL, params={"authority": "bad-code"}).status_code == 422
     assert client.get(PUBLIC_URL, params={"q": "x" * 101}).status_code == 422
-    assert client.get(
-        PUBLIC_URL,
-        params={"application_end_from": "2026-10-02", "application_end_to": "2026-10-01"},
-    ).status_code == 422
-    assert client.get(
-        PUBLIC_URL, params={"minimum_vacancies": 10, "maximum_vacancies": 1}
-    ).status_code == 422
+    assert (
+        client.get(
+            PUBLIC_URL,
+            params={"application_end_from": "2026-10-02", "application_end_to": "2026-10-01"},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.get(PUBLIC_URL, params={"minimum_vacancies": 10, "maximum_vacancies": 1}).status_code
+        == 422
+    )
     assert client.get(PUBLIC_URL).status_code == 200
-    assert client.get(
-        f"{PUBLIC_URL}/{graph['publication']['master']['id']}"
-    ).status_code == 200
+    assert client.get(f"{PUBLIC_URL}/{graph['publication']['master']['id']}").status_code == 200
+    assert (
+        client.post(
+            f"{PUBLIC_URL}/{graph['publication']['master']['id']}/eligibility", json={}
+        ).status_code
+        == 200
+    )
 
     db_session.expire_all()
     after = {
@@ -284,4 +288,7 @@ def test_public_validation_is_bounded_and_gets_are_read_only(
         if path.startswith("/api/public/v1/")
     }
     assert public_paths
-    assert all(set(methods) == {"get"} for methods in public_paths.values())
+    assert all(
+        set(methods) == ({"post"} if path.endswith("/eligibility") else {"get"})
+        for path, methods in public_paths.items()
+    )

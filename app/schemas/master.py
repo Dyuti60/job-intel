@@ -45,6 +45,7 @@ class MasterPostFactRead(MasterSchema):
 
 class MasterPostRead(MasterSchema):
     id: uuid.UUID
+    public_id: uuid.UUID
     master_revision_id: uuid.UUID
     source_recruitment_post_id: uuid.UUID
     post_key: str
