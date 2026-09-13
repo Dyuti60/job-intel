@@ -86,6 +86,33 @@ def compute_revision_hash(
     return hashlib.sha256(serialized).hexdigest()
 
 
+def compute_persisted_revision_hash(revision: Any) -> str:
+    """Reconstruct the canonical hash from a fully loaded persisted revision graph."""
+    interpretation = revision.advertisement_revision
+    posts = []
+    interpretation_payload = None
+    if interpretation is not None:
+        posts = [
+            {
+                "post_key": post.post_key,
+                "ordinal": post.ordinal,
+                "name": post.name,
+                "normalized_name": post.normalized_name,
+                "fact_keys": sorted(fact.fact_key for fact in post.facts),
+            }
+            for post in interpretation.posts
+        ]
+        if interpretation.split_status.value != "LEGACY_UNSPLIT":
+            interpretation_payload = {"split_status": interpretation.split_status.value}
+    return compute_revision_hash(
+        source_document_id=revision.source_document_id,
+        source_document_content_hash=revision.source_document.content_hash,
+        fields=[(field.field_path, field.value_type, field.value) for field in revision.fields],
+        posts=posts,
+        interpretation=interpretation_payload,
+    )
+
+
 def _normalize_decimal(value: Any) -> str:
     if isinstance(value, bool) or not isinstance(value, (str, int, Decimal)):
         raise ValueError("DECIMAL fields require a decimal string or integer")

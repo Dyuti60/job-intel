@@ -29,7 +29,9 @@ from app.schemas.verification import (
 from app.services.candidate_field_evidence_verifier import CandidateFieldEvidenceVerifier
 from app.services.candidates import CandidateService
 from app.services.confidence import ConfidenceService
+from app.services.confidence_v2 import ConfidenceV2Service
 from app.services.review import ReviewService
+from app.services.review_routing import ReviewRoutingService
 from app.services.verification import VerificationService
 
 
@@ -38,6 +40,8 @@ class VerificationWorkerItemResult:
     candidate_revision_id: uuid.UUID
     verification_run_id: uuid.UUID
     confidence_assessment_id: uuid.UUID
+    confidence_v2_assessment_id: uuid.UUID
+    review_routing_assessment_id: uuid.UUID
     review_case_id: uuid.UUID | None
     score: int | None
     fields_confirmed: int
@@ -238,6 +242,8 @@ class VerificationWorkerService:
             run.id, VerificationRunComplete(status=VerificationRunStatus.COMPLETED)
         )
         confidence, _, _ = ConfidenceService(self.session, commit=False).score_run(run.id)
+        confidence_v2, _, _ = ConfidenceV2Service(self.session, commit=False).score_run(run.id)
+        routing, _ = ReviewRoutingService(self.session, commit=False).assess(confidence_v2.id)
         review_case_id = None
         if confidence.review_required:
             review_case, _ = ReviewService(self.session, commit=False).create_case(confidence.id)
@@ -254,6 +260,8 @@ class VerificationWorkerService:
             candidate_revision_id=revision.id,
             verification_run_id=run.id,
             confidence_assessment_id=confidence.id,
+            confidence_v2_assessment_id=confidence_v2.id,
+            review_routing_assessment_id=routing.id,
             review_case_id=review_case_id,
             score=confidence.score,
             fields_confirmed=run.fields_confirmed,

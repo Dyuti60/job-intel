@@ -10,7 +10,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.candidates import CandidateStatus, CandidateValueType
-from app.models.confidence import FieldConfidenceAssessment, RevisionConfidenceAssessment
+from app.models.confidence import (
+    ConfidencePolicyVersion,
+    FieldConfidenceAssessment,
+    RevisionConfidenceAssessment,
+)
 from app.models.master import (
     MasterChange,
     MasterChangeType,
@@ -41,7 +45,7 @@ from app.repositories.master import (
 )
 from app.repositories.review import ReviewCaseRepository
 from app.repositories.verification import FieldVerificationRepository, VerificationRunRepository
-from app.services.candidate_values import compute_revision_hash, normalize_typed_value
+from app.services.candidate_values import compute_persisted_revision_hash, normalize_typed_value
 from app.services.confidence import ConfidenceService
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
 from app.services.review import ReviewService
@@ -101,6 +105,10 @@ class MasterPublisherService:
         assessment = self.confidence.get(revision_confidence_assessment_id)
         if assessment is None:
             raise ResourceNotFoundError("Revision confidence assessment not found")
+        if assessment.policy_version != ConfidencePolicyVersion.V1:
+            raise DomainConflictError(
+                "Confidence V2 publication is unavailable until Post-aware Master consumes routing"
+            )
         revision, run, field_assessments = self._validate_verification(assessment)
         candidate = revision.recruitment_candidate
         effective_fields, publication_path, review_case = self._effective_projection(
@@ -327,11 +335,7 @@ class MasterPublisherService:
         if run.status != VerificationRunStatus.COMPLETED:
             raise DomainConflictError("Publishing requires a COMPLETED VerificationRun")
 
-        expected_revision_hash = compute_revision_hash(
-            source_document_id=revision.source_document_id,
-            source_document_content_hash=revision.source_document.content_hash,
-            fields=[(field.field_path, field.value_type, field.value) for field in revision.fields],
-        )
+        expected_revision_hash = compute_persisted_revision_hash(revision)
         if revision.revision_hash != expected_revision_hash:
             raise DomainConflictError("CandidateRevision hash fails integrity validation")
         if run.candidate_revision_hash_snapshot != revision.revision_hash:

@@ -35,7 +35,7 @@ from app.schemas.verification import (
     VerificationRunComplete,
     VerificationRunCreate,
 )
-from app.services.candidate_values import compute_revision_hash
+from app.services.candidate_values import compute_persisted_revision_hash
 from app.services.evidence_values import compute_evidence_hash
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
 
@@ -350,14 +350,7 @@ class VerificationService:
 
     @staticmethod
     def _computed_revision_hash(revision) -> str:
-        return compute_revision_hash(
-            source_document_id=revision.source_document_id,
-            source_document_content_hash=revision.source_document.content_hash,
-            fields=[
-                (field.field_path, field.value_type, field.value)
-                for field in revision.fields
-            ],
-        )
+        return compute_persisted_revision_hash(revision)
 
     @staticmethod
     def _validate_asserted_value(

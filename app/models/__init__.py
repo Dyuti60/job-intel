@@ -69,6 +69,11 @@ from app.models.review import (
     ReviewItemScope,
     ReviewItemStatus,
 )
+from app.models.review_routing import (
+    ReviewRoutingAssessment,
+    ReviewRoutingPolicyVersion,
+    ReviewRoutingReasonCode,
+)
 from app.models.source_registry import (
     AuthorityStatus,
     AuthorityType,
@@ -152,6 +157,9 @@ __all__ = [
     "ReviewItemStatus",
     "ReviewPriority",
     "ReviewReasonCode",
+    "ReviewRoutingAssessment",
+    "ReviewRoutingPolicyVersion",
+    "ReviewRoutingReasonCode",
     "RevisionConfidenceAssessment",
     "SourceClass",
     "SourceEndpoint",

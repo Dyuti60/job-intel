@@ -1,18 +1,16 @@
-# V1-M3 — Confidence V2 and separate review routing
+# V1-M4 — Post-grouped review and Post-aware Master
 
-Preserve every Confidence V1 assessment unchanged and add deterministic, explainable Confidence V2
-over verified advertisement and post facts.
+Make independent Routing V1 operational without mutating historical V1 ReviewCases or published
+Master history.
 
 The milestone should include:
 
-- immutable `V2` confidence assessments with an explicit component breakdown
-- reliability components for authoritative source quality, extraction method/reliability,
-  authoritative support, supporting evidence, conflicts, ambiguity, and completeness
-- a separately versioned, persisted Human Review routing assessment
-- routing for conflicts, ambiguous post splits/details, unclear critical meaning, uncertain
-  vacancy/category mapping, and values that may belong to the wrong Post
-- no review solely because an optional field is absent
-- no publication decision embedded in either confidence or routing
-- post-aware field and revision summaries with deterministic fixtures and API/worker coverage
+- advertisement-grouped review with explicit Post sections and field provenance
+- routing-driven review items that let valid sibling Posts proceed when another Post is blocked
+- immutable approval/correction/rejection outcomes at the correct advertisement or Post scope
+- one shared Post-aware publisher used by API, UI, and worker paths
+- approved Advertisement/Post/PostFact Master revisions with old values and change history retained
+- deterministic identity and replay behavior across corrected advertisements
+- migration, API, UI, worker, integrity, idempotency, and rollback coverage
 
-Do not reinterpret, update, or delete V1 rows. Do not publish Posts to Master in this milestone.
+Do not publish directly from Confidence V2. Do not expose unapproved Posts publicly yet.

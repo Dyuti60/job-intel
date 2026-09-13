@@ -11,6 +11,7 @@ from app.models.confidence import (
     ReviewPriority,
     ReviewReasonCode,
 )
+from app.models.review_routing import ReviewRoutingPolicyVersion, ReviewRoutingReasonCode
 
 
 class ConfidenceSchema(BaseModel):
@@ -54,3 +55,18 @@ class RevisionConfidenceRead(ConfidenceSchema):
 
 class RevisionConfidenceDetail(RevisionConfidenceRead):
     field_assessments: list[FieldConfidenceRead]
+
+
+class ReviewRoutingRead(ConfidenceSchema):
+    id: uuid.UUID
+    revision_confidence_assessment_id: uuid.UUID
+    verification_run_id: uuid.UUID
+    candidate_revision_id: uuid.UUID
+    policy_version: ReviewRoutingPolicyVersion
+    input_hash: str
+    review_required: bool
+    priority: ReviewPriority
+    reason_codes: list[ReviewRoutingReasonCode]
+    field_routes: list[dict[str, Any]]
+    component_breakdown: dict[str, Any]
+    created_at: datetime

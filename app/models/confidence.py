@@ -27,6 +27,7 @@ from app.models.verification import FieldVerification, VerificationRun
 
 class ConfidencePolicyVersion(enum.StrEnum):
     V1 = "V1"
+    V2 = "V2"
 
 
 class FieldCriticality(enum.StrEnum):

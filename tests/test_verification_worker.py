@@ -10,9 +10,14 @@ from app.models.candidates import (
     CandidateValueType,
     RecruitmentCandidateRevision,
 )
-from app.models.confidence import FieldConfidenceAssessment, RevisionConfidenceAssessment
+from app.models.confidence import (
+    ConfidencePolicyVersion,
+    FieldConfidenceAssessment,
+    RevisionConfidenceAssessment,
+)
 from app.models.evidence import Evidence, EvidenceType
 from app.models.review import ReviewCase
+from app.models.review_routing import ReviewRoutingAssessment
 from app.models.verification import (
     EvidenceAssessmentType,
     FieldVerification,
@@ -192,14 +197,20 @@ def test_worker_transitions_draft_verifies_scores_and_is_idempotent(
     )
     assert _count(db_session, VerificationRun) == 1
     assert _count(db_session, FieldVerification) == 3
-    assert _count(db_session, FieldConfidenceAssessment) == 3
-    assert _count(db_session, RevisionConfidenceAssessment) == 1
+    assert _count(db_session, FieldConfidenceAssessment) == 6
+    assert _count(db_session, RevisionConfidenceAssessment) == 2
+    assert _count(db_session, ReviewRoutingAssessment) == 1
+    assert {
+        item.policy_version
+        for item in db_session.scalars(select(RevisionConfidenceAssessment)).all()
+    } == {ConfidencePolicyVersion.V1, ConfidencePolicyVersion.V2}
 
     second = worker.run(
         authority="APSC", candidate_key=None, batch_size=100, dry_run=False
     )
     assert second.revisions_scanned == 0
     assert _count(db_session, VerificationRun) == 1
+    assert _count(db_session, ReviewRoutingAssessment) == 1
 
 
 def test_worker_routes_insufficient_evidence_once(client, db_session) -> None:
@@ -225,6 +236,10 @@ def test_worker_routes_insufficient_evidence_once(client, db_session) -> None:
     assert summary.fields_insufficient == 1
     assert summary.review_cases_queued == 1
     assert _count(db_session, ReviewCase) == 1
+    routing = db_session.scalar(select(ReviewRoutingAssessment))
+    assert routing.review_required is True
+    assert "INSUFFICIENT_CRITICAL_EVIDENCE" in routing.reason_codes
+    assert "UNCLEAR_CRITICAL_MEANING" in routing.reason_codes
     verification = db_session.scalar(
         select(FieldVerification).where(
             FieldVerification.candidate_field_id

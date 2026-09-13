@@ -190,6 +190,19 @@ approval, and publication remain later stages.
 
 ## Confidence and review-routing workflow
 
+New verification runs now retain two parallel interpretations:
+
+```text
+finalized Verification facts -> immutable Confidence V1 -> legacy Review/Master compatibility
+                             -> immutable Confidence V2 -> Routing V1 semantic risk assessment
+```
+
+Confidence V2 never sets review flags. Routing V1 reads the immutable V2 fingerprint plus
+verification and Advertisement/Post interpretation, persists field-specific and revision-specific
+reasons, and does not use a numeric threshold. Missing optional facts do not route; ambiguity,
+conflict, partial verification, and insufficient critical support do. V2 is intentionally blocked
+from the existing advertisement-level publisher pending Post-aware Master support.
+
 ```text
 FINALIZED FieldVerification
   -> V1 field confidence calculation

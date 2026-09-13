@@ -5,6 +5,7 @@ from app.core.config import Settings
 from app.models.confidence import FieldCriticality
 
 POLICY_VERSION = "V1"
+POLICY_VERSION_V2 = "V2"
 
 CRITICAL_EXACT_PATHS = frozenset(
     {
@@ -63,6 +64,45 @@ def classify_field_criticality(field_path: str) -> FieldCriticality:
         field_path in CRITICAL_EXACT_PATHS
         or any(field_path.startswith(prefix) for prefix in CRITICAL_PREFIXES)
         or CRITICAL_POST_PATTERN.match(field_path) is not None
+    ):
+        return FieldCriticality.CRITICAL
+    return FieldCriticality.STANDARD
+
+
+@dataclass(frozen=True)
+class ConfidencePolicyV2:
+    """Fixed deterministic reliability weights; routing thresholds live elsewhere."""
+
+    confirmed_base: int = 50
+    conflict_base: int = 20
+    insufficient_base: int = 25
+    authoritative_support: int = 30
+    official_support: int = 20
+    secondary_support: int = 8
+    reliable_extraction: int = 10
+    declared_extraction: int = 5
+    located_value: int = 5
+    supporting_evidence_cap: int = 5
+    authoritative_conflict: int = -45
+    official_conflict: int = -30
+    secondary_conflict: int = -10
+    ambiguity: int = -30
+
+    def as_dict(self) -> dict[str, int | str]:
+        return {"policy_version": POLICY_VERSION_V2, **self.__dict__}
+
+
+CRITICAL_POST_PATTERN_V2 = re.compile(
+    r"^posts\.[^.]+\.(?:vacancies(?:\.|$)|eligibility(?:\.|$)|"
+    r"qualification(?:\.|$)|experience(?:\.|$)|age(?:\.|$)|application(?:\.|$))"
+)
+
+
+def classify_field_criticality_v2(field_path: str) -> FieldCriticality:
+    if (
+        field_path in CRITICAL_EXACT_PATHS
+        or any(field_path.startswith(prefix) for prefix in CRITICAL_PREFIXES)
+        or CRITICAL_POST_PATTERN_V2.match(field_path) is not None
     ):
         return FieldCriticality.CRITICAL
     return FieldCriticality.STANDARD

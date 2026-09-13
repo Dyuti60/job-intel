@@ -223,6 +223,14 @@ Approved historical recruitments remain visible and may derive a `CLOSED` applic
 their approved dates. Planned T-021 eligibility matching will operate only on approved Master data;
 current ingestion does not infer that a past examination will recur.
 
+## Confidence V2 and independent routing
+
+New completed verification runs also produce immutable Confidence V2 assessments and a separate
+Routing V1 assessment. V2 explains reliability from official provenance, extraction, support,
+conflict, ambiguity, and completeness components; it does not approve, publish, or decide review.
+Routing records semantic risks independently and never routes solely because an optional field is
+absent. The existing publisher accepts V1 only until Post-aware Master support is introduced.
+
 ## Public release runtime
 
 Production exposure must use the bounded public ASGI entry point, never `app.main`:

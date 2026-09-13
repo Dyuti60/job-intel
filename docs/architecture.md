@@ -273,6 +273,27 @@ documents, and it does not approve or publish data.
 
 ## Explainable confidence and review routing
 
+V1 remains immutable for historical publication compatibility. V1-M3 adds `V2` assessments in the
+same append-only confidence tables, keyed independently by policy version. V2 records reliability
+only: the inherited review columns are deliberately persisted as `false`, `NONE`, and `[]` and are
+not a publication signal. Its component ledger includes verification outcome, authoritative,
+official-supporting and secondary source quality, extraction method, source locator, distinct
+support, conflicts, ambiguity, and final score. Post keys are classified without assuming numeric
+ordinals. Revision aggregation weights present verified critical facts by two, does not penalize an
+optional field that was never asserted, and records split status and Post count.
+
+`ReviewRoutingAssessment` is a separate immutable, policy-versioned record linked to one V2
+revision assessment. It has its own input fingerprint, priority, reasons, field routes, and policy
+snapshot. Routing is semantic rather than score-threshold based: conflicts, insufficient critical
+evidence, partial verification, ambiguous Post splitting/detail ownership, uncertain vacancy
+mapping, and unclear critical meaning route to review. It explicitly makes neither approval nor
+publication decisions. Replays validate both V2 and routing fingerprints.
+
+The automated verification worker writes V1 (for the existing Master/Review contract), V2, and
+Routing V1 in one transaction. Existing V1 rows and cases are neither updated nor backfilled.
+Master discovery filters to V1 and direct V2 publication fails closed until the Post-aware Master
+milestone consumes independent routing.
+
 T-007 adds immutable `FieldConfidenceAssessment` and `RevisionConfidenceAssessment` records after
 Verification. Confidence means how strongly persisted verification facts support a CandidateField
 value's reliability. It is not a statistically calibrated probability, eligibility percentage,

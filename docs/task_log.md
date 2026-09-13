@@ -1420,3 +1420,40 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
 - Post table extraction currently requires bounded pipe-delimited text after PDF extraction; image
   PDFs and layouts that lose column boundaries remain legacy-unsplit or ambiguous.
 - Confidence and review routing still use immutable V1 behavior and are the next milestone.
+
+## V1-M3 — Confidence V2 and separate review routing — 2026-09-14
+
+### Result
+
+- Preserved all Confidence V1 rows and added independent `V2` field/revision assessments.
+- Added deterministic component ledgers for source quality, extraction reliability, supporting
+  evidence, conflict penalties, ambiguity, locator completeness, criticality, and Post summaries.
+- Kept V2 review columns neutral and added immutable `ReviewRoutingAssessment` records with their
+  own policy version, fingerprint, priority, reasons, and field routes.
+- Routed semantic risks including conflicts, insufficient critical evidence, partial runs,
+  ambiguous Post splits/details, uncertain vacancy mapping, unclear critical meaning, and possible
+  wrong-Post ownership. Optional-field absence and numeric score thresholds do not route.
+- Integrated V2 and routing into the verification worker while retaining V1 as the current
+  ReviewCase/Master compatibility path. V2 publication fails closed until Post-aware Master.
+- Fixed canonical persisted revision-hash reconstruction in Verification and Master so explicit or
+  ambiguous Post interpretations pass the same integrity check used at creation.
+
+### Validation performed
+
+- Added API and worker coverage for V2 components, slug-key Post criticality, idempotency, clean
+  optional-field behavior, authoritative conflict, critical evidence gaps, and ambiguous splits.
+- Upgraded the populated PostgreSQL database with 133 V1 field assessments and 19 V1 revision
+  assessments unchanged; no V2 rows were backfilled.
+- Downgrade to `20260914_0012`, re-upgrade to `20260914_0013`, and Alembic drift check passed.
+- Downgrade was exercised after creating V2/routing rows: only additive V2 history was removed and
+  the SHA-256 digest of all 19 historical V1 revision assessment identities/inputs was unchanged.
+- The complete migration chain through `20260914_0013` and drift check passed on a fresh isolated
+  PostgreSQL database, which was removed after validation.
+- `uv run pytest -q`: 325 tests passed.
+- `uv run ruff check .` and `git diff --check`: passed.
+
+### Known limitations
+
+- Existing ReviewCases remain tied to V1 until the next milestone introduces Post-grouped review
+  and publisher consumption of Routing V1.
+- No Post has entered Master or the public product yet.

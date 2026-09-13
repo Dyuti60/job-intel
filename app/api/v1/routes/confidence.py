@@ -8,12 +8,15 @@ from app.core.config import get_settings
 from app.db.session import get_db
 from app.schemas.confidence import (
     FieldConfidenceRead,
+    ReviewRoutingRead,
     RevisionConfidenceDetail,
     RevisionConfidenceRead,
 )
 from app.services.confidence import ConfidenceService
 from app.services.confidence_policy import ConfidencePolicyV1
+from app.services.confidence_v2 import ConfidenceV2Service
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
+from app.services.review_routing import ReviewRoutingService
 
 router = APIRouter(tags=["confidence"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -117,3 +120,63 @@ def _revision_detail(assessment, field_assessments) -> RevisionConfidenceDetail:
         FieldConfidenceRead.model_validate(item) for item in field_assessments
     ]
     return RevisionConfidenceDetail.model_validate(data)
+
+
+@router.post(
+    "/verification-runs/{run_id}/confidence-v2",
+    response_model=RevisionConfidenceDetail,
+    status_code=status.HTTP_201_CREATED,
+)
+def calculate_revision_confidence_v2(
+    run_id: uuid.UUID, response: Response, session: DatabaseSession
+) -> RevisionConfidenceDetail:
+    try:
+        assessment, fields, created = ConfidenceV2Service(session).score_run(run_id)
+    except (ResourceNotFoundError, DomainConflictError) as error:
+        raise_http_error(error)
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return _revision_detail(assessment, fields)
+
+
+@router.get(
+    "/verification-runs/{run_id}/confidence-v2",
+    response_model=RevisionConfidenceDetail,
+)
+def get_revision_confidence_v2(
+    run_id: uuid.UUID, session: DatabaseSession
+) -> RevisionConfidenceDetail:
+    try:
+        assessment, fields = ConfidenceV2Service(session).get_revision_assessment(run_id)
+    except (ResourceNotFoundError, DomainConflictError) as error:
+        raise_http_error(error)
+    return _revision_detail(assessment, fields)
+
+
+@router.post(
+    "/revision-confidence/{assessment_id}/review-routing",
+    response_model=ReviewRoutingRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def calculate_review_routing(
+    assessment_id: uuid.UUID, response: Response, session: DatabaseSession
+) -> ReviewRoutingRead:
+    try:
+        assessment, created = ReviewRoutingService(session).assess(assessment_id)
+    except (ResourceNotFoundError, DomainConflictError) as error:
+        raise_http_error(error)
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return ReviewRoutingRead.model_validate(assessment)
+
+
+@router.get(
+    "/revision-confidence/{assessment_id}/review-routing",
+    response_model=ReviewRoutingRead,
+)
+def get_review_routing(assessment_id: uuid.UUID, session: DatabaseSession) -> ReviewRoutingRead:
+    try:
+        assessment = ReviewRoutingService(session).get(assessment_id)
+    except (ResourceNotFoundError, DomainConflictError) as error:
+        raise_http_error(error)
+    return ReviewRoutingRead.model_validate(assessment)

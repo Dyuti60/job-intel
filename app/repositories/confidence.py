@@ -91,6 +91,7 @@ class RevisionConfidenceRepository:
                 )
                 .where(
                     VerificationRun.status == VerificationRunStatus.COMPLETED,
+                    RevisionConfidenceAssessment.policy_version == ConfidencePolicyVersion.V1,
                     MasterPublicationEvent.id.is_(None),
                 )
                 .order_by(
