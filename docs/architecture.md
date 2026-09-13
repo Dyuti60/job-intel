@@ -502,6 +502,36 @@ The worker composes existing Registry, Discovery, Candidate, and Evidence servic
 transaction and stops at extraction Evidence. It never creates Verification, Confidence, Review,
 or Master records. Authoritative extraction remains unverified Candidate data.
 
+## Additional official recruitment archives
+
+The live source universe also includes the State Level Police Recruitment Board, Directorate of
+Elementary Education, and Directorate of Medical Education. A small explicit configuration maps
+`SLPRB_ASSAM`, `DEE_ASSAM`, and `DME_ASSAM` to their official authority identity, archive URL, and
+replaceable adapter key. Registry rows remain `AUTHORITATIVE_OFFICIAL`; the configuration is not an
+internet-wide crawler or a claim that every Assam authority has already been integrated.
+
+`OfficialRecruitmentArchiveAdapter` parses bounded official archive tables and retains only rows
+that are explicitly advertisements/recruitments and carry a calendar year inside the inclusive
+two-year lookback (2024 through 2026 for a 2026 execution). Result, select-list, shortlist,
+verification, withdrawal, appointment, answer-key, and postponement rows are excluded as separate
+candidate identities. Each selected PDF URL produces an authority-scoped stable candidate key from
+the explicit year and a SHA-256 URL digest. Different authorities and different document URLs do
+not merge merely because their titles or bytes match.
+
+PDF extraction is deliberately conservative and currently covers identity, organization,
+notification metadata, explicit total vacancies, labeled application dates, and online mode when
+deterministic. Text-less/image-only PDFs are still stored as immutable SourceDocuments and surface
+as a PARTIAL warning, but do not create an unsupported candidate revision; OCR is not silently
+introduced. Every extracted field retains exact-document Evidence and flows through the existing
+independent Verification, Confidence, and Human Review boundaries.
+
+Official archive listing pages may contain volatile counters or markup, so byte-level listing
+captures can create new SourceDocument versions across executions. This preserves exact raw
+provenance. Stable advertisement PDFs, candidate keys, revision hashes, Evidence hashes, and review
+identities remain idempotent, preventing duplicate recruitments. Historical advertisements are
+retained; only approved ACTIVE RecruitmentMaster records can enter public reads, where approved
+application dates may derive a `CLOSED` status without deleting the recruitment.
+
 ## Automated Verification and Confidence worker
 
 T-012 adds a one-shot orchestration service and `python -m workers.verification` entry point over
@@ -528,9 +558,9 @@ Review decision or Recruitment Master publication occurs here.
 ## End-to-end pipeline orchestrator
 
 T-013 adds `python -m workers.pipeline` as a coordination-only layer. A small explicit registry maps
-the supported `APSC` source to authority code `APSC`. The orchestrator calls
-APSCDiscoveryWorkerService, VerificationWorkerService, and MasterPublisherWorkerService in process
-and consumes their structured summaries. It does not parse worker output or own discovery,
+APSC and the supported official archive codes to their authority codes. The orchestrator calls the
+source-specific Discovery service, VerificationWorkerService, and MasterPublisherWorkerService in
+process and consumes their structured summaries. It does not parse worker output or own discovery,
 evidence interpretation, confidence, review, correction, eligibility, hashing, or publication
 rules.
 

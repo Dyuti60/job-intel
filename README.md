@@ -8,6 +8,10 @@ For a complete plain-language system walkthrough, local/browser startup guide, o
 debugging checklist, and handover map, see
 [Knowledge Transfer and Operations Guide](docs/knowledge_transfer.md).
 
+For a command-by-command setup, ingestion, Verification, Confidence, Human Review, and Master
+publication guide with live local screenshots, see
+[Complete Local Operations Runbook](docs/complete_operations_runbook.md).
+
 ## Local setup
 
 1. Copy `.env.example` to `.env` and adjust local values if needed.
@@ -29,7 +33,9 @@ uv run uvicorn app.main:app --reload
 Open `http://localhost:8000/review`. The server-rendered interface shows queued and in-progress
 ReviewCases and reuses the existing T-008 lifecycle and decision services. It is intended only for
 trusted localhost development. It has no authentication or CSRF protection and must not be exposed
-to an untrusted network.
+to an untrusted network. After a case is started, the streamlined local form offers Approve or
+Reject with one required comment. The audit identity comes from
+`AJI_REVIEW_WEB_REVIEWER_IDENTIFIER` rather than being repeatedly entered in every item form.
 
 ## Master Publisher worker
 
@@ -51,12 +57,15 @@ domain/integrity failures that were reported per item. It exits nonzero for a wo
 such as unusable configuration or database connectivity. The command is independently executable;
 no recurring scheduler is included.
 
-## APSC discovery worker
+## Official-source discovery workers
 
-Run the narrow official APSC Advertisement 12/2026 discovery flow:
+Run one registered official Assam recruitment source:
 
 ```text
 uv run python -m workers.discovery --source APSC
+uv run python -m workers.discovery --source SLPRB_ASSAM
+uv run python -m workers.discovery --source DEE_ASSAM
+uv run python -m workers.discovery --source DME_ASSAM
 ```
 
 Fetch and parse while rolling back database changes and skipping raw-file writes:
@@ -69,8 +78,11 @@ Raw bytes are content-addressed below `data/raw/` by default and referenced by p
 URIs. Override the root with `AJI_RAW_STORAGE_ROOT`. HTTP limits are configurable with
 `AJI_DISCOVERY_CONNECT_TIMEOUT_SECONDS`, `AJI_DISCOVERY_READ_TIMEOUT_SECONDS`,
 `AJI_DISCOVERY_HTTP_RETRIES`, and `AJI_DISCOVERY_MAX_RESPONSE_BYTES`. The command exits 0 for a
-successful or usable PARTIAL run and nonzero when discovery cannot safely execute. It creates no
-Verification or Master data.
+successful or usable PARTIAL run and nonzero when discovery cannot safely execute. Archive adapters
+select explicit official recruitment advertisements in an inclusive two-year lookback window (in
+2026: calendar years 2024 through 2026). Past advertisements remain immutable history; result
+lists, merit lists, appointment notices, and similar post-recruitment material are not treated as
+separate recruitment identities. Discovery creates no Verification or Master data.
 
 ## Verification worker
 
@@ -93,8 +105,8 @@ review decisions, or invokes the Master Publisher.
 
 ## End-to-end pipeline
 
-Run the supported APSC source through Discovery, Verification/Confidence/Review routing, and the
-Master Publisher in one process:
+Run any supported source through Discovery, Verification/Confidence/Review routing, and the Master
+Publisher in one process. Replace `APSC` with `SLPRB_ASSAM`, `DEE_ASSAM`, or `DME_ASSAM`:
 
 ```text
 uv run python -m workers.pipeline --source APSC
@@ -131,13 +143,15 @@ Recommended flow: create a feature branch, push it, open a pull request to `main
 then merge. Repository administrators should enable branch protection for `main` and require the CI
 job; this project does not alter repository protection settings automatically.
 
-## Trusted scheduled APSC pipeline
+## Trusted scheduled official-source pipeline
 
-`.github/workflows/scheduled-pipeline.yml` runs the real one-shot APSC pipeline on the trusted
-self-hosted Windows x64 runner. It supports manual dispatch (including dry-run) and a daily
-02:30 UTC / 08:00 IST schedule. GitHub concurrency and the PostgreSQL advisory lock jointly prevent
-overlap. The workflow upgrades Alembic first, records `GITHUB_ACTION` or `SCHEDULED` PipelineRun
-trigger metadata, and publishes the CLI summary to the Actions job summary.
+`.github/workflows/scheduled-pipeline.yml` runs a real one-shot official-source pipeline on the
+trusted self-hosted Windows x64 runner. Manual dispatch supports APSC, SLPRB Assam, DEE Assam, and
+DME Assam (including dry-run). The daily 02:30 UTC / 08:00 IST schedule remains pinned to APSC;
+additional schedules require an explicit operational decision. GitHub concurrency and the
+PostgreSQL advisory lock jointly prevent overlap. The workflow upgrades Alembic first, records
+`GITHUB_ACTION` or `SCHEDULED` PipelineRun trigger metadata, and publishes the CLI summary to the
+Actions job summary.
 
 Persistent configuration and raw files stay outside the disposable checkout under
 `D:\ASSAM_JOB_DATA`. The workflow never serves or exposes the localhost Human Review interface and
@@ -195,6 +209,9 @@ or Publisher state.
 The current live page is intentionally empty until at least one ReviewCase is resolved as
 publishable and the Master Publisher creates an ACTIVE RecruitmentMaster. T-018 adds no JavaScript
 framework, external CSS dependency, account system, eligibility matching, or public mutation API.
+Approved historical recruitments remain visible and may derive a `CLOSED` application status from
+their approved dates. Planned T-021 eligibility matching will operate only on approved Master data;
+current ingestion does not infer that a past examination will recur.
 
 ## Public release runtime
 

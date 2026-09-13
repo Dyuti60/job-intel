@@ -362,6 +362,26 @@ Changed bytes create a SourceDocument version; changed extraction creates the ne
 CandidateRevision. Dry-run fetches/classifies but rolls back database changes and skips raw writes.
 Verification remains a separate later stage: discovery does not verify, score, review, or publish.
 
+## Additional official archive workflow
+
+```text
+official SLPRB / DEE / DME recruitment archive
+  -> select explicit advertisements dated 2024 onward (for the 2026 two-year lookback)
+  -> fetch and persist selected official PDFs
+  -> immutable SourceDocument versions + raw:// references
+  -> authority-scoped stable Candidate identity
+  -> conservative CandidateFields + exact-document Evidence
+  -> independent Verification + Confidence
+  -> QUEUED Human Review when required
+  -> STOP until human approval and a later Master Publisher pass
+```
+
+Run one source at a time with `python -m workers.pipeline --source SLPRB_ASSAM`, `DEE_ASSAM`, or
+`DME_ASSAM`. Past examinations are not filtered from storage merely because their application
+window has closed. They also do not become public automatically: only Human Review-approved and
+published ACTIVE Master records appear under `/jobs`. An image-only advertisement remains captured
+with a PARTIAL warning rather than receiving guessed fields.
+
 ## Automated Verification worker workflow
 
 ```text
@@ -390,8 +410,8 @@ records.
 
 ```text
 one-shot Pipeline execution
-  -> source mapping (APSC -> APSC authority)
-  -> existing APSC Discovery worker
+  -> source mapping (APSC / SLPRB_ASSAM / DEE_ASSAM / DME_ASSAM -> authority)
+  -> existing source-specific Discovery worker
   -> existing Verification worker
   -> Confidence and Review routing inside Verification worker
   -> existing Master Publisher worker (always invoked after safe Verification)

@@ -1,4 +1,4 @@
-name: Trusted APSC Pipeline
+name: Trusted Assam Pipeline
 
 on:
   workflow_dispatch:
@@ -10,6 +10,9 @@ on:
         type: choice
         options:
           - APSC
+          - SLPRB_ASSAM
+          - DEE_ASSAM
+          - DME_ASSAM
       dry_run:
         description: Record operational history but roll back recruitment-domain changes
         required: true
@@ -27,7 +30,7 @@ concurrency:
 
 jobs:
   pipeline:
-    name: Run trusted APSC pipeline
+    name: Run trusted Assam pipeline
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 30
     env:

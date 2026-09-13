@@ -1,12 +1,9 @@
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.candidates import CandidateField
 from app.models.review import ReviewCase
-from app.models.verification import VerificationRun
 from tests.factories import create_evidence
 from tests.test_review_api import _field_item, build_review_graph
 
@@ -39,7 +36,7 @@ def _decision(
 ):
     payload = {
         "decision": decision,
-        "reviewer_identifier": "local-reviewer",
+        "decision_note": "Reviewed against the displayed official evidence.",
         **values,
     }
     return client.post(
@@ -133,32 +130,18 @@ def test_start_review_uses_post_redirect_and_get_is_read_only(
     assert "Review started" in client.get(f"/review/cases/{case_id}?message=Review+started").text
 
 
-def test_mandatory_deadline_correction_resolves_and_projects_without_mutation(
-    client: TestClient, db_session: Session
-) -> None:
-    graph = _web_graph(client, "WEB_CORRECT")
-    review_case = graph["case"]
-    item = _field_item(review_case)
-    field_id = UUID(graph["revision"]["fields"][0]["id"])
-    _start_web_case(client, review_case["id"])
+def test_started_case_shows_only_approve_reject_and_comment(client: TestClient) -> None:
+    graph = _web_graph(client, "WEB_SIMPLE_DECISIONS")
+    _start_web_case(client, graph["case"]["id"])
 
-    response = _decision(
-        client,
-        item["id"],
-        "CORRECT_AND_APPROVE",
-        decision_note="The authoritative deadline is later.",
-        corrected_value="2026-10-27",
-    )
+    page = client.get(f"/review/cases/{graph['case']['id']}")
 
-    assert response.status_code == 303
-    page = client.get(response.headers["location"])
-    assert "APPROVED WITH CORRECTIONS" in page.text
-    assert "Original" in page.text and "2026-10-20" in page.text
-    assert "Corrected" in page.text and "2026-10-27" in page.text
-    assert "Approved Projection" in page.text
-    db_session.expire_all()
-    field = db_session.get(CandidateField, field_id)
-    assert field is not None and field.value == "2026-10-20"
+    assert "Approve or reject" in page.text
+    assert "Approval comment" in page.text
+    assert "Rejection comment" in page.text
+    assert "Reviewer identifier" not in page.text
+    assert "Correct and Approve" not in page.text
+    assert "Request Re-verification" not in page.text
 
 
 def test_approve_as_is_redirects_and_displays_final_decision(client: TestClient) -> None:
@@ -168,11 +151,14 @@ def test_approve_as_is_redirects_and_displays_final_decision(client: TestClient)
 
     response = _decision(client, item["id"], "APPROVE_AS_IS")
     page = client.get(response.headers["location"])
+    persisted_item = client.get(f"/api/v1/review-items/{item['id']}").json()
 
     assert response.status_code == 303
     assert "Final decision: APPROVE AS IS" in page.text
-    assert "local-reviewer" in page.text
+    assert "Reviewed against the displayed official evidence." in page.text
+    assert "Reviewer" not in page.text
     assert "APPROVED" in page.text
+    assert persisted_item["decision"]["reviewer_identifier"] == "local-review-ui"
 
 
 def test_reject_requires_note_and_rejected_projection_is_not_eligible(
@@ -182,7 +168,7 @@ def test_reject_requires_note_and_rejected_projection_is_not_eligible(
     item = _field_item(graph["case"])
     _start_web_case(client, graph["case"]["id"])
 
-    invalid = _decision(client, item["id"], "REJECT")
+    invalid = _decision(client, item["id"], "REJECT", decision_note="   ")
     still_pending = client.get(f"/api/v1/review-items/{item['id']}").json()
     valid = _decision(client, item["id"], "REJECT", decision_note="Source is ambiguous.")
     page = client.get(valid.headers["location"])
@@ -193,28 +179,16 @@ def test_reject_requires_note_and_rejected_projection_is_not_eligible(
     assert "This revision is not eligible for Master publication." in page.text
 
 
-def test_reverification_requires_note_and_does_not_create_run(
-    client: TestClient, db_session: Session
-) -> None:
-    graph = _web_graph(client, "WEB_REVERIFY")
+def test_hidden_legacy_decisions_are_rejected_by_web_endpoint(client: TestClient) -> None:
+    graph = _web_graph(client, "WEB_HIDDEN_DECISION")
     item = _field_item(graph["case"])
     _start_web_case(client, graph["case"]["id"])
-    before = db_session.scalar(select(func.count(VerificationRun.id)))
 
-    invalid = _decision(client, item["id"], "REQUEST_REVERIFICATION")
-    valid = _decision(
-        client,
-        item["id"],
-        "REQUEST_REVERIFICATION",
-        decision_note="Re-check the latest official notice.",
-    )
-    after = db_session.scalar(select(func.count(VerificationRun.id)))
-    page = client.get(valid.headers["location"])
+    response = _decision(client, item["id"], "REQUEST_REVERIFICATION")
 
-    assert invalid.status_code == valid.status_code == 303
-    assert before == after
-    assert "REVERIFICATION REQUESTED" in page.text
-    assert "This revision is not eligible for Master publication." in page.text
+    assert response.status_code == 303
+    assert "error=" in response.headers["location"]
+    assert "supports+only+Approve+or+Reject" in response.headers["location"]
 
 
 def test_revision_item_has_no_correction_control(client: TestClient) -> None:
@@ -226,10 +200,10 @@ def test_revision_item_has_no_correction_control(client: TestClient) -> None:
     section = page.text.split(f'id="item-{revision_item["id"]}"', 1)[1].split("</article>", 1)[0]
 
     assert "Revision-level decision" in section
-    assert "Approve As Is" in section
+    assert "Approve" in section
     assert "Reject" in section
-    assert "Request Re-verification" in section
     assert "Correct and Approve" not in section
+    assert "Request Re-verification" not in section
 
 
 def test_decision_form_errors_are_clear_and_do_not_resolve_item(client: TestClient) -> None:
@@ -237,17 +211,15 @@ def test_decision_form_errors_are_clear_and_do_not_resolve_item(client: TestClie
     item = _field_item(graph["case"])
     _start_web_case(client, graph["case"]["id"])
 
-    blank_reviewer = client.post(
+    blank_comment = client.post(
         f"/review/items/{item['id']}/decision",
-        data={"decision": "APPROVE_AS_IS", "reviewer_identifier": "   "},
+        data={"decision": "APPROVE_AS_IS", "decision_note": "   "},
         follow_redirects=False,
     )
-    invalid_date = _decision(
+    unsupported_decision = _decision(
         client,
         item["id"],
         "CORRECT_AND_APPROVE",
-        decision_note="Correcting the date.",
-        corrected_value="not-a-date",
     )
     accepted = _decision(client, item["id"], "APPROVE_AS_IS")
     conflicting = _decision(
@@ -257,8 +229,8 @@ def test_decision_form_errors_are_clear_and_do_not_resolve_item(client: TestClie
         decision_note="A different final decision.",
     )
 
-    assert "error=" in blank_reviewer.headers["location"]
-    assert "error=" in invalid_date.headers["location"]
+    assert "error=" in blank_comment.headers["location"]
+    assert "error=" in unsupported_decision.headers["location"]
     assert "message=" in accepted.headers["location"]
     assert "error=" in conflicting.headers["location"]
     page = client.get(conflicting.headers["location"])

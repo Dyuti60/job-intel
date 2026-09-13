@@ -65,6 +65,20 @@ class CandidateFieldEvidenceVerifier:
 
     @classmethod
     def _integer(cls, field_path: str, expected: Any, text: str) -> EvidenceInterpretation:
+        if field_path == "vacancies.total":
+            post_counts = [
+                int(match.group(1).replace(",", ""))
+                for match in re.finditer(r"\b([0-9][0-9,]*)\s+posts?\b", text, re.I)
+            ]
+            if post_counts and sum(post_counts) == int(expected):
+                return EvidenceInterpretation(
+                    EvidenceAssessmentType.SUPPORTS,
+                    int(expected),
+                    CandidateValueType.INTEGER,
+                    "Candidate total equals the deterministic sum of labelled post counts.",
+                )
+            if len(post_counts) > 1:
+                return EvidenceInterpretation(EvidenceAssessmentType.CONTEXT_ONLY)
         patterns = cls._INTEGER_PATTERNS.get(field_path, ())
         values = {
             int(match.group(1))

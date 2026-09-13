@@ -20,6 +20,9 @@ def test_ci_uses_hosted_runner_and_temporary_postgresql() -> None:
 def test_scheduled_pipeline_has_trusted_boundaries_and_concurrency() -> None:
     workflow = (ROOT / ".github/workflows/scheduled-pipeline.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in workflow
+    assert "- SLPRB_ASSAM" in workflow
+    assert "- DEE_ASSAM" in workflow
+    assert "- DME_ASSAM" in workflow
     assert "schedule:" in workflow
     assert 'cron: "30 2 * * *"' in workflow
     assert "runs-on: [self-hosted, Windows, X64]" in workflow

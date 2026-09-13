@@ -1,0 +1,16 @@
+<section class="decision-controls">
+  <h4>Approve or reject</h4>
+  <p class="muted">Add a short comment explaining the decision.</p>
+  <div class="decision-grid">
+    <form method="post" action="/review/items/{{ item.id }}/decision" class="decision-form">
+      <input type="hidden" name="decision" value="APPROVE_AS_IS">
+      <label>Approval comment<textarea required maxlength="8000" name="decision_note"></textarea></label>
+      <button type="submit">Approve</button>
+    </form>
+    <form method="post" action="/review/items/{{ item.id }}/decision" class="decision-form danger-zone">
+      <input type="hidden" name="decision" value="REJECT">
+      <label>Rejection comment<textarea required maxlength="8000" name="decision_note"></textarea></label>
+      <button class="danger" type="submit">Reject</button>
+    </form>
+  </div>
+</section>

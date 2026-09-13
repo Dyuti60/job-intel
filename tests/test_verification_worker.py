@@ -85,6 +85,17 @@ def test_integer_ambiguity_and_unsupported_summary_are_context_only() -> None:
         "No of posts: 10. Revised number of posts: 12.",
     )
     assert verifier.evaluate(field, evidence).assessment == EvidenceAssessmentType.CONTEXT_ONLY
+
+    field, evidence = _models(
+        "vacancies.total",
+        CandidateValueType.INTEGER,
+        50,
+        "Advertisement for 47 posts of Sub Inspector and 3 posts of Constable.",
+    )
+    result = verifier.evaluate(field, evidence)
+    assert result.assessment == EvidenceAssessmentType.SUPPORTS
+    assert result.asserted_value == 50
+
     field, evidence = _models(
         "eligibility.qualification.summary",
         CandidateValueType.STRING,

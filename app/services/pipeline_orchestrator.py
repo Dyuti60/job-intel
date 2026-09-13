@@ -18,11 +18,12 @@ from app.services.master_publisher_worker import (
     MasterPublisherWorkerService,
     MasterPublisherWorkerSummary,
 )
+from app.services.official_archive_discovery import OfficialArchiveDiscoveryWorkerService
 from app.services.verification_worker import (
     VerificationWorkerService,
     VerificationWorkerSummary,
 )
-from sources.adapters.apsc_recruitment import APSCRecruitmentAdapter
+from sources.adapters.official_recruitment_archive import OFFICIAL_ARCHIVE_SOURCES
 
 
 class PipelineStatus(enum.StrEnum):
@@ -39,6 +40,10 @@ class PipelineSourceConfig:
 
 PIPELINE_SOURCES = {
     "APSC": PipelineSourceConfig(source="APSC", authority_code="APSC"),
+    **{
+        code: PipelineSourceConfig(source=code, authority_code=config.authority_code)
+        for code, config in OFFICIAL_ARCHIVE_SOURCES.items()
+    },
 }
 
 
@@ -86,7 +91,7 @@ class PipelineOrchestratorService:
         *,
         source: str,
         dry_run: bool = False,
-        discovery_adapter: APSCRecruitmentAdapter | None = None,
+        discovery_adapter: Any = None,
     ) -> PipelineSummary:
         key = source.strip().upper()
         config = PIPELINE_SOURCES.get(key)
@@ -107,9 +112,17 @@ class PipelineOrchestratorService:
         self.logger.info("pipeline_started source=%s dry_run=%s", key, dry_run)
         stage_started_at, stage_started_clock = self._start_stage()
         try:
-            result.discovery = APSCDiscoveryWorkerService(
-                self.session, self.settings, self.logger
-            ).run(dry_run=dry_run, adapter=discovery_adapter)
+            if key == "APSC":
+                result.discovery = APSCDiscoveryWorkerService(
+                    self.session, self.settings, self.logger
+                ).run(dry_run=dry_run, adapter=discovery_adapter)
+            else:
+                result.discovery = OfficialArchiveDiscoveryWorkerService(
+                    self.session,
+                    self.settings,
+                    self.logger,
+                    OFFICIAL_ARCHIVE_SOURCES[key],
+                ).run(dry_run=dry_run, adapter=discovery_adapter)
         except Exception as error:
             self.session.rollback()
             result.status = PipelineStatus.FAILED

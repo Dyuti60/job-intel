@@ -14,6 +14,7 @@ def test_settings_load_defaults(monkeypatch) -> None:
     assert settings.confidence_standard_threshold == 80
     assert settings.confidence_critical_threshold == 90
     assert settings.confidence_revision_threshold == 85
+    assert settings.review_web_reviewer_identifier == "local-review-ui"
     assert settings.master_publisher_batch_size == 100
     assert settings.public_allowed_host_list == ["localhost", "127.0.0.1", "testserver"]
     assert settings.public_rate_limit_requests == 120
@@ -28,6 +29,7 @@ def test_settings_load_environment(monkeypatch) -> None:
     monkeypatch.setenv("AJI_CONFIDENCE_CRITICAL_THRESHOLD", "88")
     monkeypatch.setenv("AJI_CONFIDENCE_REVISION_THRESHOLD", "82")
     monkeypatch.setenv("AJI_MASTER_PUBLISHER_BATCH_SIZE", "25")
+    monkeypatch.setenv("AJI_REVIEW_WEB_REVIEWER_IDENTIFIER", "local-operator")
     monkeypatch.setenv("AJI_PUBLIC_ALLOWED_HOSTS", "jobs.example.test,localhost")
     monkeypatch.setenv("AJI_PUBLIC_RATE_LIMIT_REQUESTS", "50")
 
@@ -40,6 +42,7 @@ def test_settings_load_environment(monkeypatch) -> None:
     assert settings.confidence_critical_threshold == 88
     assert settings.confidence_revision_threshold == 82
     assert settings.master_publisher_batch_size == 25
+    assert settings.review_web_reviewer_identifier == "local-operator"
     assert settings.public_allowed_host_list == ["jobs.example.test", "localhost"]
     assert settings.public_rate_limit_requests == 50
 

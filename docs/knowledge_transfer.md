@@ -22,8 +22,10 @@ The most important safety rule is:
 > Discovery data is never published directly. A value must pass the Verification, Confidence, and
 > any required Human Review boundaries before it can reach Recruitment Master.
 
-The system is currently Assam-only. The implemented live adapter is the narrow APSC Advertisement
-12/2026 flow; it is not a general Internet crawler.
+The system is currently Assam-only. Live adapters cover the narrow APSC Advertisement 12/2026
+flow plus bounded official recruitment archives for SLPRB Assam, DEE Assam, and DME Assam. It is
+not a general Internet crawler, and these sources are not a claim of complete coverage of every
+Assam department, university, board, PSU, or recruiting authority.
 
 ## 2. Who uses which part
 
@@ -37,6 +39,11 @@ The system is currently Assam-only. The implemented live adapter is the narrow A
 
 The reviewer and operator pages have no authentication in V0. They are private localhost tools and
 must never be routed to the public Internet.
+
+After a case is started, the local review page presents only Approve and Reject with a required
+comment. It records `AJI_REVIEW_WEB_REVIEWER_IDENTIFIER` as the bounded audit identity, so the
+operator does not re-enter reviewer details on every item. The richer correction/reverification
+domain remains available to controlled internal API clients but is not shown in the streamlined UI.
 
 ## 3. Complete flow in end-user language
 
@@ -513,6 +520,10 @@ uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 # Full safe preview / real run
 uv run python -m workers.pipeline --source APSC --dry-run
 uv run python -m workers.pipeline --source APSC
+# Other supported official archives
+uv run python -m workers.pipeline --source SLPRB_ASSAM
+uv run python -m workers.pipeline --source DEE_ASSAM
+uv run python -m workers.pipeline --source DME_ASSAM
 
 # Monitoring
 uv run python -m workers.monitoring --source APSC --dry-run

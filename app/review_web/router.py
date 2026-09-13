@@ -1,4 +1,3 @@
-import json
 import uuid
 from pathlib import Path
 from typing import Annotated, Any
@@ -10,8 +9,8 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.db.session import get_db
-from app.models.candidates import CandidateValueType
 from app.models.confidence import ReviewPriority
 from app.models.review import ReviewCaseStatus, ReviewDecisionType
 from app.review_web.services import ReviewCaseViewService
@@ -22,6 +21,7 @@ from app.services.review import ReviewService
 router = APIRouter(prefix="/review", tags=["review-web"])
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[2] / "templates"))
 DatabaseSession = Annotated[Session, Depends(get_db)]
+ApplicationSettings = Annotated[Settings, Depends(get_settings)]
 
 
 def _template(
@@ -69,28 +69,6 @@ async def _read_form(request: Request) -> dict[str, str]:
         raise ValueError("Only standard URL-encoded form submissions are accepted")
     values = parse_qs(body.decode("utf-8"), keep_blank_values=True, strict_parsing=False)
     return {key: items[-1] for key, items in values.items()}
-
-
-def _transport_value(value_type: CandidateValueType, raw: str | None) -> Any:
-    if value_type == CandidateValueType.NULL:
-        return None
-    if raw is None:
-        raise ValueError("A corrected value is required")
-    if value_type == CandidateValueType.INTEGER:
-        try:
-            return int(raw)
-        except ValueError as error:
-            raise ValueError("Corrected INTEGER value must be a whole number") from error
-    if value_type == CandidateValueType.BOOLEAN:
-        if raw not in {"true", "false"}:
-            raise ValueError("Corrected BOOLEAN value must be true or false")
-        return raw == "true"
-    if value_type == CandidateValueType.JSON:
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError as error:
-            raise ValueError("Corrected JSON value must contain valid JSON") from error
-    return raw
 
 
 @router.get("", response_class=HTMLResponse, name="review_queue")
@@ -163,6 +141,7 @@ async def decide_item(
     request: Request,
     item_id: uuid.UUID,
     session: DatabaseSession,
+    settings: ApplicationSettings,
 ) -> HTMLResponse:
     service = ReviewService(session)
     try:
@@ -173,20 +152,15 @@ async def decide_item(
     try:
         form = await _read_form(request)
         decision = ReviewDecisionType(form.get("decision", ""))
-        corrected_type = None
-        corrected_value = None
-        if decision == ReviewDecisionType.CORRECT_AND_APPROVE:
-            corrected_type = item.candidate_value_type_snapshot
-            if corrected_type is None:
-                raise ValueError("Revision items cannot be corrected")
-            corrected_value = _transport_value(corrected_type, form.get("corrected_value"))
+        if decision not in {ReviewDecisionType.APPROVE_AS_IS, ReviewDecisionType.REJECT}:
+            raise ValueError("The local review page supports only Approve or Reject")
+        comment = (form.get("decision_note") or "").strip()
+        if not comment:
+            raise ValueError("A review comment is required")
         payload = ReviewDecisionCreate(
             decision=decision,
-            reviewer_identifier=form.get("reviewer_identifier", ""),
-            decision_note=form.get("decision_note") or None,
-            corrected_value_type=corrected_type,
-            corrected_value=corrected_value,
-            evidence_note=form.get("evidence_note") or None,
+            reviewer_identifier=settings.review_web_reviewer_identifier,
+            decision_note=comment,
         )
         service.decide_item(item_id, payload)
     except (ValueError, ValidationError, DomainConflictError) as error:

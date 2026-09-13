@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     confidence_standard_threshold: int = Field(default=80, ge=0, le=100)
     confidence_critical_threshold: int = Field(default=90, ge=0, le=100)
     confidence_revision_threshold: int = Field(default=85, ge=0, le=100)
+    review_web_reviewer_identifier: str = Field(
+        default="local-review-ui", min_length=1, max_length=255
+    )
     master_publisher_batch_size: int = Field(default=100, ge=1, le=10_000)
     verification_batch_size: int = Field(default=100, ge=1, le=10_000)
     raw_storage_root: str = "data/raw"

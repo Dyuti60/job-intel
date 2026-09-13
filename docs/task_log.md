@@ -1285,3 +1285,75 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
 - Availability monitoring is deliberately bounded to endpoint/status isolation checks. Eligibility
   matching, user accounts, alerts, mutable public APIs, live discovery expansion, and automated
   Human Review remain outside T-020.
+
+## Official Assam source expansion — 2026-09-13
+
+### Result
+
+- Added bounded, independently configured official archive adapters for the State Level Police
+  Recruitment Board Assam, Directorate of Elementary Education Assam, and Directorate of Medical
+  Education Assam. Selection uses explicit advertisement/recruitment rows in the inclusive
+  two-year calendar lookback (2024 through 2026 for this run), excludes post-recruitment/result
+  material, and creates authority-scoped deterministic candidate keys.
+- Reused the complete existing Registry, Discovery, immutable SourceDocument, CandidateRevision,
+  Evidence, Verification, Confidence, Review, and Publisher services. No source bypasses Human
+  Review or writes directly to Recruitment Master.
+- Ran all three source pipelines against their official sites. SLPRB produced 10 candidates, DEE
+  produced 6, and DME produced 1 text-extractable candidate while retaining one image-only DME PDF
+  as immutable raw provenance with a PARTIAL warning. All 17 new candidates were routed to Human
+  Review; no Master record was manufactured.
+- Corrected a deterministic vacancy-verifier edge case for advertisements whose total is expressed
+  as multiple explicit post counts. The original verification run remains in audit history, its
+  erroneous queued ReviewCase was cancelled through normal lifecycle behavior, and a new run/case
+  was created without changing CandidateField or SourceDocument history.
+- Repeated live pipeline executions reused all official PDF documents, candidates, revisions,
+  confidence results, and active review queues. Volatile archive listing HTML produced new exact
+  listing-page versions, but did not duplicate recruitment identities.
+
+### Validation performed
+
+- Complete local suite: 311 passed in 40.36 seconds. Ruff and `git diff --check` passed.
+- PostgreSQL remained at `20260912_0011 (head)` and `alembic check` reported no schema drift; this
+  expansion requires no migration or new dependency.
+- `/api/v1/health`, `/review`, `/jobs`, and `/api/public/v1/recruitments` returned successfully
+  against the live local database. The private queue contains 18 active cases (including the
+  previously queued APSC case) and Recruitment Master remains empty, proving the new data did not
+  bypass review or publication.
+
+### Known limitations
+
+- This is a substantial official-source expansion, not exhaustive coverage of every Assam
+  department, board, university, PSU, and recruitment authority. Each additional source still
+  requires explicit registry governance and a bounded adapter.
+- Image-only/scanned PDFs require a future controlled OCR capability before structured extraction.
+  Dynamic archive listing markup may create additional exact listing-page versions; immutable
+  advertisement PDF and candidate/revision identity remains deduplicated.
+- Eligibility matching and recurrence prediction are not implemented. T-021 will evaluate only
+  approved Master facts and must return UNKNOWN/REVIEW_REQUIRED for missing or ambiguous rules.
+
+## Complete local operations runbook — 2026-09-13
+
+- Added `docs/complete_operations_runbook.md` covering setup, PostgreSQL startup, migrations,
+  private/debug server startup, official-source ingestion, Verification, Confidence, Human Review,
+  Master publishing, monitoring, validation, and shutdown commands.
+- Captured the running live `/review`, APSC case-detail, `/operations`, and `/jobs` pages. The
+  screenshots show 18 active cases, the APSC V1 score/reasons, operational history, and the correct
+  zero-Master public empty state.
+- Ran the Master Publisher against all 19 confidence assessments: 18 were safely skipped as
+  `REVIEW_PENDING`, one superseded assessment as `REVIEW_CANCELLED`, and zero integrity/domain
+  errors occurred. No automated Human Review decision was fabricated.
+- Documented why the proposed score-only 60 threshold is not the current V1 contract. V1 also
+  routes insufficient evidence, conflicts, and critical fields without authoritative support. Any
+  future threshold-policy change must create a new policy version and new immutable assessments.
+
+## Streamlined local review decisions — 2026-09-13
+
+- Simplified the post-start local ReviewCase interface to two explicit actions: Approve and Reject.
+  Both require one human comment; corrected-value, reverification, evidence-note, and repeated
+  reviewer-identifier controls are no longer displayed on the local page.
+- Preserved the T-008 immutable ReviewDecision and audit boundary. The server supplies a bounded
+  local audit identity from `AJI_REVIEW_WEB_REVIEWER_IDENTIFIER` (default `local-review-ui`), while
+  the existing internal JSON API/domain retains correction and reverification capabilities.
+- The web decision endpoint rejects hidden legacy decision values, preventing a crafted local form
+  from bypassing the simplified UI contract. The existing APSC case was moved from QUEUED to
+  IN_REVIEW to validate and capture the post-start page; no item was decided or published.
