@@ -159,3 +159,23 @@ Run the application and open `http://localhost:8000/operations` for the private,
 page. JSON clients can use `GET /api/v1/operational-status/{source_code}` and
 `GET /api/v1/operational-notifications`. Like `/review`, this local administration surface has no
 production authentication or CSRF boundary and must not be exposed publicly.
+
+## Public Recruitment API
+
+T-017 provides a read-only public contract sourced exclusively from ACTIVE RecruitmentMaster
+records and each master's current immutable revision:
+
+```text
+GET /api/public/v1/recruitments
+GET /api/public/v1/recruitments/{master_id}
+```
+
+The list supports `authority`, normalized `candidate_key`, literal text `q`, derived
+`application_status`, application start/end ranges, vacancy ranges, deterministic `sort`, and
+page-based pagination (`page_size` is capped at 100). Use optional `as_of=YYYY-MM-DD` for a
+reproducible application-status view; otherwise status is evaluated on the current UTC date.
+
+Responses include approved typed values and bounded source-document/endpoint provenance. They do
+not expose drafts, historical non-current revisions, review decisions, confidence/verification
+internals, evidence bodies, storage locations, operational history, or mutation operations. This is
+an API baseline only; no public browser interface is included yet.

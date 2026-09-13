@@ -1,23 +1,19 @@
-# T-017 — Public Recruitment Read API and Search Baseline
+# T-018 — Public Recruitment Web Interface
 
-T-017 should introduce a stable, read-only public contract over current approved Recruitment Master
-revisions for Assam Government recruitment discovery.
+T-018 should implement a small, accessible, server-rendered public web interface over the T-017
+Public Recruitment API/read service.
 
 It should include:
 
-- public list and detail APIs sourced only from ACTIVE RecruitmentMaster records and their current
-  immutable revisions
-- deterministic pagination, filtering, and ordering for authority, candidate identity, and selected
-  approved structured fields
-- safe derived application-date/status metadata without rewriting Master history
-- a bounded public response that preserves useful official-source provenance while excluding
-  internal operational, reviewer, and sensitive audit details
-- explicit separation between public master reads and all candidate, verification, confidence,
-  review, monitoring, and publisher mutation domains
-- comprehensive tests proving that drafts, unresolved reviews, rejected data, historical non-current
-  revisions, and operational records cannot leak into the public contract
+- an Assam Government recruitment browse page with deterministic filters, ordering, and pagination
+- a recruitment detail page showing current approved fields, application status and dates,
+  vacancies, recruiting authority, and safe official-source links
+- clear empty, unknown-status, closed, upcoming, and open states
+- responsive, accessible HTML with no JavaScript framework or external asset dependency
+- search-engine-safe metadata and canonical local routes without exposing internal workflow data
+- tests proving the UI consumes only the T-017 approved public boundary and performs no mutations
 
-T-017 must NOT implement a public browser UI, eligibility matching, user profiles, alerts,
-preparation features, live crawling, automated Human Review, or mutable public APIs.
+T-018 must NOT implement eligibility matching, user profiles, alerts, preparation features, live
+crawling, Human Review, mutable public operations, or Recruitment Master publishing.
 
-Do not implement T-017 now.
+Do not implement T-018 now.

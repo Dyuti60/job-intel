@@ -636,3 +636,31 @@ when the pipeline fails, then preserves the original pipeline exit result. This 
 failure observable without turning monitoring into an error suppressor. The page and APIs are
 local/private V0 administration surfaces; production exposure would require authentication,
 authorization, TLS, CSRF/session controls, and network hardening.
+
+## Public Recruitment read boundary
+
+T-017 introduces a separate `/api/public/v1` namespace. It reads only `RecruitmentMaster` rows in
+ACTIVE status joined to the immutable `RecruitmentMasterRevision` identified by
+`current_revision_id`. The join additionally requires that the revision belongs to that same
+master, so an inconsistent pointer fails closed. Candidate, Evidence, Verification, Confidence,
+Review, PipelineRun, monitoring, publication-event, MasterChange, and historical revision tables
+are not public data sources.
+
+The public list is a bounded summary contract with a maximum page size of 100. It supports exact
+normalized authority/candidate identity, escaped literal text search, selected approved
+application-date and vacancy filters, and deterministic ordering with UUID tie-breaks. Structured
+filters are applied to typed fields on the current approved revision only. Detail responses expose
+all current approved field path/type/value triples and a deduplicated, provider-neutral source
+summary derived through `MasterField -> CandidateField -> SourceDocument -> SourceEndpoint`.
+Internal database provenance IDs, evidence excerpts, reviewer identities/notes, confidence
+breakdowns, hashes, raw-storage locations, operational errors, and historical values are excluded.
+
+Application status is a read-time derivation from approved `application.start_date` and
+`application.end_date` DATE fields. Before start is UPCOMING, start/end boundaries are inclusive
+OPEN, after end is CLOSED, and missing or invalid/inverted windows are UNKNOWN. The evaluation date
+defaults to the current UTC date and may be supplied explicitly for reproducible queries. No Master
+or field row is rewritten when time changes.
+
+The public service and repository are read-only and separate from the existing internal
+`/api/v1/recruitment-master` administration/publisher contract. T-017 adds no database object,
+mutation route, public HTML interface, eligibility policy, profile, alert, or crawler behavior.

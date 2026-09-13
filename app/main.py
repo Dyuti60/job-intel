@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from app.api.public.v1.router import public_api_router
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     application.include_router(api_router, prefix="/api/v1")
+    application.include_router(public_api_router, prefix="/api/public/v1")
     application.include_router(operations_web_router)
     application.include_router(review_web_router)
     application.mount(

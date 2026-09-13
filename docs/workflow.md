@@ -516,3 +516,26 @@ Monitoring is observational. It does not start pipelines, resolve ReviewCases, a
 Master data, or expose the private Review UI. `--dry-run` predicts health and notification routing
 without writing notification history. Normal monitoring may write only immutable operational
 notification audit records and an optional local external JSONL sink.
+
+## Public Recruitment read workflow
+
+```text
+public GET request
+  -> ACTIVE RecruitmentMaster only
+  -> validate current revision belongs to that master
+  -> current immutable MasterFields only
+  -> derive application status for the requested/current UTC date
+  -> apply approved-field filters and deterministic ordering
+  -> bounded public summary/detail response
+```
+
+No CandidateRevision enters the public contract directly. Drafts, unresolved or rejected review
+work, and verified/confident data that has not crossed the Master Publisher boundary remain absent.
+Historical Master revisions remain available only through internal APIs and do not appear in a
+public detail response after a newer revision becomes current.
+
+Public provenance is composed from the source document and registered endpoint behind each current
+MasterField. The response keeps the original source URL, document type, endpoint name, source class,
+and authority identity, but omits evidence text, raw storage, reviewer data, internal verification
+and confidence records, hashes, changes, and operational history. Every public route is GET-only;
+T-017 performs no publishing or other state transition.
