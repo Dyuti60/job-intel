@@ -1085,3 +1085,54 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
   hardening and must remain bound to a trusted local environment.
 - Stage trends are bounded descriptive summaries, not anomaly detection or a distributed metrics
   platform.
+
+## T-017 — Public Recruitment Read API and Search Baseline
+
+### Result
+
+- Added a separate read-only `/api/public/v1` namespace with list and detail endpoints for Assam
+  Government recruitments. Public selection starts exclusively from ACTIVE RecruitmentMaster rows
+  and requires the selected current revision to belong to that same master.
+- Added bounded page responses (maximum 100 records), normalized authority/candidate filters,
+  escaped literal text search, application start/end ranges, vacancy ranges, deterministic sorting,
+  and stable UUID tie-breaks.
+- Added read-time UPCOMING, OPEN, CLOSED, and UNKNOWN application status derived only from approved
+  DATE fields. Boundaries are inclusive, an optional `as_of` date makes results reproducible, and
+  no Master history is rewritten.
+- Added safe public summary/detail schemas. Detail exposes current approved typed fields and bounded
+  source URL/document/endpoint/source-class/authority provenance, while excluding candidate IDs,
+  Evidence bodies, Review decisions, Verification/Confidence internals, hashes, raw storage,
+  historical revisions, changes, publication events, and operational history.
+- Kept the existing internal Master and publisher APIs unchanged. The public namespace contains GET
+  operations only and T-017 adds no database schema, public HTML UI, or mutation path.
+- Added seven end-to-end API tests covering the approved contract, source provenance, inactive and
+  unpublished isolation, unresolved/rejected review isolation, historical revision exclusion,
+  fail-closed current-pointer integrity, filters, ordering, pagination, date boundaries, literal
+  search escaping, validation bounds, GET-only OpenAPI methods, and database immutability.
+
+### Validation performed
+
+- Complete local test suite: 279 passed in 110.56 seconds. Only upstream FastAPI/Starlette and the
+  pre-existing inaccessible local pytest-cache warnings were emitted.
+- Ruff passed for the complete repository; `git diff --check` passed.
+- T-017 required no migration or dependency change. Existing persistent PostgreSQL remained at
+  `20260912_0011 (head)` and `alembic check` reported no schema drift.
+- A fresh PostgreSQL database applied the complete T-001 through T-016 migration chain to
+  `20260912_0011`; current and drift checks passed. No T-017 database object was introduced.
+- The live public list returned HTTP 200 with an empty bounded page. This is the correct trusted
+  result because the real APSC CandidateRevision still has a QUEUED ReviewCase and no
+  RecruitmentMaster exists. OpenAPI inspection exposed exactly the two public paths with GET only.
+- GitHub-hosted CI run `34742634100` completed successfully for implementation commit `4956c19`,
+  including fresh PostgreSQL migration, Alembic drift checking, the full test suite, and Ruff.
+
+### Known limitations
+
+- The public contract currently has no browser interface; T-018 will consume it with a minimal
+  server-rendered public experience.
+- Selected structured date/vacancy filtering is performed after the authority/identity/text query
+  for the V0 Assam-sized dataset. A future scale milestone may promote these approved fields into a
+  dedicated indexed read projection without weakening the Master-only boundary.
+- Deployment-layer TLS, rate limiting, cache headers/CDN behavior, abuse controls, and production
+  hosting remain outside this local repository milestone.
+- The public API will remain empty for the live APSC record until a human resolves its existing
+  ReviewCase and the Master Publisher successfully creates an ACTIVE RecruitmentMaster.
