@@ -217,3 +217,18 @@ The compose service binds only to loopback, runs as a non-root user with a read-
 drops Linux capabilities, and expects a separately supplied read-only PostgreSQL URL. See
 [Public deployment and recovery](docs/public_deployment.md) for database grants, TLS/proxy rules,
 cache behavior, backup/restore, rollback, and release validation.
+
+## Controlled public releases
+
+T-020 selects the trusted Windows x64 runner with Docker Desktop as the V0 deployment host. The
+manual **Public Release** workflow builds a commit-tagged image on a GitHub-hosted runner, blocks
+fixable HIGH/CRITICAL vulnerabilities, publishes build
+provenance, creates a coordinated external backup, and deploys through the protected
+`public-production` environment by immutable SHA-256 digest. Caddy obtains managed TLS and routes only the bounded public
+surface; the application container has no host port.
+
+Configure the environment variables, secrets, approval protection, DNS, and runner prerequisites
+in [Public deployment and recovery](docs/public_deployment.md) before selecting `deploy=true`.
+The scheduled **Public Availability** workflow provides bounded external probes after activation.
+The **Restore Rehearsal** workflow validates a selected database/raw snapshot in an isolated
+temporary database and always removes that database afterward.

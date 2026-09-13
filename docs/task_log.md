@@ -1238,3 +1238,50 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
   is suitable for public routing.
 - The public site remains empty until Human Review and the Master Publisher create an ACTIVE
   RecruitmentMaster; no real queued ReviewCase was approved for validation.
+
+## T-020 — Controlled Public Deployment and Release Automation
+
+### Result
+
+- Selected the existing trusted Windows x64 Actions runner with Docker Desktop as the controlled V0
+  public host. Added a production Compose topology in which digest-pinned Caddy is the only
+  port-published service and the bounded public ASGI application remains on an internal network.
+- Added a manual protected release workflow that builds a commit-tagged container on GitHub-hosted
+  Ubuntu, blocks fixable HIGH/CRITICAL vulnerabilities, pushes to GHCR, records GitHub build
+  provenance, and promotes the exact registry SHA-256 digest through `public-production`.
+- Added managed Caddy TLS, explicit public-path allow-listing, bounded JSON access logs, protected
+  secret injection, pre-deployment coordinated backup, readiness and private-route smoke gates,
+  automatic application-image rollback, and an external secret-free JSONL release audit.
+- Added scheduled public availability probes and a manual isolated restore-rehearsal workflow.
+  Database and raw snapshots remain under `D:\ASSAM_JOB_DATA`, outside disposable Actions
+  checkouts; restore validation always creates and removes a random temporary database.
+- Added twelve focused workflow/deployment tests and hardened the public image build to install
+  available Debian security updates before dependency/application installation.
+
+### Validation performed
+
+- Complete local suite: 303 passed in 40.44 seconds. Only upstream FastAPI/Starlette and the
+  pre-existing inaccessible local pytest-cache warnings were emitted.
+- Ruff passed for the complete repository; `git diff --check` passed.
+- PostgreSQL remained at `20260912_0011 (head)` and Alembic reported no schema drift. T-020 adds no
+  migration or dependency metadata.
+- Docker rebuilt `assam-job-intelligence-public:t020` successfully. Trivy 0.72.0 initially found
+  12 fixable HIGH/CRITICAL base-image findings; after adding the available OS security upgrades,
+  the same blocking scan reported zero HIGH/CRITICAL findings.
+- Release Compose interpolation, Caddy configuration, all workflow YAML files, and both PowerShell
+  scripts passed local syntax/configuration validation.
+- A coordinated external backup was created and restored successfully into an isolated PostgreSQL
+  database at revision `20260912_0011`; the rehearsal removed the temporary database afterward.
+  The current local database had zero `raw://` SourceDocument references to cross-check.
+
+### Known limitations
+
+- No public hostname or protected production credentials were supplied in repository state, so the
+  real Internet-facing deployment was intentionally not activated and no private surface was
+  exposed. The protected environment, DNS, and certificate issuance remain operator gates.
+- The selected V0 target is one Windows/Docker host. Caddy data uses persistent Docker volumes and
+  release logs/backups use external host paths; host redundancy and multi-region failover are not
+  included.
+- Availability monitoring is deliberately bounded to endpoint/status isolation checks. Eligibility
+  matching, user accounts, alerts, mutable public APIs, live discovery expansion, and automated
+  Human Review remain outside T-020.

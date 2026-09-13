@@ -1,0 +1,64 @@
+name: Restore Rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      database_dump:
+        description: Absolute path to an external PostgreSQL custom-format dump
+        required: true
+        type: string
+      raw_snapshot:
+        description: Absolute path to the matching external raw-storage snapshot
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: assam-job-intelligence-restore-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    name: Restore into isolated temporary database
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 30
+    environment: public-production
+    env:
+      AJI_RESTORE_ADMIN_DATABASE_URL: ${{ secrets.AJI_RESTORE_ADMIN_DATABASE_URL }}
+      PSExecutionPolicyPreference: Bypass
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Install Python and dependencies
+        shell: powershell
+        run: |
+          uv python install 3.12
+          uv sync --frozen --python 3.12
+
+      - name: Validate external paths and mask database credential
+        shell: powershell
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:AJI_RESTORE_ADMIN_DATABASE_URL)) {
+            throw "AJI_RESTORE_ADMIN_DATABASE_URL is required."
+          }
+          Write-Output "::add-mask::$env:AJI_RESTORE_ADMIN_DATABASE_URL"
+          $workspace = [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
+          foreach ($path in @('${{ inputs.database_dump }}', '${{ inputs.raw_snapshot }}')) {
+            $resolved = [IO.Path]::GetFullPath($path)
+            if ($resolved.StartsWith($workspace, [StringComparison]::OrdinalIgnoreCase)) {
+              throw "Restore inputs must remain outside the Actions checkout."
+            }
+          }
+
+      - name: Rehearse coordinated restore
+        shell: powershell
+        run: >-
+          uv run python scripts/rehearse_restore.py
+          --database-dump '${{ inputs.database_dump }}'
+          --raw-snapshot '${{ inputs.raw_snapshot }}'

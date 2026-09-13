@@ -588,3 +588,42 @@ the new container. Rollback restores the prior container image; database/raw-sto
 used only for data-loss recovery and follows the documented coordinated backup procedure. Public
 cache revalidation prevents a prior Master representation from masking a newly published current
 revision.
+
+## Controlled public release workflow
+
+```text
+manual Public Release dispatch
+  -> GitHub-hosted Ubuntu build
+       -> immutable sha image
+       -> HIGH/CRITICAL vulnerability gate
+       -> GHCR push + provenance attestation
+  -> protected public-production approval
+  -> trusted Windows Docker host
+       -> coordinated PostgreSQL + raw backup
+       -> pull immutable image
+       -> Caddy TLS / explicit public path routing
+       -> public container readiness
+       -> public/private smoke gate
+       -> append external release audit
+       -> rollback to previous image on failure
+```
+
+The workflow never deploys from pull-request code and never exposes `app.main`. Credential values
+come only from protected Environment secrets and are masked; the checkout remains disposable.
+Credential rotation deploys and health-checks the replacement public-reader secret before the old
+role is revoked.
+
+```text
+scheduled public availability
+  -> healthz / readyz / jobs
+  -> verify private paths remain 404
+
+manual restore rehearsal
+  -> explicit coordinated backup
+  -> random isolated PostgreSQL database
+  -> Alembic + raw-reference checks
+  -> guaranteed temporary database removal
+```
+
+Neither availability nor restore validation changes recruitment or review state. Deployment does
+not publish Master data; it only serves Master records already approved by the trusted pipeline.

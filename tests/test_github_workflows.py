@@ -42,3 +42,45 @@ def test_scheduled_pipeline_has_trusted_boundaries_and_concurrency() -> None:
     assert "shell: pwsh" not in workflow
     assert "actions/setup-python" not in workflow
     assert "permissions:\n  contents: read" in workflow
+
+
+def test_public_release_builds_scans_attests_and_gates_deployment() -> None:
+    workflow = (ROOT / ".github/workflows/public-release.yml").read_text(encoding="utf-8")
+    assert "workflow_dispatch:" in workflow
+    assert "runs-on: ubuntu-latest" in workflow
+    assert "packages: write" in workflow
+    assert "attestations: write" in workflow
+    assert "artifact-metadata: write" in workflow
+    assert "id-token: write" in workflow
+    assert "ghcr.io/dyuti60/job-intel-public" in workflow
+    assert "sha-${GITHUB_SHA}" in workflow
+    assert "github.ref != 'refs/heads/main'" in workflow
+    assert "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25" in workflow
+    assert "severity: HIGH,CRITICAL" in workflow
+    assert "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6" in workflow
+    assert "steps.push.outputs.digest" in workflow
+    assert "@${{ needs.build.outputs.digest }}" in workflow
+    assert "runs-on: [self-hosted, Windows, X64]" in workflow
+    assert "environment:\n      name: public-production" in workflow
+    assert "AJI_PUBLIC_DATABASE_URL" in workflow
+    assert "AJI_BACKUP_DATABASE_URL" in workflow
+    assert "create_runtime_backup.ps1" in workflow
+    assert "deploy_public_release.ps1" in workflow
+    assert "cancel-in-progress: false" in workflow
+
+
+def test_public_availability_and_restore_workflows_are_bounded() -> None:
+    availability = (ROOT / ".github/workflows/public-availability.yml").read_text(
+        encoding="utf-8"
+    )
+    restore = (ROOT / ".github/workflows/restore-rehearsal.yml").read_text(encoding="utf-8")
+    assert 'cron: "*/30 * * * *"' in availability
+    assert "runs-on: ubuntu-latest" in availability
+    assert "PUBLIC_BASE_URL" in availability
+    for private_path in ("/review", "/operations", "/api/v1/health", "/docs", "/openapi.json"):
+        assert private_path in availability
+    assert "runs-on: [self-hosted, Windows, X64]" in restore
+    assert "environment: public-production" in restore
+    assert "AJI_RESTORE_ADMIN_DATABASE_URL" in restore
+    assert "rehearse_restore.py" in restore
+    assert "Restore inputs must remain outside" in restore

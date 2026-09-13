@@ -713,3 +713,29 @@ provenance tables. Migrations and publisher operations remain responsibilities o
 trusted runtime. PostgreSQL and external raw-content backups cover the authoritative runtime;
 public containers are replaceable artifacts. T-019 adds no migration and no recruitment-domain
 state.
+
+## Controlled public release automation
+
+T-020 selects the existing trusted Windows x64 Actions runner with Docker Desktop as the V0 release
+host. GitHub-hosted Ubuntu builds one commit-addressed GHCR image, scans it with a SHA-pinned Trivy
+action, pushes only after the vulnerability gate, and emits a GitHub artifact provenance
+attestation. Deployment is a separate job in the protected `public-production` environment and
+uses the registry's content-addressed SHA-256 digest; a mutable tag or `latest` cannot be deployed.
+
+On the host, Caddy is the only service with published ports. It owns automatic managed TLS, bounded
+JSON access-log rotation, and an allow-list matcher for `/jobs`, `/api/public/v1`, `/static`, and
+health probes. All other paths receive 404 at the edge, while the public application independently
+lacks private routes. The application is reachable only across an internal Docker network and uses
+the separately rotated, least-privilege public database login.
+
+Every deployment first writes a coordinated PostgreSQL/custom-format and raw-storage snapshot
+outside the checkout. The deploy script retains the previous image, waits for container readiness,
+runs the public/private smoke gate, rolls back on failure, and appends a secret-free JSONL audit to
+external persistent storage on success. GitHub Environment history, immutable image digest, and
+attestation provide the remote release audit.
+
+A separate manual restore workflow takes explicit external backup paths, restores into a random
+temporary database, validates the Alembic revision and up to 1,000 raw references, and drops the
+rehearsal database in all outcomes. A GitHub-hosted scheduled availability workflow checks public
+health, readiness, `/jobs`, and continued private-route exclusion without runtime database access.
+These operational layers never invoke pipeline, Review, or Publisher mutations and add no schema.

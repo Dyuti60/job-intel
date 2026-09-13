@@ -1,5 +1,26 @@
 # Public deployment and recovery
 
+## Selected V0 target
+
+The selected T-020 target is the existing trusted Windows x64 GitHub Actions runner with Docker
+Desktop. `docker-compose.release.yml` runs the public application on an internal network and Caddy
+as the only port-published edge. This is a single-host V0 deployment: keep the machine patched,
+online, encrypted, and accessible only to trusted administrators.
+
+Create a protected GitHub Environment named `public-production`, require maintainer approval, and
+restrict deployment branches to `main`. Configure:
+
+- variable `PUBLIC_HOSTNAME`: the DNS hostname, without a scheme or path;
+- variable `PUBLIC_BASE_URL`: the matching `https://` origin;
+- secret `AJI_PUBLIC_DATABASE_URL`: the least-privilege public reader URL;
+- secret `AJI_BACKUP_DATABASE_URL`: the trusted runtime URL used only for pre-release backup;
+- secret `AJI_RESTORE_ADMIN_DATABASE_URL`: an administrative URL used only by manual isolated
+  restore rehearsals.
+
+Point the hostname's DNS records at the host only after inbound TCP 80/443 reaches Docker Desktop.
+No private application port should be forwarded. GitHub-hosted CI and image building never receive
+any of these secrets.
+
 ## Separation model
 
 Run `app.public_main:app` publicly. Never expose `app.main:app`: it contains the internal API,
@@ -52,6 +73,23 @@ deployment environment or secret store; do not put it in Compose or source contr
 
 The public process does not run Alembic, Discovery, Verification, Review, or Publisher operations.
 
+The preferred release is the manual **Public Release** workflow. First dispatch with `deploy=false`
+to build, scan, push, and attest the exact commit. After reviewing that run, dispatch the same main
+commit with `deploy=true`; the `public-production` approval gate pauses before the trusted host. The
+host creates its coordinated backup, deploys, checks readiness and route isolation, and appends to
+`D:\ASSAM_JOB_DATA\public-release\releases.jsonl`. Never weaken Environment approval to make a
+failed deployment faster.
+
+The image package may remain private: the deployment job logs into GHCR with its job-scoped token.
+Grant no package token to pull-request workflows. Caddy's image is version-and-digest pinned.
+
+## Credential rotation
+
+Create a replacement PostgreSQL login with the same seven-table SELECT grants, update the protected
+`AJI_PUBLIC_DATABASE_URL` secret, and run a deployment. Revoke the prior login only after readiness,
+smoke, and an ordinary public read succeed. Rotation never changes the Publisher/runtime database
+credential and never stores either URL in the checkout or release audit.
+
 ## Cache and request controls
 
 `AJI_PUBLIC_CACHE_MAX_AGE_SECONDS` defaults to 60. Public content is rendered from the current
@@ -86,6 +124,13 @@ After restore, verify a sample `SourceDocument.storage_uri` resolves inside the 
 run the complete test suite against the isolated database, and perform the public smoke test. Never
 overwrite the active database/raw root merely to test recovery.
 
+The manual **Restore Rehearsal** workflow automates this validation. Supply matching absolute paths
+under the external backup root. It uses local PostgreSQL client tools when available and otherwise
+falls back to a digest-pinned PostgreSQL 17 utility container. It creates a random temporary
+database, validates its Alembic revision and up to 1,000 `raw://` references, and removes the
+database even when validation fails. Review its Actions record and retain the corresponding backup
+manifest as release evidence.
+
 ## Rollback
 
 For an application-only failure, route traffic back to the prior immutable image. T-019 has no
@@ -101,3 +146,17 @@ The project does not provide authentication for the private application; network
 mandatory. The V0 public limiter is per process, no web-application firewall is included, and TLS
 certificates are owned by the deployment proxy. Secrets, reviewer records, raw files, and private
 operational APIs must never be mounted into or routed through the public container.
+
+## Release checklist
+
+- CI passes on the exact main commit.
+- Build-only Public Release run passes vulnerability scanning and provenance attestation.
+- DNS and protected Environment variables point to the reviewed target.
+- The public database role has SELECT only on the documented tables.
+- A coordinated backup and manifest exist outside the checkout.
+- Protected deployment approval is recorded.
+- `/healthz`, `/readyz`, `/jobs`, and the public API succeed over HTTPS.
+- `/review`, `/operations`, `/api/v1`, `/docs`, and `/openapi.json` return 404 publicly.
+- HSTS, CSP, ETag, and `must-revalidate` headers are present.
+- The external release JSONL records the immutable image, prior image, actor, run, and time.
+- The prior image remains available and a recent backup passes isolated restore rehearsal.
