@@ -113,6 +113,24 @@ remain later independent stages.
 
 ## Candidate evidence attachment workflow
 
+### Post interpretation workflow
+
+```text
+candidate revision extraction
+  -> advertisement-level CandidateFields
+  -> deterministic post split is explicit?
+       yes -> AdvertisementRevision EXPLICIT
+              -> one or more RecruitmentPosts
+              -> post-relative PostFacts mapped to namespaced CandidateFields
+       ambiguous -> AdvertisementRevision AMBIGUOUS, no invented Posts
+       historical/unsupported -> AdvertisementRevision LEGACY_UNSPLIT, no invented Posts
+```
+
+Post keys and ordinals are unique inside one advertisement revision. The revision hash includes
+explicit post identity and fact membership, while legacy advertisement-only hashing remains
+byte-compatible with pre-migration revisions. PostFacts reuse CandidateFields so Evidence and
+Verification provenance is not copied or weakened.
+
 ```text
 immutable SourceDocument
   -> immutable CandidateRevision

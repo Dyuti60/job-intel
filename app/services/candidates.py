@@ -4,10 +4,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.candidates import (
+    Advertisement,
+    AdvertisementRevision,
     CandidateField,
     CandidateStatus,
+    PostFact,
     RecruitmentCandidate,
     RecruitmentCandidateRevision,
+    RecruitmentPost,
 )
 from app.models.discovery import SourceDocumentStatus
 from app.models.source_registry import AuthorityStatus
@@ -64,6 +68,7 @@ class CandidateService:
             display_name=data.display_name,
             status=CandidateStatus.DRAFT,
         )
+        candidate.advertisement = Advertisement()
         self.candidates.add(candidate)
         try:
             self._save()
@@ -143,13 +148,36 @@ class CandidateService:
                 "Candidate authority does not match source document authority"
             )
 
+        expanded_fields = list(data.fields)
+        for post in data.posts:
+            expanded_fields.extend(
+                field.model_copy(update={"field_path": f"posts.{post.post_key}.{field.field_path}"})
+                for field in post.facts
+            )
         revision_hash = compute_revision_hash(
             source_document_id=document.id,
             source_document_content_hash=document.content_hash,
             fields=[
                 (field.field_path, field.value_type, field.value)
-                for field in data.fields
+                for field in expanded_fields
             ],
+            posts=[
+                {
+                    "post_key": post.post_key,
+                    "ordinal": post.ordinal,
+                    "name": post.name,
+                    "normalized_name": self._normalize_post_name(
+                        post.normalized_name or post.name
+                    ),
+                    "fact_keys": sorted(fact.field_path for fact in post.facts),
+                }
+                for post in data.posts
+            ],
+            interpretation=(
+                {"split_status": data.split_status.value}
+                if data.split_status.value != "LEGACY_UNSPLIT"
+                else None
+            ),
         )
         existing = self.revisions.get_by_hash(candidate.id, revision_hash)
         if existing is not None:
@@ -172,8 +200,36 @@ class CandidateService:
                 raw_value=field.raw_value,
                 source_locator=field.source_locator,
             )
-            for field in sorted(data.fields, key=lambda item: item.field_path)
+            for field in sorted(expanded_fields, key=lambda item: item.field_path)
         ]
+        field_by_path = {field.field_path: field for field in revision.fields}
+        revision.advertisement_revision = AdvertisementRevision(
+            advertisement_id=candidate.advertisement.id,
+            split_status=data.split_status,
+            detected_post_count=(len(data.posts) if data.posts else None),
+            split_note=data.split_note,
+            posts=[
+                RecruitmentPost(
+                    post_key=post.post_key,
+                    ordinal=post.ordinal,
+                    name=post.name,
+                    normalized_name=self._normalize_post_name(
+                        post.normalized_name or post.name
+                    ),
+                    source_locator=post.source_locator,
+                    facts=[
+                        PostFact(
+                            fact_key=fact.field_path,
+                            candidate_field=field_by_path[
+                                f"posts.{post.post_key}.{fact.field_path}"
+                            ],
+                        )
+                        for fact in post.facts
+                    ],
+                )
+                for post in data.posts
+            ],
+        )
         self.revisions.add(revision)
         try:
             self._save()
@@ -205,3 +261,7 @@ class CandidateService:
 
     def _save(self) -> None:
         self.session.commit() if self.commit else self.session.flush()
+
+    @staticmethod
+    def _normalize_post_name(value: str) -> str:
+        return " ".join(value.casefold().split())

@@ -1,3 +1,5 @@
+import hashlib
+import json
 import uuid
 
 import pytest
@@ -152,3 +154,65 @@ def test_volatile_metadata_is_absent_from_revision_hash() -> None:
     second_hash = revision_hash(document_id, fields)
 
     assert first_hash == second_hash
+
+
+def test_legacy_revision_hash_remains_byte_compatible_with_pre_post_domain() -> None:
+    document_id = uuid.UUID("10000000-0000-0000-0000-000000000001")
+    fields = [("vacancies.total", CandidateValueType.INTEGER, 42)]
+    legacy_payload = {
+        "source_document": {"id": str(document_id), "content_hash": "a" * 64},
+        "fields": [
+            {"field_path": "vacancies.total", "value_type": "INTEGER", "value": 42}
+        ],
+    }
+    expected = hashlib.sha256(
+        json.dumps(
+            legacy_payload,
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+    assert revision_hash(document_id, fields) == expected
+
+
+def test_post_manifest_and_ambiguous_interpretation_change_revision_identity() -> None:
+    document_id = uuid.uuid4()
+    fields = [("posts.grade_iv.vacancies.total", CandidateValueType.INTEGER, 42)]
+    common = {
+        "source_document_id": document_id,
+        "source_document_content_hash": "a" * 64,
+        "fields": fields,
+    }
+
+    explicit = compute_revision_hash(
+        **common,
+        posts=[
+            {
+                "post_key": "grade_iv",
+                "ordinal": 1,
+                "name": "Grade IV",
+                "normalized_name": "grade iv",
+                "fact_keys": ["vacancies.total"],
+            }
+        ],
+    )
+    renamed = compute_revision_hash(
+        **common,
+        posts=[
+            {
+                "post_key": "grade_iv",
+                "ordinal": 1,
+                "name": "Grade-IV Staff",
+                "normalized_name": "grade-iv staff",
+                "fact_keys": ["vacancies.total"],
+            }
+        ],
+    )
+    ambiguous = compute_revision_hash(
+        **common, interpretation={"split_status": "AMBIGUOUS"}
+    )
+
+    assert len({explicit, renamed, ambiguous}) == 3

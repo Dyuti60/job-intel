@@ -1,21 +1,17 @@
-# T-021 — Deterministic Eligibility Rules and Matching Baseline
+# V1-M2 — Deterministic multi-post extraction
 
-T-021 should introduce an explainable Assam recruitment eligibility domain over approved current
-RecruitmentMaster data without changing Master history.
+Implement deterministic extraction that can populate the Advertisement/Post foundation from
+official vacancy tables and clearly bounded post-wise sections.
 
-It should include:
+The milestone should include:
 
-- versioned deterministic eligibility-rule definitions for age, qualification, domicile,
-  experience, category relaxation, and other explicitly supported approved fields
-- typed applicant-input schemas without persistent user profiles
-- field-level eligibility outcomes with exact MasterField and rule-version provenance
-- UNKNOWN / REVIEW_REQUIRED behavior for missing, ambiguous, or unsupported requirements
-- deterministic candidate-level aggregation that never turns absent evidence into eligibility
-- a read-only eligibility-evaluation API and comprehensive fixture-based tests
-- strict separation from Discovery, Verification, Human Review, Master publishing, and public
-  deployment operations
+- a reusable extraction result with separate advertisement facts and post facts
+- explicit vacancy-table and post-section parsing with stable post keys
+- shared advertisement facts such as application dates without copying their provenance
+- post-specific vacancy, qualification, age, pay, reservation, and other supported facts
+- `AMBIGUOUS` output with source locators when row/column or post ownership cannot be decided safely
+- deterministic fixtures covering a multi-post SLPRB-style advertisement and ambiguous layouts
+- Evidence attached to every emitted CandidateField and no live-site dependency in CI
 
-T-021 must NOT implement user accounts, saved profiles, alerts, preparation features, payments,
-LLM decisions, live crawling, or automatic Human Review.
-
-Do not implement T-021 now.
+Do not publish Posts to Master or implement Confidence V2 in this milestone. Those changes follow
+after extraction shape and provenance are proven.

@@ -27,4 +27,17 @@ These rules apply to all future work in this repository.
 23. Prefer deterministic code for crawling, hashing, deduplication, state transitions, deadlines, and other rule-based behavior.
 24. External AI is optional and should be used only where it genuinely improves extraction or verification.
 25. Keep raw/discovery data separate from cleansed/approved master data.
-
+26. Advertisement and Post are distinct; one advertisement may produce multiple independently usable Posts.
+27. The approved canonical Master and deterministic eligibility unit is a Post, with its parent Advertisement provenance retained.
+28. Missing optional facts and low confidence do not by themselves invalidate a recruitment.
+29. Confidence, Human Review routing, and publication policy are separate, versioned concerns; published policy versions are immutable.
+30. Rejection never deletes source, evidence, candidate, review, or publication history.
+31. Official facts must remain separate from derived intelligence.
+32. V1 is deterministic and LLM-independent; agentic Internet discovery is future V2 scope.
+33. Reuse bounded adapter families where practical, and crawl official sites respectfully with rate and timeout limits.
+34. Scheduling and backfill must be idempotent and failure-isolated; historical advertisements never imply recurrence.
+35. Results, merit lists, answer keys, appointment notices, and similar lifecycle documents are not new jobs.
+36. Eligibility evaluates only approved Post Master revisions; missing or ambiguous requirements produce UNKNOWN or REVIEW_REQUIRED.
+37. The public runtime must not expose private review, operations, audit internals, or mutation capabilities.
+38. Operations UI actions must call bounded internal functions and must never execute arbitrary shell input.
+39. Migrations and backfills must not fabricate unsupported post splits or facts.

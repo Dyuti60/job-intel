@@ -16,15 +16,15 @@ discovery and cross-checking but cannot displace official evidence.
 Source Registry
   -> Discovery Run
   -> Source Document
-  -> Recruitment Candidate
-  -> Recruitment Candidate Revision
-  -> Candidate Field
+  -> Advertisement Candidate
+  -> Advertisement / Candidate Revision
+  -> Advertisement Facts + one or more Posts + Post Facts
   -> Evidence
   -> Verification
   -> Human Review
   -> Approval
   -> Master Publisher
-  -> Recruitment Master
+  -> Post-level Recruitment Master (V1 target; migration in progress)
 ```
 
 The pipeline has a deliberate trust boundary:
@@ -165,6 +165,29 @@ that a candidate has at least one structured revision ready to enter a future ve
 it is not verified, approved, publishable, or master data.
 
 ## Candidate evidence and extraction provenance
+
+### Advertisement and Post domain foundation
+
+Migration `20260914_0012` adds an explicit additive interpretation layer:
+
+```text
+RecruitmentCandidate (stable advertisement proposal)
+  -> Advertisement
+      -> AdvertisementRevision (one-to-one with immutable CandidateRevision)
+          -> RecruitmentPost (zero or more explicit post splits)
+              -> PostFact -> CandidateField -> Evidence / Verification
+```
+
+`AdvertisementRevision.split_status` is `EXPLICIT`, `AMBIGUOUS`, or `LEGACY_UNSPLIT`.
+Only `EXPLICIT` revisions may own Posts. A PostFact maps a post-relative fact key to exactly one
+CandidateField in the same immutable candidate revision; composite foreign keys prevent a fact
+from crossing revision boundaries. Post extraction metadata participates in revision hashing.
+
+The migration wraps every historical candidate and revision but marks it `LEGACY_UNSPLIT`, leaves
+the detected post count unknown, and creates no Post or PostFact rows. This preserves all existing
+hashes and makes replay idempotent without asserting that an advertisement contained only one post.
+Downstream Verification, Review, and Master remain compatible because the authoritative evidence
+chain still begins at CandidateField. Post-level routing and publication are subsequent milestones.
 
 T-005 adds immutable extraction provenance after `CandidateField` and before independent
 Verification. An `Evidence` record retains one bounded piece of source context from exactly one

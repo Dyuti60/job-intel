@@ -4,10 +4,13 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.candidates import (
+    AdvertisementRevision,
     CandidateField,
     CandidateStatus,
+    PostFact,
     RecruitmentCandidate,
     RecruitmentCandidateRevision,
+    RecruitmentPost,
 )
 
 
@@ -67,7 +70,13 @@ class CandidateRevisionRepository:
     def get(self, revision_id: uuid.UUID) -> RecruitmentCandidateRevision | None:
         return self.session.scalar(
             select(RecruitmentCandidateRevision)
-            .options(selectinload(RecruitmentCandidateRevision.fields))
+            .options(
+                selectinload(RecruitmentCandidateRevision.fields),
+                selectinload(RecruitmentCandidateRevision.advertisement_revision)
+                .selectinload(AdvertisementRevision.posts)
+                .selectinload(RecruitmentPost.facts)
+                .selectinload(PostFact.candidate_field),
+            )
             .where(RecruitmentCandidateRevision.id == revision_id)
         )
 
@@ -76,7 +85,13 @@ class CandidateRevisionRepository:
     ) -> RecruitmentCandidateRevision | None:
         return self.session.scalar(
             select(RecruitmentCandidateRevision)
-            .options(selectinload(RecruitmentCandidateRevision.fields))
+            .options(
+                selectinload(RecruitmentCandidateRevision.fields),
+                selectinload(RecruitmentCandidateRevision.advertisement_revision)
+                .selectinload(AdvertisementRevision.posts)
+                .selectinload(RecruitmentPost.facts)
+                .selectinload(PostFact.candidate_field),
+            )
             .where(
                 RecruitmentCandidateRevision.recruitment_candidate_id == candidate_id,
                 RecruitmentCandidateRevision.revision_hash == revision_hash,
@@ -89,7 +104,13 @@ class CandidateRevisionRepository:
         return list(
             self.session.scalars(
                 select(RecruitmentCandidateRevision)
-                .options(selectinload(RecruitmentCandidateRevision.fields))
+                .options(
+                    selectinload(RecruitmentCandidateRevision.fields),
+                    selectinload(RecruitmentCandidateRevision.advertisement_revision)
+                    .selectinload(AdvertisementRevision.posts)
+                    .selectinload(RecruitmentPost.facts)
+                    .selectinload(PostFact.candidate_field),
+                )
                 .where(
                     RecruitmentCandidateRevision.recruitment_candidate_id == candidate_id
                 )

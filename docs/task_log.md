@@ -1357,3 +1357,36 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
 - The web decision endpoint rejects hidden legacy decision values, preventing a crafted local form
   from bypassing the simplified UI contract. The existing APSC case was moved from QUEUED to
   IN_REVIEW to validate and capture the post-start page; no item was decided or published.
+
+## V1-M1 — Advertisement/Post domain foundation — 2026-09-14
+
+### Result
+
+- Added explicit immutable `Advertisement`, `AdvertisementRevision`, `RecruitmentPost`, and
+  `PostFact` models.
+- Added composite database constraints that prevent Posts and PostFacts from crossing the owning
+  CandidateRevision.
+- Extended Candidate revision input/output with explicit post splits and deterministic normalized
+  post names.
+- Kept post facts in the established CandidateField chain so Evidence, Verification, Confidence,
+  and Review provenance remain available.
+- Preserved the pre-V1 revision hash payload for advertisement-only replay and included explicit
+  post identity in new revision hashes.
+- Backfilled all existing local records as `LEGACY_UNSPLIT` without creating unsupported Posts.
+
+### Validation performed
+
+- Existing populated database upgraded to `20260914_0012`: 18 candidates became 18 Advertisement
+  wrappers and 18 legacy-unsplit revision interpretations; zero Posts were fabricated.
+- Full migration chain succeeded on a fresh isolated PostgreSQL database.
+- Downgrade to `20260912_0011` and re-upgrade to `20260914_0012` succeeded locally.
+- `uv run alembic check`: no drift.
+- `uv run pytest -q`: 316 tests passed.
+- `uv run ruff check .` and `git diff --check`: passed.
+
+### Known limitations
+
+- Current live adapters still emit advertisement-level revisions; deterministic multi-post parsing
+  is the next milestone.
+- Confidence V1, Review, Master, public jobs, and scheduling remain advertisement-level until their
+  dedicated V1 milestones.

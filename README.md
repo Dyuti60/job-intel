@@ -4,6 +4,11 @@ Foundation for a trustworthy master-data platform for Assam Government recruitme
 information. The current implementation includes source, discovery provenance, candidate,
 evidence, verification, confidence, and local Human Review capabilities.
 
+The domain now distinguishes an Advertisement from its individual Posts. Historical
+advertisement-level revisions are preserved as `LEGACY_UNSPLIT` and are never guessed into Posts;
+new deterministic extractors can persist explicit Posts and PostFacts while retaining the existing
+CandidateField-to-Evidence provenance chain.
+
 For a complete plain-language system walkthrough, local/browser startup guide, operator runbook,
 debugging checklist, and handover map, see
 [Knowledge Transfer and Operations Guide](docs/knowledge_transfer.md).

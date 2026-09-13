@@ -1,11 +1,16 @@
 """Database model exports."""
 
 from app.models.candidates import (
+    Advertisement,
+    AdvertisementRevision,
+    AdvertisementSplitStatus,
     CandidateField,
     CandidateStatus,
     CandidateValueType,
+    PostFact,
     RecruitmentCandidate,
     RecruitmentCandidateRevision,
+    RecruitmentPost,
 )
 from app.models.confidence import (
     ConfidencePolicyVersion,
@@ -86,6 +91,9 @@ from app.models.verification import (
 )
 
 __all__ = [
+    "Advertisement",
+    "AdvertisementRevision",
+    "AdvertisementSplitStatus",
     "AuthorityStatus",
     "AuthorityType",
     "CandidateField",
@@ -126,8 +134,10 @@ __all__ = [
     "PipelineStageRun",
     "PipelineStageStatus",
     "PipelineTriggerType",
+    "PostFact",
     "RecruitmentCandidate",
     "RecruitmentCandidateRevision",
+    "RecruitmentPost",
     "RecruitmentMaster",
     "RecruitmentMasterRevision",
     "RecruitmentMasterStatus",

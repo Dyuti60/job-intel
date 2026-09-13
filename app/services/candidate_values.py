@@ -51,6 +51,8 @@ def compute_revision_hash(
     source_document_id: uuid.UUID,
     source_document_content_hash: str,
     fields: Iterable[tuple[str, CandidateValueType, Any]],
+    posts: Iterable[dict[str, Any]] = (),
+    interpretation: dict[str, Any] | None = None,
 ) -> str:
     canonical_fields = [
         {
@@ -60,13 +62,20 @@ def compute_revision_hash(
         }
         for field_path, value_type, value in sorted(fields, key=lambda field: field[0])
     ]
-    canonical_payload = {
+    canonical_payload: dict[str, Any] = {
         "source_document": {
             "id": str(source_document_id),
             "content_hash": source_document_content_hash,
         },
         "fields": canonical_fields,
     }
+    canonical_posts = sorted(posts, key=lambda post: (post["ordinal"], post["post_key"]))
+    # Keep the pre-post-domain payload byte-for-byte compatible for legacy advertisement-only
+    # revisions. This is required for idempotent replay of every historical extraction.
+    if canonical_posts:
+        canonical_payload["posts"] = canonical_posts
+    if interpretation is not None:
+        canonical_payload["advertisement_interpretation"] = interpretation
     serialized = json.dumps(
         canonical_payload,
         ensure_ascii=False,
