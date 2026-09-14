@@ -17,6 +17,7 @@ from app.models.evidence import CandidateFieldEvidence, Evidence
 from app.models.review import ReviewCaseStatus, ReviewItemScope, ReviewItemStatus
 from app.models.source_registry import SourceEndpoint
 from app.models.verification import FieldVerification, VerificationEvidenceAssessment
+from app.services.exceptions import DomainConflictError
 from app.services.review import ReviewService
 
 
@@ -100,22 +101,53 @@ class ReviewCaseViewService:
         for case in cases:
             revision = self._revision(case.candidate_revision_id)
             candidate = revision.recruitment_candidate
-            pending = sum(item.status == ReviewItemStatus.PENDING for item in case.items)
-            entries.append(
-                {
+            posts = (
+                revision.advertisement_revision.posts
+                if revision.advertisement_revision is not None
+                else []
+            )
+            post_by_key = {post.post_key: post for post in posts}
+            item_groups: dict[str | None, list[Any]] = {}
+            for item in case.items:
+                post_key = ReviewService._post_key(item.field_path_snapshot)
+                item_groups.setdefault(post_key, []).append(item)
+            for post_key, grouped_items in item_groups.items():
+                post = post_by_key.get(post_key)
+                reasons = sorted(
+                    {
+                        reason
+                        for item in grouped_items
+                        for reason in item.review_reason_codes_snapshot
+                    }
+                    | set(case.revision_review_reason_codes_snapshot)
+                )
+                scores = [
+                    item.confidence_score_snapshot
+                    for item in grouped_items
+                    if item.confidence_score_snapshot is not None
+                ]
+                entries.append({
                     "id": case.id,
                     "short_id": str(case.id).split("-")[0],
                     "candidate_name": candidate.display_name,
                     "candidate_key": candidate.candidate_key,
+                    "advertisement_title": candidate.display_name,
+                    "post_key": post_key,
+                    "post_name": post.name if post is not None else "Advertisement-wide review",
+                    "authority_name": candidate.recruiting_authority.name,
+                    "organization": self._organization(revision),
+                    "important_fields": self._important_post_fields(post),
+                    "review_reasons": [humanize(reason) for reason in reasons],
                     "status": case.status.value,
                     "priority": case.priority.value,
-                    "score": case.revision_score_snapshot,
+                    "score": min(scores) if scores else case.revision_score_snapshot,
                     "policy_version": case.policy_version.value,
-                    "pending_items": pending,
-                    "total_items": len(case.items),
+                    "pending_items": sum(
+                        item.status == ReviewItemStatus.PENDING for item in grouped_items
+                    ),
+                    "total_items": len(grouped_items),
                     "opened_at": case.opened_at,
-                }
-            )
+                })
         all_cases = self.review.list_cases(
             status=None,
             priority=None,
@@ -142,7 +174,7 @@ class ReviewCaseViewService:
             },
         }
 
-    def case(self, case_id: uuid.UUID) -> dict[str, Any]:
+    def case(self, case_id: uuid.UUID, *, focus_post_key: str | None = None) -> dict[str, Any]:
         review_case = self.review.get_case(case_id)
         revision = self._revision(review_case.candidate_revision_id)
         candidate = revision.recruitment_candidate
@@ -155,6 +187,8 @@ class ReviewCaseViewService:
             else []
         )
         post_names = {post.post_key: post.name for post in posts}
+        if focus_post_key is not None and focus_post_key not in post_names:
+            raise DomainConflictError("The selected Post is not part of this review case")
 
         items = []
         for item in review_case.items:
@@ -237,6 +271,16 @@ class ReviewCaseViewService:
             review_groups.append(
                 {"scope": "ADVERTISEMENT", "key": None, "name": "Advertisement", "items": items}
             )
+        all_review_groups = review_groups
+        if focus_post_key is not None:
+            review_groups = [
+                group
+                for group in all_review_groups
+                if group["key"] in {None, focus_post_key}
+            ]
+        focused_post = next(
+            (post for post in posts if post.post_key == focus_post_key), None
+        )
         result = {
             "case": review_case,
             "case_id": review_case.id,
@@ -262,7 +306,25 @@ class ReviewCaseViewService:
                 "authority_code": authority.code,
                 "source_document_url": source_document.document_url,
                 "source_document_type": source_document.document_type.value,
+                "organization": self._organization(revision),
             },
+            "focused_post": (
+                {
+                    "key": focused_post.post_key,
+                    "name": focused_post.name,
+                    "important_fields": self._important_post_fields(focused_post),
+                }
+                if focused_post is not None
+                else None
+            ),
+            "post_links": [
+                {"key": post.post_key, "name": post.name}
+                for post in posts
+                if any(
+                    group["key"] == post.post_key and group["items"]
+                    for group in all_review_groups
+                )
+            ],
             "items": items,
             "review_groups": review_groups,
             "projection": None,
@@ -283,6 +345,41 @@ class ReviewCaseViewService:
                 ],
             }
         return result
+
+    @staticmethod
+    def _organization(revision: RecruitmentCandidateRevision) -> str:
+        by_path = {field.field_path: field.value for field in revision.fields}
+        for path in ("organization.unit", "organization.name", "department.name"):
+            value = by_path.get(path)
+            if isinstance(value, str) and value.strip():
+                return " ".join(value.split())
+        return revision.recruitment_candidate.recruiting_authority.name
+
+    @staticmethod
+    def _important_post_fields(post: RecruitmentPost | None) -> list[dict[str, str]]:
+        if post is None:
+            return []
+        priority = {
+            "vacancies.total": 0,
+            "qualification.minimum": 1,
+            "age.minimum": 2,
+            "age.maximum": 3,
+            "experience.minimum_months": 4,
+            "pay.scale": 5,
+            "salary.minimum": 6,
+            "salary.maximum": 7,
+        }
+        facts = sorted(
+            (fact for fact in post.facts if fact.fact_key in priority),
+            key=lambda fact: priority[fact.fact_key],
+        )
+        return [
+            {
+                "label": humanize(fact.fact_key.replace(".", "_")),
+                "value": display_value(fact.candidate_field.value),
+            }
+            for fact in facts
+        ]
 
     def _revision(self, revision_id: uuid.UUID) -> RecruitmentCandidateRevision:
         revision = self.session.scalar(

@@ -75,10 +75,11 @@
   {% endif %}
 </section>
 
-<section class="detail-section" aria-labelledby="fields-heading">
-  <h2 id="fields-heading">Approved recruitment details</h2>
+{% for section in view.sections %}
+<section class="detail-section" aria-labelledby="{{ section.key }}-heading">
+  <h2 id="{{ section.key }}-heading">{{ section.title }}</h2>
   <div class="field-list">
-    {% for field in view.fields %}
+    {% for field in section.fields %}
     <article class="field-row">
       <div>
         <h3>{{ field.label }}</h3>
@@ -90,9 +91,10 @@
     {% endfor %}
   </div>
 </section>
+{% endfor %}
 
 <section class="detail-section" aria-labelledby="sources-heading">
-  <h2 id="sources-heading">Source provenance</h2>
+  <h2 id="sources-heading">Official Source</h2>
   <p>These registered sources underpin the approved values above.</p>
   <div class="source-list">
     {% for source in view.recruitment.sources %}

@@ -99,18 +99,26 @@ def review_queue(
 
 
 @router.get("/cases/{case_id}", response_class=HTMLResponse, name="review_case")
-def review_case(request: Request, case_id: uuid.UUID, session: DatabaseSession) -> HTMLResponse:
+def review_case(
+    request: Request,
+    case_id: uuid.UUID,
+    session: DatabaseSession,
+    post: str | None = None,
+) -> HTMLResponse:
     try:
-        view = ReviewCaseViewService(session).case(case_id)
+        view = ReviewCaseViewService(session).case(case_id, focus_post_key=post)
     except ResourceNotFoundError as error:
         return _error_page(request, str(error), 404)
     except DomainConflictError as error:
         return _error_page(request, str(error), 409)
+    focus_name = (view["focused_post"] or {}).get(
+        "name", view["candidate"]["candidate_key"]
+    )
     return _template(
         request,
         "review/case.html",
         {
-            "title": f"Review {view['candidate']['candidate_key']}",
+            "title": f"Review {focus_name}",
             **view,
             "message": request.query_params.get("message"),
             "error": request.query_params.get("error"),

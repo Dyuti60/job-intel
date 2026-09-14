@@ -1,8 +1,140 @@
 import uuid
 
-from tests.factories import create_revision, create_run, observe_document
+from tests.factories import (
+    create_candidate,
+    create_discovery_source,
+    create_revision,
+    create_run,
+    observe_document,
+)
 from tests.test_master_api import _publish, _verify_revision
 from tests.test_post_master import _explicit_two_post_run
+
+
+def _publish_three_posts(client) -> dict:
+    authority, endpoint = create_discovery_source(client)
+    discovery = create_run(client, endpoint["id"])
+    document = observe_document(client, discovery["id"])["document"]
+    candidate = create_candidate(
+        client,
+        authority["id"],
+        candidate_key="THREE_POST_PUBLIC",
+        display_name="Combined Services Advertisement",
+    )
+    revision = create_revision(
+        client,
+        candidate["id"],
+        document["id"],
+        split_status="EXPLICIT",
+        fields=[
+            {
+                "field_path": "recruitment_name",
+                "value_type": "STRING",
+                "value": "Combined Services Advertisement",
+            },
+            {
+                "field_path": "organization.unit",
+                "value_type": "STRING",
+                "value": "Assam Secretariat",
+            },
+            {
+                "field_path": "application.start_date",
+                "value_type": "DATE",
+                "value": "2026-09-20",
+            },
+            {
+                "field_path": "application.end_date",
+                "value_type": "DATE",
+                "value": "2026-10-20",
+            },
+        ],
+        posts=[
+            {
+                "post_key": f"post_{index}",
+                "ordinal": index,
+                "name": name,
+                "facts": [
+                    {"field_path": "name", "value_type": "STRING", "value": name},
+                    {
+                        "field_path": "vacancies.total",
+                        "value_type": "INTEGER",
+                        "value": vacancies,
+                    },
+                    {
+                        "field_path": "qualification.minimum",
+                        "value_type": "STRING",
+                        "value": qualification,
+                    },
+                    {
+                        "field_path": "pay.scale",
+                        "value_type": "STRING",
+                        "value": pay,
+                    },
+                ],
+            }
+            for index, (name, vacancies, qualification, pay) in enumerate(
+                (
+                    ("Junior Assistant", 12, "Bachelor Degree", "Rs. 14,000 - 70,000"),
+                    ("Field Officer", 7, "Bachelor Degree in Science", "Rs. 22,000 - 97,000"),
+                    ("Driver", 4, "Class X with driving licence", "Rs. 12,000 - 52,000"),
+                ),
+                start=1,
+            )
+        ],
+    )
+    ready = client.patch(
+        f"/api/v1/recruitment-candidates/{candidate['id']}",
+        json={"status": "READY_FOR_VERIFICATION"},
+    )
+    assert ready.status_code == 200
+    verified = _verify_revision(client, document, revision)
+    publication = _publish(client, verified["confidence"]["id"])
+    assert publication.status_code == 201, publication.text
+    return {"authority": authority, "candidate": candidate, "publication": publication.json()}
+
+
+def test_three_explicit_posts_are_independent_public_jobs_with_shared_context(client) -> None:
+    graph = _publish_three_posts(client)
+    listing = client.get("/api/public/v1/recruitments", params={"page_size": 10}).json()
+    cards = client.get("/jobs").text
+
+    assert listing["total"] == 3
+    assert {item["display_name"] for item in listing["items"]} == {
+        "Junior Assistant",
+        "Field Officer",
+        "Driver",
+    }
+    assert len({item["id"] for item in listing["items"]}) == 3
+    assert {item["vacancies_total"] for item in listing["items"]} == {12, 7, 4}
+    assert {item["advertisement_title"] for item in listing["items"]} == {
+        "Combined Services Advertisement"
+    }
+    assert {item["authority"]["code"] for item in listing["items"]} == {
+        graph["authority"]["code"]
+    }
+    assert cards.count('class="job-card"') == 3
+
+    expected_qualifications = {
+        "Junior Assistant": "Bachelor Degree",
+        "Field Officer": "Bachelor Degree in Science",
+        "Driver": "Class X with driving licence",
+    }
+    for item in listing["items"]:
+        detail = client.get(f"/api/public/v1/recruitments/{item['id']}").json()
+        values = {field["field_path"]: field["value"] for field in detail["fields"]}
+        assert values["name"] == item["display_name"]
+        assert values["vacancies.total"] == item["vacancies_total"]
+        assert values["qualification.minimum"] == expected_qualifications[item["display_name"]]
+        assert "pay.scale" in values
+        assert values["application.start_date"] == "2026-09-20"
+        assert values["application.end_date"] == "2026-10-20"
+        assert f'/jobs/{item["id"]}' in cards
+
+    first = listing["items"][0]
+    html = client.get(f"/jobs/{first['id']}").text
+    assert "Important Dates" in html and "20 September 2026" in html
+    assert "Educational Qualification" in html and "Salary / Pay Scale" in html
+    assert "Combined Services Advertisement" in html
 
 
 def _publish_valid_sibling(client) -> dict:

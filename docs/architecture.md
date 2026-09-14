@@ -426,7 +426,11 @@ domain decisions.
 
 Evidence excerpts and context are rendered as escaped text, never executable source HTML.
 Registered source URLs are explicit new-window links with `noopener noreferrer`; remote pages are
-not embedded. All lifecycle and decision mutations use POST, while GET routes remain read-only.
+not embedded. The queue derives Post-scoped rows from routed `posts.<post_key>.*` items and links to
+a focused Post detail while retaining parent Advertisement, organization, and authority context.
+Structured facts appear before evidence; raw excerpts and assessment provenance remain available
+inside collapsed native HTML details. All lifecycle and decision mutations use POST, while GET
+routes remain read-only.
 
 This interface is a localhost development tool. T-009 deliberately provides no authentication,
 authorization, CSRF protection, hardened sessions, assignment workflow, or production deployment
@@ -764,11 +768,14 @@ router supplies transport inputs, the public service enforces Master-only select
 and a small view formatter produces display labels and deterministic JSON/typed-value text.
 Templates receive composed public DTOs and perform no database access or trust decisions.
 
-`GET /jobs` renders the approved recruitment count, status/date/vacancy filters, deterministic
-ordering, bounded pagination, and explicit empty state. `GET /jobs/{master_id}` renders current
-approved values, application-window status, recruiting authority, last-verified date, and registered
-source provenance. External document links open explicitly with `noopener noreferrer`; remote pages
-are never embedded or interpreted.
+`GET /jobs` renders one card per approved explicit Post (or one compatibility card for a legacy
+unsplit record), plus the approved recruitment count, status/date/vacancy filters, deterministic
+ordering, bounded pagination, and explicit empty state. `GET /jobs/{job_id}` renders only that
+Post's facts plus shared Advertisement context. A deterministic view layer groups supported facts
+into semantic sections and improves labels, whitespace, dates, booleans, and structured display
+without mutating canonical Master values. Registered source provenance remains visible; external
+document links open explicitly with `noopener noreferrer`, and remote pages are never embedded or
+interpreted.
 
 The pages use semantic headings, labels, landmarks, skip navigation, visible focus styles,
 responsive layouts, escaped Jinja output, a local stylesheet, descriptive metadata, and canonical

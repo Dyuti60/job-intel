@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.review import ReviewCase
 from tests.factories import create_evidence
+from tests.test_post_master import _explicit_two_post_run
 from tests.test_review_api import _field_item, build_review_graph
 
 
@@ -110,6 +111,35 @@ def test_case_page_composes_candidate_confidence_and_evidence_safely(
     assert "&lt;script&gt;alert" in page.text
     assert 'target="_blank"' in page.text
     assert 'rel="noopener noreferrer"' in page.text
+    assert "<details class=\"evidence-section\">" in page.text
+    assert "<summary>View source evidence</summary>" in page.text
+    assert "<section class=\"evidence-section\">" not in page.text
+
+
+def test_review_queue_and_detail_focus_on_exact_post(client: TestClient) -> None:
+    run = _explicit_two_post_run(client)
+    confidence = client.post(f"/api/v1/verification-runs/{run['id']}/confidence-v2").json()
+    client.post(f"/api/v1/revision-confidence/{confidence['id']}/review-routing")
+    case = client.post(
+        "/api/v1/review-cases",
+        json={"revision_confidence_assessment_id": confidence["id"]},
+    ).json()
+
+    queue = client.get("/review")
+    focused = client.get(f"/review/cases/{case['id']}", params={"post": "conflicted_post"})
+
+    assert "Conflicted Post" in queue.text
+    assert "Advertisement: Two Post Recruitment" in queue.text
+    assert f"/review/cases/{case['id']}?post=conflicted_post" in queue.text
+    assert "Vacancies Total" in queue.text and "20" in queue.text
+    assert "Authoritative Conflict" in queue.text
+    assert focused.status_code == 200
+    assert "<h1>Conflicted Post</h1>" in focused.text
+    assert "Post and Advertisement context" in focused.text
+    assert "Parent Advertisement" in focused.text
+    assert "Two Post Recruitment" in focused.text
+    assert "posts.conflicted_post.vacancies.total" in focused.text
+    assert "posts.valid_post.vacancies.total" not in focused.text
 
 
 def test_start_review_uses_post_redirect_and_get_is_read_only(

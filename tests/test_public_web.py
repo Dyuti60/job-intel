@@ -92,9 +92,10 @@ def test_public_job_detail_shows_approved_fields_and_safe_source_links(
     assert response.status_code == 200
     assert graph["candidate"]["display_name"] in response.text
     assert "Application overview" in response.text
-    assert "Application End Date" in response.text
-    assert "2026-10-31" in response.text
-    assert "Vacancies Total" in response.text
+    assert "Important Dates" in response.text
+    assert "Closing Date" in response.text
+    assert "31 October 2026" in response.text
+    assert "Total Vacancies" in response.text
     assert "AUTHORITATIVE" not in response.text
     assert "Authoritative Official" in response.text
     assert graph["document"]["document_url"] in response.text

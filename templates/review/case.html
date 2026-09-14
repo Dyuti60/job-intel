@@ -1,6 +1,6 @@
 {% extends "review/base.html" %}
 {% block content %}
-<nav class="breadcrumbs"><a href="/review">Review queue</a> / {{ candidate.candidate_key }}</nav>
+<nav class="breadcrumbs"><a href="/review">Review queue</a> / {{ focused_post.name if focused_post else candidate.candidate_key }}</nav>
 
 {% if message %}<div class="flash success" role="status">{{ message }}</div>{% endif %}
 {% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
@@ -8,7 +8,7 @@
 <div class="page-heading">
   <div>
     <p class="eyebrow">{{ candidate.authority_name }} · {{ candidate.authority_code }}</p>
-    <h1>{{ candidate.display_name }}</h1>
+    <h1>{{ focused_post.name if focused_post else candidate.display_name }}</h1>
     <p>{{ candidate.candidate_key }} · Revision {{ candidate.revision_number }}</p>
   </div>
   <div class="case-state">
@@ -31,8 +31,12 @@
 
 <section class="grid two">
   <article class="card">
-    <h2>Candidate context</h2>
+    <h2>{% if focused_post %}Post and Advertisement context{% else %}Candidate context{% endif %}</h2>
     <dl class="facts">
+      {% if focused_post %}<dt>Post name</dt><dd>{{ focused_post.name }}</dd>{% endif %}
+      <dt>Organization / unit</dt><dd>{{ candidate.organization }}</dd>
+      <dt>Parent Advertisement</dt><dd>{{ candidate.display_name }}</dd>
+      <dt>Recruiter / authority</dt><dd>{{ candidate.authority_name }}</dd>
       <dt>Candidate key</dt><dd>{{ candidate.candidate_key }}</dd>
       <dt>Revision</dt><dd>{{ candidate.revision_number }}</dd>
       <dt>Source type</dt><dd>{{ candidate.source_document_type }}</dd>
@@ -52,6 +56,18 @@
     </div>
   </article>
 </section>
+
+{% if post_links|length > 1 %}
+<nav class="card" aria-label="Posts requiring review"><strong>Posts in this review:</strong>
+  {% for post in post_links %}<a href="/review/cases/{{ case_id }}?post={{ post.key|urlencode }}">{{ post.name }}</a>{% endfor %}
+</nav>
+{% endif %}
+
+{% if focused_post and focused_post.important_fields %}
+<section class="card"><h2>Important extracted fields</h2><dl class="facts">
+  {% for field in focused_post.important_fields %}<dt>{{ field.label }}</dt><dd>{{ field.value }}</dd>{% endfor %}
+</dl></section>
+{% endif %}
 
 <details class="card breakdown">
   <summary>Revision confidence component breakdown</summary>
@@ -98,7 +114,8 @@
     </details>
 
     {% if item.scope == 'FIELD' %}
-    <section class="evidence-section">
+    <details class="evidence-section">
+      <summary>View source evidence</summary>
       <h4>Extraction Evidence</h4>
       {% if item.extraction_evidence %}
         {% for evidence in item.extraction_evidence %}
@@ -111,9 +128,6 @@
         </article>
         {% endfor %}
       {% else %}<p class="muted">No extraction Evidence is linked to this field.</p>{% endif %}
-    </section>
-
-    <section class="evidence-section">
       <h4>Verification Evidence Assessments</h4>
       {% if item.verification.assessments %}
         {% for assessment in item.verification.assessments %}
@@ -128,7 +142,7 @@
         </article>
         {% endfor %}
       {% else %}<p class="muted">No verification Evidence assessments were recorded.</p>{% endif %}
-    </section>
+    </details>
     {% endif %}
 
     {% if item.status == 'RESOLVED' %}

@@ -97,6 +97,70 @@ def _publish(client: TestClient, confidence_id: str):
     )
 
 
+def test_auto_and_human_approval_use_equivalent_master_field_projection(
+    client: TestClient,
+) -> None:
+    fields = [
+        {"field_path": "recruitment_name", "value_type": "STRING", "value": "Projection"},
+        {
+            "field_path": "application.start_date",
+            "value_type": "DATE",
+            "value": "2026-09-20",
+        },
+        {
+            "field_path": "application.end_date",
+            "value_type": "DATE",
+            "value": "2026-10-20",
+        },
+        {"field_path": "vacancies.total", "value_type": "INTEGER", "value": 25},
+        {
+            "field_path": "qualification.minimum",
+            "value_type": "STRING",
+            "value": "Bachelor Degree",
+        },
+        {"field_path": "age.maximum", "value_type": "INTEGER", "value": 38},
+        {
+            "field_path": "pay.scale",
+            "value_type": "STRING",
+            "value": "Rs. 14,000 - 70,000",
+        },
+    ]
+    automatic = _direct_graph(client, "AUTO_EQUIVALENT", fields)
+    automatic_publication = _publish(client, automatic["confidence"]["id"]).json()
+
+    modes = {field["field_path"]: "auth_support" for field in fields}
+    modes["application.end_date"] = "auth_support_secondary_conflict"
+    reviewed = build_review_graph(
+        client,
+        suffix="HUMAN_EQUIVALENT",
+        fields=fields,
+        modes=modes,
+    )
+    assert reviewed["case"] is not None
+    start_review_case(client, reviewed["case"]["id"])
+    for item in reviewed["case"]["items"]:
+        decide_review_item(
+            client,
+            item["id"],
+            "APPROVE_AS_IS",
+            reviewer_identifier="projection-reviewer",
+            decision_note="Official value is supported; secondary conflict does not override it.",
+        )
+    human_publication = _publish(client, reviewed["confidence"]["id"]).json()
+
+    def projection(publication: dict) -> set[tuple[str, str, str]]:
+        return {
+            (field["field_path"], field["value_type"], str(field["value"]))
+            for field in publication["master_revision"]["fields"]
+        }
+
+    assert automatic_publication["master_revision"]["publication_path"] == (
+        "VERIFIED_NO_REVIEW"
+    )
+    assert human_publication["master_revision"]["publication_path"] == "HUMAN_APPROVED"
+    assert projection(automatic_publication) == projection(human_publication)
+
+
 def _new_candidate_revision(
     client: TestClient,
     graph: dict,
