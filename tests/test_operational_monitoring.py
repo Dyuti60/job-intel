@@ -28,6 +28,7 @@ from app.services.operational_monitoring import (
     OperationalMonitoringService,
     OperationalNotificationService,
 )
+from app.services.source_scheduler import SchedulerSelection, SchedulerSummary
 from workers import monitoring as monitoring_command
 
 NOW = datetime(2026, 9, 13, 6, 0, tzinfo=UTC)
@@ -150,9 +151,7 @@ def test_health_status_precedence(db_session, tmp_path, run_status, age, expecte
     assert health.status == expected
 
 
-def test_overdue_success_and_stale_running_create_explainable_alerts(
-    db_session, tmp_path
-) -> None:
+def test_overdue_success_and_stale_running_create_explainable_alerts(db_session, tmp_path) -> None:
     success = _run(
         db_session,
         status=PipelineRunStatus.SUCCESS,
@@ -316,11 +315,53 @@ def test_operational_api_and_private_page_are_read_only_and_escape_failures(
     assert page.status_code == 200
     assert "Operational Monitoring" in page.text
     assert str(failed.id) in page.text
+    assert "Bounded actions" in page.text
+    assert "Run all enabled" in page.text
+    assert "ASDMA_ASSAM" in page.text
     assert "&lt;script&gt;" in page.text
     assert "<script>alert" not in page.text
     assert client.get("/operations/unknown").status_code == 404
     after = db_session.scalar(select(func.count()).select_from(OperationalNotificationEvent))
     assert before == after
+
+
+def test_operations_action_requires_same_origin_and_uses_bounded_scheduler(
+    monkeypatch, client, db_session
+) -> None:
+    calls = []
+
+    class StubScheduler:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def run(self, selection, **kwargs):
+            calls.append((selection, kwargs))
+            return SchedulerSummary(selection, kwargs["dry_run"], ("APSC",))
+
+    monkeypatch.setattr("app.operations_web.router.SourceSchedulerService", StubScheduler)
+    rejected = client.post("/operations/actions", data={"action": "DUE", "dry_run": "true"})
+    accepted = client.post(
+        "/operations/actions",
+        data={"action": "DUE", "dry_run": "true", "command": "ignored"},
+        headers={"origin": "http://testserver", "sec-fetch-site": "same-origin"},
+    )
+
+    assert rejected.status_code == 403
+    assert calls == [
+        (
+            SchedulerSelection.DUE,
+            {
+                "source": None,
+                "group": None,
+                "dry_run": True,
+                "trigger_type": PipelineTriggerType.MANUAL,
+            },
+        )
+    ]
+    assert accepted.status_code == 200
+    assert "Multi-source scheduler" in accepted.text
+    assert "Selected: APSC" in accepted.text
+    assert db_session.scalar(select(func.count()).select_from(PipelineRun)) == 0
 
 
 def test_monitoring_cli_dry_run_has_no_notification_mutation(

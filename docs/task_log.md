@@ -1569,3 +1569,39 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
 - Registry request rate is an auditable sequential-run bound; V1 does not parallelize requests.
 - Actual local historical coverage depends on reachable official sites and is measured in M7 rather
   than inferred from the configured lookback policy.
+
+## V1-M7 — Operations controls and production readiness — 2026-09-14
+
+### Result
+
+- Added same-origin private operations actions for one source, one schedule group, all due sources,
+  all enabled sources, Publisher, and per-source monitoring. Inputs are bounded enums routed through
+  shared services; the UI accepts no command or shell input and defaults to dry-run.
+- Preserved public/private separation: `/operations/actions` is not mounted by the public ASGI app.
+- Added cancellation/cancelled lifecycle classification after a live ASDMA archive row exposed the
+  edge case, with fixture coverage proving that it cannot create a Candidate.
+- Completed a rate-limited live ASDMA 2024-2026 backfill. It persisted 42 source documents and 40
+  Candidate revisions, created 40 immutable legacy-unsplit Master records, and routed one case to
+  Human Review. The 69-file local raw store now contains 62,859,103 bytes across five sources.
+- Audited persisted Candidate names for lifecycle terms; none were present. The interrupted
+  pre-correction attempt remains an explicit failed PipelineRun and wrote no discovery-domain data.
+- Added the final V1 report and changed the next-task handoff from implementation to the explicit
+  operator-owned production activation checklist.
+
+### Validation performed
+
+- `uv run pytest -q`: 338 tests passed; three dependency/cache warnings were non-failing.
+- `uv run ruff check .`, targeted Ruff formatting, `git diff --check`, `alembic current`, and
+  `alembic check` passed. The hardened public Docker image built successfully as
+  `assam-job-intelligence-public:m7`.
+- Exact commit and remote workflow evidence is added at the final release gate.
+- Local ASDMA PipelineRun `59ca7661-3937-4498-8d69-835dca25aa86` completed `PARTIAL` only because
+  one unresolved Human Review case remained; source failures were zero.
+
+### Known limitations
+
+- Current live archive data remains legacy-unsplit unless deterministic Post structure is explicit;
+  40 ASDMA records therefore have no invented Master Posts.
+- Production deployment is not claimed. The protected `public-production` environment, release
+  secrets/variables, DNS/TLS ingress, and restore target are operator-owned prerequisites.
+- Source expansion and semantic equivalence work are explicitly deferred to V2.

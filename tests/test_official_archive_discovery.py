@@ -86,6 +86,8 @@ def test_structured_resource_table_accepts_download_links_and_excludes_lifecycle
       <td><a href="/download?id=10">Download</a></td><td>20.07.2025</td><td>11-08-2025</td></tr>
       <tr><td>Result of interview for District Project Officer</td>
       <td><a href="/download?id=11">Download</a></td><td>29-12-2025</td><td>N/A</td></tr>
+      <tr><td>Notice for cancellation of Advertisement</td>
+      <td><a href="/download?id=13">Download</a></td><td>20-12-2025</td><td>N/A</td></tr>
       <tr><td>Vacancy for an old post</td>
       <td><a href="/download?id=12">Download</a></td><td>01-01-2023</td><td>N/A</td></tr>
     </table>

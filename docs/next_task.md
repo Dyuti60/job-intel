@@ -1,16 +1,17 @@
-# V1-M7 — Operations controls and production readiness
+# V1 operational activation checklist
 
-Complete the deterministic V1 operating surface and final evidence-backed readiness report.
+V1 implementation is complete. The remaining work is an operator-owned production activation,
+not another application milestone.
 
-- add bounded private UI actions for selected source, due sources, group, all enabled, dry-run,
-  Publisher, and monitoring without accepting shell input
-- preserve public/private route absence, CSRF-safe mutation behavior, per-source locks, and audit
-- validate scheduler behavior against the local PostgreSQL runtime and perform the feasible
-  two-year backfill for implemented sources without fabricating unsupported Posts
-- reconcile source health, raw storage, backups/restores, Docker/public release, workflows,
-  migration state, rollback, monitoring, and deployment prerequisites
-- create the final V1 project report with implemented sources/families, actual historical coverage,
-  test/CI/live-validation evidence, known limitations, deployment status, and explicit V2 deferrals
+- create and protect the GitHub `public-production` environment
+- configure `AJI_PUBLIC_DATABASE_URL`, `AJI_BACKUP_DATABASE_URL`, `PUBLIC_HOSTNAME`, and
+  `PUBLIC_BASE_URL` without storing credentials in the repository
+- provision DNS/TLS ingress and restrict the private review/operations runtime to authorized staff
+- run and retain a successful Restore Rehearsal against a disposable target
+- run Public Release with `deploy=false`, review its scan and attestation, then make an explicit
+  deployment decision
+- validate public availability, private-route absence, backup manifest retention, and rollback
+  evidence after activation
 
-Do not expose operations publicly, run arbitrary commands from the UI, claim a backfill or
-deployment that did not occur, or expand into agentic discovery.
+Source expansion and semantic interpretation improvements belong to V2 and must preserve the
+deterministic onboarding and Human Review boundaries in `AGENTS.md`.

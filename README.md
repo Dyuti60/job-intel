@@ -191,7 +191,12 @@ use an external path such as `D:\ASSAM_JOB_DATA\notifications\events.jsonl`.
 Run the application and open `http://localhost:8000/operations` for the private, read-only status
 page. JSON clients can use `GET /api/v1/operational-status/{source_code}` and
 `GET /api/v1/operational-notifications`. Like `/review`, this local administration surface has no
-production authentication or CSRF boundary and must not be exposed publicly.
+production authentication boundary and must not be exposed publicly.
+
+The private page also exposes bounded, same-origin form actions for a source, group, due/all-enabled
+scheduler runs, the shared Master Publisher, and per-source monitoring. It accepts only enumerated
+values, caps URL-encoded form bodies, defaults to dry-run, and never constructs or invokes a shell
+command. These controls remain entirely absent from `app.public_main`.
 
 ## Multi-source scheduling and backfill
 
@@ -298,3 +303,6 @@ in [Public deployment and recovery](docs/public_deployment.md) before selecting 
 The scheduled **Public Availability** workflow provides bounded external probes after activation.
 The **Restore Rehearsal** workflow validates a selected database/raw snapshot in an isolated
 temporary database and always removes that database afterward.
+
+See the [V1 final report](docs/final_v1_report.md) for implemented coverage, measured local
+backfill results, verification evidence, known limits, and the production activation boundary.

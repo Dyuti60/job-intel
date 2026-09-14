@@ -550,5 +550,6 @@ uv run alembic check
 git diff --check
 ```
 
-The next milestone is V1-M7: bounded private operations controls and final production-readiness
-validation. Eligibility is already downstream of approved Post Master and remains conservative.
+V1-M7 completes bounded private operations controls and final production readiness. Remaining
+production activation prerequisites and V2 deferrals are recorded in `final_v1_report.md` and
+`next_task.md`.

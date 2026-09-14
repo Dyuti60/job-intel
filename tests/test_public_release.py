@@ -50,6 +50,7 @@ def test_public_app_exposes_only_public_read_and_health_surfaces(test_engine) ->
             assert public_client.get(private_path).status_code == 404
         assert public_client.post("/jobs").status_code == 405
         assert public_client.post("/api/public/v1/recruitments").status_code == 405
+        assert public_client.post("/operations/actions").status_code == 404
 
 
 def test_public_security_headers_host_guard_and_hsts(test_engine) -> None:

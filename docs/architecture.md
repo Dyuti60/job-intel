@@ -883,3 +883,8 @@ lock contention become per-source scheduler results and do not terminate sibling
 Discovery's HTTP client supplies response-size, timeout, transient retry, and user-agent bounds;
 the source-specific request rate is auditable registry metadata for this sequential V1 runner.
 No scheduler path calls an LLM or writes Discovery output directly to Master.
+
+The private operations HTML layer calls the same scheduler, Publisher worker, and monitoring
+services used by CLI/workflows. Its POST boundary requires a matching browser Origin and
+`Sec-Fetch-Site`, accepts only bounded URL-encoded enum values, and renders escaped results. It has
+no command string, subprocess, or shell path and is not mounted by `app.public_main`.

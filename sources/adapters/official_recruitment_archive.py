@@ -314,6 +314,8 @@ def _metadata_from_row(
             "interview",
             "admit card",
             "withdrawal",
+            "cancellation",
+            "cancelled",
             "appointment",
             "answer key",
             "postponement",

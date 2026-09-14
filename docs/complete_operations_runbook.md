@@ -228,6 +228,10 @@ approved past application windows derive `CLOSED` status rather than disappearin
 
 ## 9. Monitor operations
 
+Open `http://localhost:8000/operations` for status and bounded controls. Keep dry-run selected until
+the target is reviewed. Browser actions require a same-origin submission and call internal
+services directly; no entered value is executed as a command.
+
 ```powershell
 uv run python -m workers.monitoring --source APSC
 uv run python -m workers.monitoring --source SLPRB_ASSAM

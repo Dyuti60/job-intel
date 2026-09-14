@@ -8,6 +8,40 @@
   </div>
 </div>
 
+{% if operation_result %}
+<section class="card">
+  <h2>Action result</h2>
+  <pre class="operation-result">{{ operation_result }}</pre>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Bounded actions</h2>
+  <p class="muted">Actions call fixed internal services. No command or arbitrary argument is accepted.</p>
+  <form class="grid two" method="post" action="/operations/actions">
+    <label>Source
+      <select name="source">
+        <option value="">Select when required</option>
+        {% for source in sources %}<option value="{{ source }}">{{ source }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Schedule group
+      <select name="group">
+        {% for group in schedule_groups %}<option value="{{ group }}">{{ group }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="checkbox"><input type="checkbox" name="dry_run" value="true" checked> Dry run</label>
+    <div class="toolbar">
+      <button type="submit" name="action" value="SOURCE">Run source</button>
+      <button type="submit" name="action" value="GROUP">Run group</button>
+      <button type="submit" name="action" value="DUE">Run due</button>
+      <button type="submit" name="action" value="ALL_ENABLED">Run all enabled</button>
+      <button type="submit" name="action" value="PUBLISHER">Run Publisher</button>
+      <button type="submit" name="action" value="MONITOR">Run monitoring</button>
+    </div>
+  </form>
+</section>
+
 <section class="card">
   <form class="filters" method="get" action="/operations">
     <label>Source

@@ -1,6 +1,6 @@
 # Trusted Windows pipeline runner
 
-The scheduled real APSC pipeline runs only on the repository's trusted Windows x64 self-hosted
+The scheduled real multi-source pipeline runs only on the repository's trusted Windows x64 self-hosted
 GitHub Actions runner. Pull-request CI remains on GitHub-hosted Ubuntu and never receives access to
 the persistent runtime database or raw documents.
 
@@ -52,17 +52,18 @@ directory. Use `LOG` alone if an append-only local file is not desired. Never pl
 output under the disposable Actions checkout.
 
 The runner service identity requires read access to the runtime configuration and modify access to
-the raw-storage directory. It also needs network access to the registered official APSC endpoints
+the raw-storage directory. It also needs network access to the registered official Assam endpoints
 and database access. Do not grant it interactive administrator rights merely to run the workflow.
 
 ## Manual and scheduled execution
 
-The **Trusted APSC Pipeline** workflow can be dispatched from the Actions page. Manual executions
+The **Trusted Assam Pipeline** workflow can be dispatched for one source, one group, all due
+sources, or all enabled sources. Manual executions
 are recorded with trigger `GITHUB_ACTION`; cron executions are recorded as `SCHEDULED`. The daily
 schedule is `30 2 * * *` (02:30 UTC, 08:00 IST). A manual dry-run records PipelineRun operational
 history but rolls back recruitment-domain changes.
 
-GitHub Actions concurrency serializes workflow jobs for APSC. The CLI also takes a source-scoped
+GitHub Actions concurrency serializes scheduler jobs. The CLI also takes a source-scoped
 PostgreSQL session advisory lock, so a local CLI and an Actions job cannot overlap. Failure to
 acquire the lock exits nonzero before creating a PipelineRun or changing domain data.
 
@@ -76,7 +77,7 @@ After installation or a service-account change, validate:
 
 ```text
 uv run alembic current
-uv run python -m workers.pipeline --source APSC --dry-run
+uv run python -m workers.scheduler --due --dry-run
 ```
 
 Then manually dispatch the workflow and confirm its job summary contains the PipelineRun ID and

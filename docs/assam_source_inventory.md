@@ -13,12 +13,13 @@ Asia/Kolkata calendar year plus the two preceding calendar years, inclusive (202
 | SLPRB_ASSAM | `https://slprbassam.in/` | authority-specific HTML table + PDF | HIGH_PRIORITY / 6h | HTTP gateway returned 502 on 2026-09-14; fixture/CI coverage remains green |
 | DEE_ASSAM | `https://dee.assam.gov.in/portlets/recruitment-under-dee-assam` | document-list CMS + PDF | HIGH_PRIORITY / 12h | HTTP 200 on 2026-09-14; parser selected 4 in-window advertisements |
 | DME_ASSAM | `https://dme.assam.gov.in/documents-detail/recruitment` | document-list CMS + PDF | NORMAL / 24h | HTTP 200 on 2026-09-14; parser selected 2 in-window advertisements |
-| ASDMA_ASSAM | `https://asdma.assam.gov.in/resource/recruitment` | structured resource table + download | NORMAL / 24h | HTTP 200 on 2026-09-14; parser selected 43 in-window vacancies |
+| ASDMA_ASSAM | `https://asdma.assam.gov.in/resource/recruitment` | structured resource table + download | NORMAL / 24h | HTTP 200 on 2026-09-14; parser selected 42 in-window vacancies after lifecycle exclusions |
 
 All adapters use bounded response sizes, connect/read timeouts, retry only transient failures, a
 descriptive user agent, stable URL/hash identities, and conservative advertisement selection.
 Results, merit/selection lists, answer keys, verification/interview schedules, admit cards,
-appointments, postponements, extensions, corrigenda, and addenda do not create new jobs.
+appointments, cancellations, postponements, extensions, corrigenda, and addenda do not create new
+jobs.
 
 ## Validated inventory awaiting a safe adapter extension
 
