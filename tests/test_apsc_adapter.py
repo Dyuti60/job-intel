@@ -144,6 +144,31 @@ def test_http_handles_timeout_type_and_size_limits() -> None:
         client.fetch("https://example.test/large", accepted_types=("text/html",))
 
 
+def test_http_enforces_configured_request_pacing(monkeypatch) -> None:
+    clock = iter((0.0, 0.25, 1.0))
+    sleeps: list[float] = []
+    monkeypatch.setattr("sources.http.time.monotonic", lambda: next(clock))
+    monkeypatch.setattr("sources.http.time.sleep", sleeps.append)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, request=request, headers={"content-type": "text/html"}, content=b"ok"
+        )
+
+    with BoundedHttpClient(
+        connect_timeout=1,
+        read_timeout=1,
+        retries=0,
+        max_response_bytes=1024,
+        requests_per_minute=60,
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        client.fetch("https://example.test/one", accepted_types=("text/html",))
+        client.fetch("https://example.test/two", accepted_types=("text/html",))
+
+    assert sleeps == [0.75]
+
+
 def test_fixture_is_minimal_valid_json() -> None:
     assert json.loads(FIXTURE.read_text(encoding="utf-8"))["success"] is True
     assert datetime.now(UTC).tzinfo is not None

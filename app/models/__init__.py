@@ -82,6 +82,7 @@ from app.models.source_registry import (
     RecruitingAuthority,
     SourceClass,
     SourceEndpoint,
+    SourceScheduleGroup,
     SourceStatus,
     SourceType,
 )
@@ -167,6 +168,7 @@ __all__ = [
     "RevisionConfidenceAssessment",
     "SourceClass",
     "SourceEndpoint",
+    "SourceScheduleGroup",
     "SourceDocument",
     "SourceDocumentStatus",
     "SourceStatus",

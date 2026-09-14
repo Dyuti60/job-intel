@@ -3,8 +3,18 @@ name: Trusted Assam Pipeline
 on:
   workflow_dispatch:
     inputs:
+      selection:
+        description: Scheduler selection mode
+        required: true
+        default: due
+        type: choice
+        options:
+          - due
+          - source
+          - group
+          - all-enabled
       source:
-        description: Registered source to process
+        description: Source used when selection is source
         required: true
         default: APSC
         type: choice
@@ -13,6 +23,17 @@ on:
           - SLPRB_ASSAM
           - DEE_ASSAM
           - DME_ASSAM
+          - ASDMA_ASSAM
+      group:
+        description: Schedule group used when selection is group
+        required: true
+        default: HIGH_PRIORITY
+        type: choice
+        options:
+          - HIGH_PRIORITY
+          - NORMAL
+          - LOW_FREQUENCY
+          - DISTRICT
       dry_run:
         description: Record operational history but roll back recruitment-domain changes
         required: true
@@ -25,7 +46,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: assam-job-intelligence-pipeline-apsc
+  group: assam-job-intelligence-source-scheduler
   cancel-in-progress: false
 
 jobs:
@@ -37,7 +58,9 @@ jobs:
       AJI_APP_ENV: production
       AJI_DEBUG: "false"
       AJI_LOG_LEVEL: INFO
+      AJI_SCHEDULER_SELECTION: ${{ inputs.selection || 'due' }}
       AJI_PIPELINE_SOURCE: ${{ inputs.source || 'APSC' }}
+      AJI_PIPELINE_GROUP: ${{ inputs.group || 'HIGH_PRIORITY' }}
       AJI_PIPELINE_DRY_RUN: ${{ inputs.dry_run || false }}
       AJI_RUNTIME_CONFIG_PATH: D:\ASSAM_JOB_DATA\config\runtime.env
       AJI_RAW_STORAGE_ROOT: D:\ASSAM_JOB_DATA\raw
@@ -122,13 +145,19 @@ jobs:
         shell: powershell
         run: uv run alembic current
 
-      - name: Run pipeline
+      - name: Run source scheduler
         id: pipeline
         continue-on-error: true
         shell: powershell
         run: |
           $trigger = if ('${{ github.event_name }}' -eq 'schedule') { 'SCHEDULED' } else { 'GITHUB_ACTION' }
-          $arguments = @('run', 'python', '-m', 'workers.pipeline', '--source', $env:AJI_PIPELINE_SOURCE, '--trigger', $trigger)
+          $arguments = @('run', 'python', '-m', 'workers.scheduler', '--trigger', $trigger)
+          switch ($env:AJI_SCHEDULER_SELECTION) {
+            'source' { $arguments += @('--source', $env:AJI_PIPELINE_SOURCE) }
+            'group' { $arguments += @('--group', $env:AJI_PIPELINE_GROUP) }
+            'all-enabled' { $arguments += '--all-enabled' }
+            default { $arguments += '--due' }
+          }
           if ($env:AJI_PIPELINE_DRY_RUN -eq 'true') {
             $arguments += '--dry-run'
           }
@@ -142,11 +171,16 @@ jobs:
           "exit_code=$pipelineExitCode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           exit $pipelineExitCode
 
-      - name: Evaluate operational health and notifications
+      - name: Evaluate per-source operational health and notifications
         id: monitoring
         if: always() && steps.pipeline.outcome != 'skipped'
         shell: powershell
-        run: uv run python -m workers.monitoring --source $env:AJI_PIPELINE_SOURCE
+        run: |
+          $sources = @('APSC', 'SLPRB_ASSAM', 'DEE_ASSAM', 'DME_ASSAM', 'ASDMA_ASSAM')
+          foreach ($source in $sources) {
+            uv run python -m workers.monitoring --source $source
+            if ($LASTEXITCODE -ne 0) { throw "Monitoring failed for $source" }
+          }
 
       - name: Publish operational summary
         if: always()
@@ -154,7 +188,8 @@ jobs:
         run: |
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '## Assam Job Intelligence pipeline'
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ''
-          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Source: ``$env:AJI_PIPELINE_SOURCE``"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Selection: ``$env:AJI_SCHEDULER_SELECTION``"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Source (when selected): ``$env:AJI_PIPELINE_SOURCE``"
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Event: ``${{ github.event_name }}``"
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Dry run: ``$env:AJI_PIPELINE_DRY_RUN``"
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '- Human Review remains private at the local `/review` interface.'

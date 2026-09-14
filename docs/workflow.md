@@ -737,3 +737,21 @@ Legacy-unsplit Master records remain visible as one compatibility result, becaus
 invent a Post. Public filtering is deterministic across Post name, department, qualification,
 application window, vacancies, authority, and bounded literal search. Eligibility always resolves
 the supplied public job ID back through the current ACTIVE Master boundary before evaluating.
+
+## Multi-source scheduled flow
+
+```text
+08:00 IST single workflow
+  -> workers.scheduler --due --trigger SCHEDULED
+  -> registry/catalog selection by due time
+  -> deterministic priority + source-code order
+  -> per source advisory lock
+  -> independent PipelineRun (Discovery -> Verification -> Publisher)
+  -> record last attempt; record last success only on SUCCESS
+  -> continue after source failure or lock contention
+  -> per-source monitoring and bounded notification deduplication
+```
+
+Manual operation selects exactly one of `--source`, `--group`, `--due`, or `--all-enabled`, with an
+optional `--dry-run`. A dry run records its `PipelineRun` as before but rolls back recruitment and
+schedule-state mutations.

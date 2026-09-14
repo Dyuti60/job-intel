@@ -11,6 +11,7 @@ from app.models.source_registry import (
     AuthorityStatus,
     AuthorityType,
     SourceClass,
+    SourceScheduleGroup,
     SourceStatus,
     SourceType,
 )
@@ -85,6 +86,7 @@ class APSCDiscoveryWorkerService:
                     read_timeout=self.settings.discovery_read_timeout_seconds,
                     retries=self.settings.discovery_http_retries,
                     max_response_bytes=self.settings.discovery_max_response_bytes,
+                    requests_per_minute=6,
                 )
                 adapter = APSCRecruitmentAdapter(http)
             result = adapter.discover()
@@ -158,6 +160,10 @@ class APSCDiscoveryWorkerService:
                     status=SourceStatus.ACTIVE,
                     discovery_enabled=True,
                     adapter_key="apsc_recruitment",
+                    schedule_group=SourceScheduleGroup.HIGH_PRIORITY,
+                    poll_interval_minutes=360,
+                    priority=10,
+                    requests_per_minute=6,
                     provenance_note="Official APSC online recruitment and application portal.",
                 )
             )

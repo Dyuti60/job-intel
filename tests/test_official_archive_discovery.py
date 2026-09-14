@@ -79,6 +79,30 @@ def test_standard_assam_archive_excludes_results_and_old_advertisements() -> Non
     assert items[0].notification_date == date(2025, 8, 1)
 
 
+def test_structured_resource_table_accepts_download_links_and_excludes_lifecycle_docs() -> None:
+    html = b"""
+    <table>
+      <tr><td>Vacancy for the post of District Project Officer</td>
+      <td><a href="/download?id=10">Download</a></td><td>20.07.2025</td><td>11-08-2025</td></tr>
+      <tr><td>Result of interview for District Project Officer</td>
+      <td><a href="/download?id=11">Download</a></td><td>29-12-2025</td><td>N/A</td></tr>
+      <tr><td>Vacancy for an old post</td>
+      <td><a href="/download?id=12">Download</a></td><td>01-01-2023</td><td>N/A</td></tr>
+    </table>
+    """
+
+    items = parse_archive_listing(
+        html,
+        OFFICIAL_ARCHIVE_SOURCES["ASDMA_ASSAM"],
+        earliest_year=2024,
+    )
+
+    assert len(items) == 1
+    assert items[0].title == "Vacancy for the post of District Project Officer"
+    assert items[0].notification_date == date(2025, 7, 20)
+    assert items[0].document_url == "https://asdma.assam.gov.in/download?id=10"
+
+
 def test_archive_candidate_key_is_stable_and_authority_scoped() -> None:
     item = ArchiveNoticeMetadata(
         title="Advertisement for Teachers",

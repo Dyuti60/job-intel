@@ -23,6 +23,7 @@ def test_scheduled_pipeline_has_trusted_boundaries_and_concurrency() -> None:
     assert "- SLPRB_ASSAM" in workflow
     assert "- DEE_ASSAM" in workflow
     assert "- DME_ASSAM" in workflow
+    assert "- ASDMA_ASSAM" in workflow
     assert "schedule:" in workflow
     assert 'cron: "30 2 * * *"' in workflow
     assert "runs-on: [self-hosted, Windows, X64]" in workflow
@@ -31,7 +32,9 @@ def test_scheduled_pipeline_has_trusted_boundaries_and_concurrency() -> None:
     assert "uv python install 3.12" in workflow
     assert "uv sync --frozen --python 3.12" in workflow
     assert "uv run alembic upgrade head" in workflow
-    assert "workers.pipeline" in workflow
+    assert "workers.scheduler" in workflow
+    assert "--due" in workflow
+    assert "--all-enabled" in workflow
     assert "workers.monitoring" in workflow
     assert "AJI_MONITOR_NOTIFICATION_CHANNELS" in workflow
     assert "AJI_MONITOR_NOTIFICATION_FILE" in workflow

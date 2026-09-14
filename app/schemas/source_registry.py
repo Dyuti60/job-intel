@@ -17,6 +17,7 @@ from app.models.source_registry import (
     AuthorityStatus,
     AuthorityType,
     SourceClass,
+    SourceScheduleGroup,
     SourceStatus,
     SourceType,
 )
@@ -76,6 +77,10 @@ class SourceEndpointCreate(RegistrySchema):
     status: SourceStatus = SourceStatus.ACTIVE
     discovery_enabled: bool = True
     adapter_key: str | None = Field(default=None, min_length=1, max_length=128)
+    schedule_group: SourceScheduleGroup = SourceScheduleGroup.NORMAL
+    poll_interval_minutes: int = Field(default=1440, ge=15, le=525600)
+    priority: int = Field(default=100, ge=1, le=1000)
+    requests_per_minute: int = Field(default=6, ge=1, le=60)
     last_verified_at: datetime | None = None
     provenance_note: str | None = Field(default=None, max_length=2000)
 
@@ -105,6 +110,10 @@ class SourceEndpointUpdate(RegistrySchema):
     status: SourceStatus | None = None
     discovery_enabled: bool | None = None
     adapter_key: str | None = Field(default=None, min_length=1, max_length=128)
+    schedule_group: SourceScheduleGroup | None = None
+    poll_interval_minutes: int | None = Field(default=None, ge=15, le=525600)
+    priority: int | None = Field(default=None, ge=1, le=1000)
+    requests_per_minute: int | None = Field(default=None, ge=1, le=60)
     last_verified_at: datetime | None = None
     provenance_note: str | None = Field(default=None, max_length=2000)
 
@@ -124,7 +133,14 @@ class SourceEndpointUpdate(RegistrySchema):
 
     @model_validator(mode="after")
     def reject_null_operational_fields(self) -> "SourceEndpointUpdate":
-        for field_name in ("status", "discovery_enabled"):
+        for field_name in (
+            "status",
+            "discovery_enabled",
+            "schedule_group",
+            "poll_interval_minutes",
+            "priority",
+            "requests_per_minute",
+        ):
             if field_name in self.model_fields_set and getattr(self, field_name) is None:
                 raise ValueError(f"{field_name} cannot be null")
         return self
@@ -140,6 +156,12 @@ class SourceEndpointRead(RegistrySchema):
     status: SourceStatus
     discovery_enabled: bool
     adapter_key: str | None
+    schedule_group: SourceScheduleGroup
+    poll_interval_minutes: int
+    priority: int
+    requests_per_minute: int
+    last_attempted_at: datetime | None
+    last_successful_at: datetime | None
     last_verified_at: datetime | None
     provenance_note: str | None
     created_at: datetime

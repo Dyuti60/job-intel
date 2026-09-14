@@ -40,10 +40,15 @@ class BoundedHttpClient:
         read_timeout: float,
         retries: int,
         max_response_bytes: int,
+        requests_per_minute: int | None = None,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self.retries = retries
         self.max_response_bytes = max_response_bytes
+        self.minimum_request_interval = (
+            60.0 / requests_per_minute if requests_per_minute else 0.0
+        )
+        self.last_request_started: float | None = None
         self.client = httpx.Client(
             timeout=httpx.Timeout(
                 connect=connect_timeout,
@@ -70,6 +75,7 @@ class BoundedHttpClient:
         last_error: Exception | None = None
         for attempt in range(self.retries + 1):
             try:
+                self._pace()
                 with self.client.stream("GET", url) as response:
                     if response.status_code == 429 or response.status_code >= 500:
                         raise httpx.HTTPStatusError(
@@ -115,3 +121,12 @@ class BoundedHttpClient:
             except (InvalidContentTypeError, ResponseTooLargeError):
                 raise
         raise SourceFetchError(f"Unable to fetch {url}: {last_error}") from last_error
+
+    def _pace(self) -> None:
+        now = time.monotonic()
+        if self.last_request_started is not None:
+            remaining = self.minimum_request_interval - (now - self.last_request_started)
+            if remaining > 0:
+                time.sleep(remaining)
+                now = time.monotonic()
+        self.last_request_started = now

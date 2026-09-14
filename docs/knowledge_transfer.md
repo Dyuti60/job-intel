@@ -491,6 +491,8 @@ See [Public deployment and recovery](public_deployment.md) and
 | T-018 | Public recruitment website |
 | T-019 | Public runtime hardening |
 | T-020 | Controlled public release automation and recovery rehearsal |
+| V1-M1–M5 | Post domain, Confidence V2/routing, review/Master Posts, public jobs and eligibility |
+| V1-M6 | Five-source registry, two-year policy, archive families, and multi-source scheduler |
 
 ## 17. Handover safety rules
 
@@ -524,6 +526,13 @@ uv run python -m workers.pipeline --source APSC
 uv run python -m workers.pipeline --source SLPRB_ASSAM
 uv run python -m workers.pipeline --source DEE_ASSAM
 uv run python -m workers.pipeline --source DME_ASSAM
+uv run python -m workers.pipeline --source ASDMA_ASSAM
+
+# Multi-source selection
+uv run python -m workers.scheduler --source APSC --dry-run
+uv run python -m workers.scheduler --group HIGH_PRIORITY
+uv run python -m workers.scheduler --due --trigger SCHEDULED
+uv run python -m workers.scheduler --all-enabled
 
 # Monitoring
 uv run python -m workers.monitoring --source APSC --dry-run
@@ -541,6 +550,5 @@ uv run alembic check
 git diff --check
 ```
 
-The next planned implementation is T-021, deterministic eligibility rules and matching over
-approved current Master data. Eligibility work must remain downstream of Master and must never
-convert missing or ambiguous information into an eligible result.
+The next milestone is V1-M7: bounded private operations controls and final production-readiness
+validation. Eligibility is already downstream of approved Post Master and remains conservative.

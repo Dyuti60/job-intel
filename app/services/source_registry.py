@@ -99,6 +99,10 @@ class SourceRegistryService:
             status=data.status,
             discovery_enabled=data.discovery_enabled,
             adapter_key=data.adapter_key,
+            schedule_group=data.schedule_group,
+            poll_interval_minutes=data.poll_interval_minutes,
+            priority=data.priority,
+            requests_per_minute=data.requests_per_minute,
             last_verified_at=data.last_verified_at,
             provenance_note=data.provenance_note,
         )

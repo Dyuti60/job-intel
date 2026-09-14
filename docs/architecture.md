@@ -869,3 +869,17 @@ only on a normalized exact match. Ambiguous text or a potentially applicable mis
 returns `REVIEW_REQUIRED`; missing rules or inputs return `UNKNOWN`; neither is treated as eligible.
 Any definitive failure makes the overall outcome `NOT_ELIGIBLE`. Eligibility responses are
 `no-store` and expose no Candidate, Evidence, Confidence, Review, or internal provenance IDs.
+
+## Registry-driven source scheduler
+
+Executable source definitions remain provider-neutral Python configuration while mutable operating
+state lives on `SourceEndpoint`: enabled/status, adapter key, group, interval, priority, request
+bound, last attempt, and last success. Selection overlays registry values on the implemented
+catalog and sorts by `(priority, source_code)`. `DUE` compares the last attempt with the configured
+interval so a partial/failing source is bounded as well as a successful one.
+
+Each selected source retains its own PostgreSQL advisory lock and `PipelineRun`. Exceptions and
+lock contention become per-source scheduler results and do not terminate sibling execution.
+Discovery's HTTP client supplies response-size, timeout, transient retry, and user-agent bounds;
+the source-specific request rate is auditable registry metadata for this sequential V1 runner.
+No scheduler path calls an LLM or writes Discovery output directly to Master.

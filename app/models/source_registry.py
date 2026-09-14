@@ -5,10 +5,12 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -59,6 +61,13 @@ class SourceStatus(enum.StrEnum):
     DISABLED = "DISABLED"
 
 
+class SourceScheduleGroup(enum.StrEnum):
+    HIGH_PRIORITY = "HIGH_PRIORITY"
+    NORMAL = "NORMAL"
+    LOW_FREQUENCY = "LOW_FREQUENCY"
+    DISTRICT = "DISTRICT"
+
+
 def constrained_enum(enum_type: type[enum.Enum], name: str) -> Enum:
     return Enum(
         enum_type,
@@ -107,6 +116,16 @@ class SourceEndpoint(Base):
         Index("ix_source_endpoints_discovery", "status", "discovery_enabled"),
         Index("ix_source_endpoints_source_type", "source_type"),
         Index("ix_source_endpoints_source_class", "source_class"),
+        Index(
+            "ix_source_endpoints_schedule",
+            "status",
+            "discovery_enabled",
+            "schedule_group",
+            "priority",
+        ),
+        CheckConstraint("poll_interval_minutes >= 15", name="ck_source_poll_interval"),
+        CheckConstraint("priority BETWEEN 1 AND 1000", name="ck_source_priority"),
+        CheckConstraint("requests_per_minute BETWEEN 1 AND 60", name="ck_source_rate_limit"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -131,6 +150,16 @@ class SourceEndpoint(Base):
     )
     discovery_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     adapter_key: Mapped[str | None] = mapped_column(String(128))
+    schedule_group: Mapped[SourceScheduleGroup] = mapped_column(
+        constrained_enum(SourceScheduleGroup, "ck_source_endpoints_schedule_group"),
+        nullable=False,
+        default=SourceScheduleGroup.NORMAL,
+    )
+    poll_interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=1440)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    requests_per_minute: Mapped[int] = mapped_column(Integer, nullable=False, default=6)
+    last_attempted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_successful_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     provenance_note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(

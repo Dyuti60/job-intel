@@ -127,6 +127,13 @@ uv run python -m workers.pipeline --source APSC
 uv run python -m workers.pipeline --source SLPRB_ASSAM
 uv run python -m workers.pipeline --source DEE_ASSAM
 uv run python -m workers.pipeline --source DME_ASSAM
+uv run python -m workers.pipeline --source ASDMA_ASSAM
+
+# Registry-driven multi-source modes
+uv run python -m workers.scheduler --source APSC --dry-run
+uv run python -m workers.scheduler --group HIGH_PRIORITY
+uv run python -m workers.scheduler --due --trigger SCHEDULED
+uv run python -m workers.scheduler --all-enabled
 ```
 
 It is safe to repeat these commands. Human-review routing is a successful pipeline result, not a
@@ -226,6 +233,7 @@ uv run python -m workers.monitoring --source APSC
 uv run python -m workers.monitoring --source SLPRB_ASSAM
 uv run python -m workers.monitoring --source DEE_ASSAM
 uv run python -m workers.monitoring --source DME_ASSAM
+uv run python -m workers.monitoring --source ASDMA_ASSAM
 ```
 
 ![Live operational monitoring](images/operations-guide/02-operations.png)

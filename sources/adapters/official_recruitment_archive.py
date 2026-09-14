@@ -10,7 +10,7 @@ from pypdf import PdfReader
 
 from app.models.candidates import AdvertisementSplitStatus, CandidateValueType
 from app.models.discovery import DocumentType
-from app.models.source_registry import AuthorityType
+from app.models.source_registry import AuthorityType, SourceScheduleGroup
 from sources.adapters.apsc_recruitment import AdapterDocument
 from sources.extraction import ParsedAdvertisement, ParsedField, ParsedPost
 from sources.http import BoundedHttpClient
@@ -25,6 +25,12 @@ class OfficialArchiveSource:
     listing_url: str
     adapter_key: str
     organization_name: str
+    schedule_group: SourceScheduleGroup = SourceScheduleGroup.NORMAL
+    poll_interval_minutes: int = 1440
+    priority: int = 100
+    requests_per_minute: int = 6
+    accepts_download_links: bool = False
+    max_notices_per_run: int = 50
 
 
 OFFICIAL_ARCHIVE_SOURCES = {
@@ -36,6 +42,9 @@ OFFICIAL_ARCHIVE_SOURCES = {
         listing_url="https://slprbassam.in/",
         adapter_key="official_archive_slprb",
         organization_name="State Level Police Recruitment Board, Assam",
+        schedule_group=SourceScheduleGroup.HIGH_PRIORITY,
+        poll_interval_minutes=360,
+        priority=20,
     ),
     "DEE_ASSAM": OfficialArchiveSource(
         source_code="DEE_ASSAM",
@@ -45,6 +54,9 @@ OFFICIAL_ARCHIVE_SOURCES = {
         listing_url="https://dee.assam.gov.in/portlets/recruitment-under-dee-assam",
         adapter_key="official_archive_dee",
         organization_name="Directorate of Elementary Education, Assam",
+        schedule_group=SourceScheduleGroup.HIGH_PRIORITY,
+        poll_interval_minutes=720,
+        priority=30,
     ),
     "DME_ASSAM": OfficialArchiveSource(
         source_code="DME_ASSAM",
@@ -54,6 +66,19 @@ OFFICIAL_ARCHIVE_SOURCES = {
         listing_url="https://dme.assam.gov.in/documents-detail/recruitment",
         adapter_key="official_archive_dme",
         organization_name="Directorate of Medical Education, Assam",
+        priority=40,
+    ),
+    "ASDMA_ASSAM": OfficialArchiveSource(
+        source_code="ASDMA_ASSAM",
+        authority_code="ASDMA_ASSAM",
+        authority_name="Assam State Disaster Management Authority",
+        authority_type=AuthorityType.AUTONOMOUS_BODY,
+        listing_url="https://asdma.assam.gov.in/resource/recruitment",
+        adapter_key="structured_resource_table_asdma",
+        organization_name="Assam State Disaster Management Authority",
+        priority=60,
+        requests_per_minute=4,
+        accepts_download_links=True,
     ),
 }
 
@@ -165,7 +190,12 @@ class OfficialRecruitmentArchiveAdapter:
         )
         notices: list[ArchiveNotice] = []
         warnings: list[str] = []
-        for item in metadata:
+        if len(metadata) > self.source.max_notices_per_run:
+            warnings.append(
+                f"Listing returned {len(metadata)} advertisements; processed bounded first "
+                f"{self.source.max_notices_per_run} in deterministic URL order"
+            )
+        for item in metadata[: self.source.max_notices_per_run]:
             try:
                 resource = self.http.fetch(item.document_url, accepted_types=("application/pdf",))
                 extraction = parse_official_advertisement_pdf(
@@ -222,7 +252,12 @@ def parse_archive_listing(
 def _metadata_from_row(
     row: _Row, source: OfficialArchiveSource
 ) -> ArchiveNoticeMetadata | None:
-    pdf_links = [link for link in row.links if ".pdf" in link.url.casefold()]
+    pdf_links = [
+        link
+        for link in row.links
+        if ".pdf" in link.url.casefold()
+        or (source.accepts_download_links and link.text.casefold() == "download")
+    ]
     if not pdf_links:
         return None
     if source.source_code == "SLPRB_ASSAM":
@@ -247,24 +282,44 @@ def _metadata_from_row(
             notification_date=parsed_date,
         )
 
-    title_link = next((link for link in pdf_links if link.text), pdf_links[0])
-    title = title_link.text or (row.cells[0] if row.cells else "")
+    title_link = next(
+        (link for link in pdf_links if link.text and link.text.casefold() != "download"),
+        pdf_links[0],
+    )
+    title = title_link.text
+    if not title or title.casefold() == "download":
+        title = next(
+            (
+                cell
+                for cell in row.cells
+                if cell and cell.casefold() != "download" and _parse_numeric_date(cell) is None
+            ),
+            "",
+        )
     title = _clean_text(title)
     if not title:
         return None
     lowered = title.casefold()
-    is_advertisement = lowered.startswith("advertisement") or lowered.startswith("recruitment")
+    is_advertisement = any(
+        word in lowered for word in ("advertisement", "recruitment", "vacancy")
+    )
     excluded = any(
         word in lowered
         for word in (
             "result",
+            "merit list",
             "select list",
             "shortlist",
             "verification",
+            "interview",
+            "admit card",
             "withdrawal",
             "appointment",
             "answer key",
             "postponement",
+            "extension",
+            "corrigendum",
+            "addendum",
         )
     )
     if not is_advertisement or excluded:
@@ -273,7 +328,11 @@ def _metadata_from_row(
         title=title,
         document_url=urljoin(source.listing_url, title_link.url),
         notification_number=None,
-        notification_date=_date_from_title(title),
+        notification_date=_date_from_title(title)
+        or next(
+            (_parse_numeric_date(cell) for cell in row.cells if _parse_numeric_date(cell)),
+            None,
+        ),
     )
 
 

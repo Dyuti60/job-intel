@@ -1533,3 +1533,39 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
   values. Missing or prose-only rules remain UNKNOWN/REVIEW_REQUIRED.
 - Broad official-source onboarding, two-year backfill, and multi-source due scheduling are the next
   milestone.
+
+## V1-M6 — Registry, adapter families, backfill policy, and scheduling — 2026-09-14
+
+### Result
+
+- Added registry scheduling metadata for group, interval, priority, request bound, last attempt,
+  and last success, including deterministic backfill of the four pre-existing adapter schedules.
+- Added ASDMA as a fifth enabled official source through a reusable structured-resource-table
+  extension that accepts bounded download links while retaining the existing archive persistence,
+  provenance, Post extraction, and idempotency path.
+- Formalized a current Asia/Kolkata calendar year plus two prior years policy and expanded lifecycle
+  exclusions so results, merit/select lists, interviews, verification, admit cards, appointments,
+  answer keys, postponements, extensions, corrigenda, and addenda cannot become new jobs.
+- Added registry-aware CLI modes for one source, one group, all due, and all enabled. Selection is
+  deterministic by priority then code; each source has an independent lock, PipelineRun, failure
+  result, and schedule-state update.
+- Replaced the scheduled single-source invocation with one due-source scheduler at 08:00 IST and
+  per-source monitoring. Added an evidence-based official-source onboarding inventory.
+
+### Validation performed
+
+- Fixture tests cover ASDMA download rows, historical filtering, lifecycle exclusion, schedule
+  bounds, ordering, groups, due state, disabled sources, and failure isolation.
+- Live bounded page validation reached DEE, DME, and ASDMA on 2026-09-14. The validation gateway
+  returned 502 for APSC and SLPRB, which is recorded as unavailable rather than successful.
+- `uv run pytest -q`: 337 tests passed. `uv run ruff check .` and `git diff --check` passed.
+- PostgreSQL upgrade, downgrade/re-upgrade, drift check, and a fresh isolated full migration chain
+  through `20260914_0016` passed; the isolated database was removed. CI is recorded after push.
+
+### Known limitations
+
+- NHM, SSA, ASRLM/P&RD, Agriculture, FREMAA, Niyukti, district, university, board, court, and power
+  sources remain inventoried but disabled until safe source-specific traversal is fixture-proven.
+- Registry request rate is an auditable sequential-run bound; V1 does not parallelize requests.
+- Actual local historical coverage depends on reachable official sites and is measured in M7 rather
+  than inferred from the configured lookback policy.

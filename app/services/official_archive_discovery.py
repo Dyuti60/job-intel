@@ -1,6 +1,7 @@
 import hashlib
 import logging
-from datetime import UTC, datetime
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
@@ -71,11 +72,12 @@ class OfficialArchiveDiscoveryWorkerService:
                     read_timeout=self.settings.discovery_read_timeout_seconds,
                     retries=self.settings.discovery_http_retries,
                     max_response_bytes=self.settings.discovery_max_response_bytes,
+                    requests_per_minute=self.source.requests_per_minute,
                 )
                 adapter = OfficialRecruitmentArchiveAdapter(
                     http,
                     self.source,
-                    earliest_year=datetime.now(UTC).year - 2,
+                    earliest_year=datetime.now(ZoneInfo("Asia/Kolkata")).year - 2,
                 )
             result = adapter.discover()
             summary = self._persist_result(
@@ -152,6 +154,10 @@ class OfficialArchiveDiscoveryWorkerService:
                     status=SourceStatus.ACTIVE,
                     discovery_enabled=True,
                     adapter_key=self.source.adapter_key,
+                    schedule_group=self.source.schedule_group,
+                    poll_interval_minutes=self.source.poll_interval_minutes,
+                    priority=self.source.priority,
+                    requests_per_minute=self.source.requests_per_minute,
                     provenance_note=(
                         "Official recruiting-authority advertisement archive; "
                         "bounded to dated 2024-2026 recruitment advertisements."

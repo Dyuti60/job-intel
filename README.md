@@ -193,6 +193,24 @@ page. JSON clients can use `GET /api/v1/operational-status/{source_code}` and
 `GET /api/v1/operational-notifications`. Like `/review`, this local administration surface has no
 production authentication or CSRF boundary and must not be exposed publicly.
 
+## Multi-source scheduling and backfill
+
+The registry stores each enabled endpoint's schedule group, polling interval, priority, request
+bound, last attempt, and last successful scan. Run the catalog deterministically with:
+
+```powershell
+uv run python -m workers.scheduler --source APSC --dry-run
+uv run python -m workers.scheduler --group HIGH_PRIORITY
+uv run python -m workers.scheduler --due --trigger SCHEDULED
+uv run python -m workers.scheduler --all-enabled
+```
+
+Sources execute in priority/code order under independent PostgreSQL advisory locks. A failed or
+locked source is recorded without stopping later sources. The single scheduled workflow invokes
+`--due` at 08:00 IST and then evaluates monitoring per implemented source. Archive adapters use the
+inclusive current Asia/Kolkata year plus two prior calendar years; historical notices never imply
+recurrence. See [official source inventory](docs/assam_source_inventory.md).
+
 ## Public Jobs API
 
 The public contract is sourced exclusively from ACTIVE RecruitmentMaster records and each master's
