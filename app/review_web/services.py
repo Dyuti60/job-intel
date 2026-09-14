@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.candidates import (
     AdvertisementRevision,
+    AdvertisementSplitStatus,
     RecruitmentCandidate,
     RecruitmentCandidateRevision,
     RecruitmentPost,
@@ -106,13 +107,27 @@ class ReviewCaseViewService:
                 if revision.advertisement_revision is not None
                 else []
             )
-            post_by_key = {post.post_key: post for post in posts}
             item_groups: dict[str | None, list[Any]] = {}
             for item in case.items:
                 post_key = ReviewService._post_key(item.field_path_snapshot)
                 item_groups.setdefault(post_key, []).append(item)
-            for post_key, grouped_items in item_groups.items():
-                post = post_by_key.get(post_key)
+            explicit_posts = (
+                posts
+                if revision.advertisement_revision is not None
+                and revision.advertisement_revision.split_status
+                == AdvertisementSplitStatus.EXPLICIT
+                else []
+            )
+            shared_items = item_groups.get(None, [])
+            entry_groups = [
+                (post, [*shared_items, *item_groups.get(post.post_key, [])])
+                for post in explicit_posts
+                if shared_items or item_groups.get(post.post_key)
+            ]
+            if not explicit_posts:
+                entry_groups = [(None, list(case.items))]
+            for post, grouped_items in entry_groups:
+                post_key = post.post_key if post is not None else None
                 reasons = sorted(
                     {
                         reason
@@ -133,7 +148,7 @@ class ReviewCaseViewService:
                     "candidate_key": candidate.candidate_key,
                     "advertisement_title": candidate.display_name,
                     "post_key": post_key,
-                    "post_name": post.name if post is not None else "Advertisement-wide review",
+                    "post_name": post.name if post is not None else candidate.display_name,
                     "authority_name": candidate.recruiting_authority.name,
                     "organization": self._organization(revision),
                     "important_fields": self._important_post_fields(post),
@@ -184,6 +199,13 @@ class ReviewCaseViewService:
         posts = (
             revision.advertisement_revision.posts
             if revision.advertisement_revision is not None
+            else []
+        )
+        explicit_posts = (
+            posts
+            if revision.advertisement_revision is not None
+            and revision.advertisement_revision.split_status
+            == AdvertisementSplitStatus.EXPLICIT
             else []
         )
         post_names = {post.post_key: post.name for post in posts}
@@ -248,36 +270,44 @@ class ReviewCaseViewService:
 
         resolved = sum(item["status"] == ReviewItemStatus.RESOLVED.value for item in items)
         advertisement_items = [item for item in items if item["post_key"] is None]
+        post_groups = [
+            {
+                "scope": "POST",
+                "key": post.post_key,
+                "name": post.name,
+                "items": [item for item in items if item["post_key"] == post.post_key],
+            }
+            for post in explicit_posts
+            if advertisement_items
+            or any(item["post_key"] == post.post_key for item in items)
+        ]
+        affected_post_keys = {group["key"] for group in post_groups}
+        if focus_post_key is not None and focus_post_key not in affected_post_keys:
+            raise DomainConflictError("The selected Post has no review context in this case")
+        if focus_post_key is None and post_groups:
+            focus_post_key = post_groups[0]["key"]
         review_groups = []
-        if advertisement_items:
+        if advertisement_items and explicit_posts:
+            review_groups.append(
+                {
+                    "scope": "SHARED",
+                    "key": None,
+                    "name": "Shared Advertisement review items",
+                    "items": advertisement_items,
+                }
+            )
+        review_groups.extend(
+            group for group in post_groups if group["key"] == focus_post_key
+        )
+        if not explicit_posts:
             review_groups.append(
                 {
                     "scope": "ADVERTISEMENT",
                     "key": None,
-                    "name": "Advertisement",
-                    "items": advertisement_items,
+                    "name": "Advertisement review",
+                    "items": items,
                 }
             )
-        for post in posts:
-            review_groups.append(
-                {
-                    "scope": "POST",
-                    "key": post.post_key,
-                    "name": post.name,
-                    "items": [item for item in items if item["post_key"] == post.post_key],
-                }
-            )
-        if not review_groups:
-            review_groups.append(
-                {"scope": "ADVERTISEMENT", "key": None, "name": "Advertisement", "items": items}
-            )
-        all_review_groups = review_groups
-        if focus_post_key is not None:
-            review_groups = [
-                group
-                for group in all_review_groups
-                if group["key"] in {None, focus_post_key}
-            ]
         focused_post = next(
             (post for post in posts if post.post_key == focus_post_key), None
         )
@@ -318,12 +348,7 @@ class ReviewCaseViewService:
                 else None
             ),
             "post_links": [
-                {"key": post.post_key, "name": post.name}
-                for post in posts
-                if any(
-                    group["key"] == post.post_key and group["items"]
-                    for group in all_review_groups
-                )
+                {"key": group["key"], "name": group["name"]} for group in post_groups
             ],
             "items": items,
             "review_groups": review_groups,
@@ -331,6 +356,15 @@ class ReviewCaseViewService:
         }
         if review_case.status == ReviewCaseStatus.RESOLVED:
             projection = self.review.approved_projection(review_case.id)
+            projection_fields = projection["fields"]
+            if focused_post is not None:
+                post_prefix = f"posts.{focused_post.post_key}."
+                projection_fields = [
+                    field
+                    for field in projection_fields
+                    if not field["field_path"].startswith("posts.")
+                    or field["field_path"].startswith(post_prefix)
+                ]
             result["projection"] = {
                 **projection,
                 "outcome": projection["outcome"].value,
@@ -341,7 +375,7 @@ class ReviewCaseViewService:
                         "original_value_display": display_value(field["original_value"]),
                         "effective_value_display": display_value(field["effective_value"]),
                     }
-                    for field in projection["fields"]
+                    for field in projection_fields
                 ],
             }
         return result

@@ -4,7 +4,20 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models.review import ReviewCase
-from tests.factories import create_evidence
+from tests.factories import (
+    add_verification_assessment,
+    complete_verification_run,
+    create_candidate,
+    create_discovery_source,
+    create_evidence,
+    create_field_verification,
+    create_revision,
+    create_run,
+    create_verification_run,
+    finalize_field_verification,
+    observe_document,
+    start_verification_run,
+)
 from tests.test_post_master import _explicit_two_post_run
 from tests.test_review_api import _field_item, build_review_graph
 
@@ -22,6 +35,101 @@ def _web_graph(client: TestClient, suffix: str) -> dict:
     )
     assert linked.status_code == 201, linked.text
     return graph
+
+
+def _three_post_review_graph(client: TestClient) -> dict:
+    authority, endpoint = create_discovery_source(client)
+    discovery = create_run(client, endpoint["id"])
+    document = observe_document(client, discovery["id"])["document"]
+    candidate = create_candidate(
+        client,
+        authority["id"],
+        candidate_key="REVIEW_THREE_POSTS",
+        display_name="SLPRB Grade IV Advertisement",
+    )
+    posts = (
+        ("assam_police", "Grade IV Staff - Assam Police", 181),
+        (
+            "assam_commando_battalions",
+            "Grade IV Staff - Assam Commando Battalions",
+            6,
+        ),
+        ("dgcd_cghg", "Grade IV Staff - DGCD & CGHG", 69),
+    )
+    revision = create_revision(
+        client,
+        candidate["id"],
+        document["id"],
+        split_status="EXPLICIT",
+        fields=[
+            {
+                "field_path": "recruitment_name",
+                "value_type": "STRING",
+                "value": "SLPRB Grade IV Advertisement",
+            },
+            {
+                "field_path": "application.end_date",
+                "value_type": "DATE",
+                "value": "2026-10-20",
+            },
+        ],
+        posts=[
+            {
+                "post_key": key,
+                "ordinal": ordinal,
+                "name": name,
+                "facts": [
+                    {"field_path": "name", "value_type": "STRING", "value": name},
+                    {
+                        "field_path": "vacancies.total",
+                        "value_type": "INTEGER",
+                        "value": vacancies,
+                    },
+                ],
+            }
+            for ordinal, (key, name, vacancies) in enumerate(posts, start=1)
+        ],
+    )
+    ready = client.patch(
+        f"/api/v1/recruitment-candidates/{candidate['id']}",
+        json={"status": "READY_FOR_VERIFICATION"},
+    )
+    assert ready.status_code == 200
+    run = create_verification_run(client, revision["id"])
+    start_verification_run(client, run["id"])
+    for field in revision["fields"]:
+        verification = create_field_verification(client, run["id"], field["id"])
+        evidence = create_evidence(
+            client,
+            document["id"],
+            excerpt=f"Official evidence for {field['field_path']}",
+        )
+        needs_review = field["field_path"] == "application.end_date" or (
+            field["field_path"].startswith("posts.")
+            and field["field_path"].endswith("vacancies.total")
+        )
+        add_verification_assessment(
+            client,
+            verification["id"],
+            evidence["id"],
+            "CONTRADICTS" if needs_review else "SUPPORTS",
+            asserted_value=(999 if field["value_type"] == "INTEGER" else "2026-10-21")
+            if needs_review
+            else field["value"],
+            asserted_value_type=field["value_type"],
+        )
+        finalize_field_verification(client, verification["id"])
+    complete_verification_run(client, run["id"])
+    confidence = client.post(f"/api/v1/verification-runs/{run['id']}/confidence-v2").json()
+    routing = client.post(
+        f"/api/v1/revision-confidence/{confidence['id']}/review-routing"
+    )
+    assert routing.status_code == 201
+    case = client.post(
+        "/api/v1/review-cases",
+        json={"revision_confidence_assessment_id": confidence["id"]},
+    ).json()
+    return {"candidate": candidate, "case": case, "posts": posts}
 
 
 def _start_web_case(client: TestClient, case_id: str) -> None:
@@ -140,6 +248,81 @@ def test_review_queue_and_detail_focus_on_exact_post(client: TestClient) -> None
     assert "Two Post Recruitment" in focused.text
     assert "posts.conflicted_post.vacancies.total" in focused.text
     assert "posts.valid_post.vacancies.total" not in focused.text
+
+
+def test_explicit_three_post_review_is_post_first_when_active_and_resolved(
+    client: TestClient,
+) -> None:
+    graph = _three_post_review_graph(client)
+    case = graph["case"]
+
+    active = client.get("/review")
+
+    assert active.status_code == 200
+    assert active.text.count('class="case-link"') == 3
+    assert "Advertisement-wide review" not in active.text
+    for _key, name, vacancies in graph["posts"]:
+        rendered_name = name.replace("&", "&amp;")
+        assert f">{rendered_name}</a>" in active.text
+        entry = active.text.split(f">{rendered_name}</a>", 1)[1].split("</tr>", 1)[0]
+        assert "Vacancies Total" in entry
+        assert f"</strong> {vacancies}</small>" in entry
+        assert "Advertisement: SLPRB Grade IV Advertisement" in entry
+
+    police = client.get(
+        f"/review/cases/{case['id']}", params={"post": "assam_police"}
+    )
+    assert "<h1>Grade IV Staff - Assam Police</h1>" in police.text
+    assert "Shared Advertisement review items" in police.text
+    assert "application.end_date" in police.text
+    assert "posts.assam_police.vacancies.total" in police.text
+    assert "posts.assam_commando_battalions.vacancies.total" not in police.text
+    assert "posts.dgcd_cghg.vacancies.total" not in police.text
+    assert 'name="post" value="assam_police"' not in police.text
+
+    start = client.post(
+        f"/review/cases/{case['id']}/start",
+        params={"post": "assam_police"},
+        follow_redirects=False,
+    )
+    assert "post=assam_police" in start.headers["location"]
+    started_page = client.get(start.headers["location"])
+    assert 'name="post" value="assam_police"' in started_page.text
+    started = client.get(f"/api/v1/review-cases/{case['id']}").json()
+    for item in started["items"]:
+        response = client.post(
+            f"/api/v1/review-items/{item['id']}/decision",
+            json={
+                "decision": "APPROVE_AS_IS",
+                "reviewer_identifier": "post-first-reviewer",
+                "decision_note": "Approved against the retained source evidence.",
+            },
+        )
+        assert response.status_code == 201
+
+    resolved = client.get("/review", params={"status": "RESOLVED"})
+    resolved_police = client.get(
+        f"/review/cases/{case['id']}", params={"post": "assam_police"}
+    )
+    assert resolved.text.count('class="case-link"') == 3
+    assert "Advertisement-wide review" not in resolved.text
+    assert all(
+        f">{name.replace('&', '&amp;')}</a>" in resolved.text
+        for _key, name, _vacancies in graph["posts"]
+    )
+    assert "posts.assam_police.vacancies.total" in resolved_police.text
+    assert "posts.assam_commando_battalions.vacancies.total" not in resolved_police.text
+    assert "posts.dgcd_cghg.vacancies.total" not in resolved_police.text
+
+
+def test_legacy_unsplit_review_retains_one_advertisement_entry(client: TestClient) -> None:
+    graph = _web_graph(client, "WEB_LEGACY_UNSPLIT")
+
+    queue = client.get("/review")
+
+    assert queue.text.count('class="case-link"') == 1
+    assert f">{graph['candidate']['display_name']}</a>" in queue.text
+    assert f"/review/cases/{graph['case']['id']}?post=" not in queue.text
 
 
 def test_start_review_uses_post_redirect_and_get_is_read_only(

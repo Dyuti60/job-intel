@@ -51,10 +51,11 @@ def _error_page(request: Request, message: str, status_code: int) -> HTMLRespons
 def _case_redirect(
     case_id: uuid.UUID,
     *,
+    post: str | None = None,
     message: str | None = None,
     error: str | None = None,
 ) -> RedirectResponse:
-    notices = {"message": message, "error": error}
+    notices = {"post": post, "message": message, "error": error}
     query = urlencode({key: value for key, value in notices.items() if value})
     suffix = f"?{query}" if query else ""
     return RedirectResponse(f"/review/cases/{case_id}{suffix}", status_code=303)
@@ -127,21 +128,25 @@ def review_case(
 
 
 @router.post("/cases/{case_id}/start")
-def start_case(case_id: uuid.UUID, session: DatabaseSession) -> RedirectResponse:
+def start_case(
+    case_id: uuid.UUID, session: DatabaseSession, post: str | None = None
+) -> RedirectResponse:
     try:
         ReviewService(session).start_case(case_id)
     except (ResourceNotFoundError, DomainConflictError) as error:
-        return _case_redirect(case_id, error=str(error))
-    return _case_redirect(case_id, message="Review started")
+        return _case_redirect(case_id, post=post, error=str(error))
+    return _case_redirect(case_id, post=post, message="Review started")
 
 
 @router.post("/cases/{case_id}/cancel")
-def cancel_case(case_id: uuid.UUID, session: DatabaseSession) -> RedirectResponse:
+def cancel_case(
+    case_id: uuid.UUID, session: DatabaseSession, post: str | None = None
+) -> RedirectResponse:
     try:
         ReviewService(session).cancel_case(case_id)
     except (ResourceNotFoundError, DomainConflictError) as error:
-        return _case_redirect(case_id, error=str(error))
-    return _case_redirect(case_id, message="Review case cancelled")
+        return _case_redirect(case_id, post=post, error=str(error))
+    return _case_redirect(case_id, post=post, message="Review case cancelled")
 
 
 @router.post("/items/{item_id}/decision")
@@ -157,8 +162,10 @@ async def decide_item(
     except ResourceNotFoundError as error:
         return _error_page(request, str(error), 404)
     case_id = item.review_case_id
+    post: str | None = None
     try:
         form = await _read_form(request)
+        post = (form.get("post") or "").strip() or None
         decision = ReviewDecisionType(form.get("decision", ""))
         if decision not in {ReviewDecisionType.APPROVE_AS_IS, ReviewDecisionType.REJECT}:
             raise ValueError("The local review page supports only Approve or Reject")
@@ -175,5 +182,5 @@ async def decide_item(
         message = str(error)
         if isinstance(error, ValidationError):
             message = "; ".join(item["msg"] for item in error.errors())
-        return _case_redirect(case_id, error=message)
-    return _case_redirect(case_id, message="Decision recorded")
+        return _case_redirect(case_id, post=post, error=message)
+    return _case_redirect(case_id, post=post, message="Decision recorded")

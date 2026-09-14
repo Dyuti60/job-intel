@@ -20,12 +20,12 @@
 
 {% if status == 'QUEUED' %}
 <div class="toolbar">
-  <form method="post" action="/review/cases/{{ case_id }}/start"><button type="submit">Start Review</button></form>
-  <form method="post" action="/review/cases/{{ case_id }}/cancel"><button class="danger secondary" type="submit">Cancel Case</button></form>
+  <form method="post" action="/review/cases/{{ case_id }}/start{% if focused_post %}?post={{ focused_post.key|urlencode }}{% endif %}"><button type="submit">Start Review</button></form>
+  <form method="post" action="/review/cases/{{ case_id }}/cancel{% if focused_post %}?post={{ focused_post.key|urlencode }}{% endif %}"><button class="danger secondary" type="submit">Cancel Case</button></form>
 </div>
 {% elif status == 'IN_REVIEW' %}
 <div class="toolbar">
-  <form method="post" action="/review/cases/{{ case_id }}/cancel" onsubmit="return confirm('Cancel this review case?');"><button class="danger secondary" type="submit">Cancel Case</button></form>
+  <form method="post" action="/review/cases/{{ case_id }}/cancel{% if focused_post %}?post={{ focused_post.key|urlencode }}{% endif %}" onsubmit="return confirm('Cancel this review case?');"><button class="danger secondary" type="submit">Cancel Case</button></form>
 </div>
 {% endif %}
 

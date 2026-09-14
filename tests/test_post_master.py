@@ -137,9 +137,8 @@ def test_rejected_post_does_not_block_valid_sibling_master(client, db_session) -
     assert len(case["items"]) == 1
     page = client.get(f"/review/cases/{case['id']}")
     assert page.status_code == 200
-    assert "Valid Post" in page.text
     assert "Conflicted Post" in page.text
-    assert "may proceed independently" in page.text
+    assert "Valid Post" not in page.text
     started = client.post(f"/api/v1/review-cases/{case['id']}/start").json()
     decision = client.post(
         f"/api/v1/review-items/{started['items'][0]['id']}/decision",

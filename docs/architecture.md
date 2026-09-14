@@ -426,11 +426,14 @@ domain decisions.
 
 Evidence excerpts and context are rendered as escaped text, never executable source HTML.
 Registered source URLs are explicit new-window links with `noopener noreferrer`; remote pages are
-not embedded. The queue derives Post-scoped rows from routed `posts.<post_key>.*` items and links to
-a focused Post detail while retaining parent Advertisement, organization, and authority context.
-Structured facts appear before evidence; raw excerpts and assessment provenance remain available
-inside collapsed native HTML details. All lifecycle and decision mutations use POST, while GET
-routes remain read-only.
+not embedded. For an explicit Advertisement, the queue derives rows from affected Posts rather than
+review-item ownership groups. Advertisement-scoped items remain one immutable domain decision but
+appear as shared context within each applicable Post experience, never as a fourth pseudo-Post.
+Active and resolved lists use the same composition, and an unscoped case URL deterministically
+focuses its first affected Post. Legacy-unsplit and ambiguous cases retain Advertisement-level
+presentation. Structured facts appear before evidence; raw excerpts and assessment provenance
+remain available inside collapsed native HTML details. All lifecycle and decision mutations use
+POST, while GET routes remain read-only.
 
 This interface is a localhost development tool. T-009 deliberately provides no authentication,
 authorization, CSRF protection, hardened sessions, assignment workflow, or production deployment
