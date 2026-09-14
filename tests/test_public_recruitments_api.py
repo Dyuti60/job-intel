@@ -227,6 +227,39 @@ def test_application_status_is_derived_safely_at_date_boundaries(client: TestCli
     assert status_on("2026-11-01") == "CLOSED"
 
 
+def test_default_public_history_keeps_current_recent_and_unknown_but_hides_old_closed(
+    client: TestClient,
+) -> None:
+    open_job = _published(client, "HISTORY_OPEN", start="2026-09-01", end="2026-09-30")
+    upcoming = _published(
+        client, "HISTORY_UPCOMING", start="2026-10-01", end="2026-10-31"
+    )
+    recent = _published(
+        client, "HISTORY_RECENT", start="2025-08-01", end="2025-09-14"
+    )
+    old = _published(client, "HISTORY_OLD", start="2025-07-01", end="2025-09-13")
+    unknown = _published(client, "HISTORY_UNKNOWN", start=None, end=None)
+
+    api = client.get(PUBLIC_URL, params={"as_of": "2026-09-14"}).json()
+    web = client.get("/jobs", params={"as_of": "2026-09-14"})
+    visible = {item["candidate_key"] for item in api["items"]}
+
+    assert visible == {
+        open_job["candidate"]["candidate_key"],
+        upcoming["candidate"]["candidate_key"],
+        recent["candidate"]["candidate_key"],
+        unknown["candidate"]["candidate_key"],
+    }
+    assert old["candidate"]["candidate_key"] not in web.text
+    assert unknown["candidate"]["candidate_key"] in web.text
+    old_master_id = old["publication"]["master"]["id"]
+    assert client.get(f"/api/v1/recruitment-master/{old_master_id}").status_code == 200
+    historical_detail = client.get(
+        f"{PUBLIC_URL}/{old_master_id}", params={"as_of": "2026-09-14"}
+    )
+    assert historical_detail.status_code == 200
+
+
 def test_mismatched_current_revision_pointer_fails_closed(
     client: TestClient, db_session: Session
 ) -> None:

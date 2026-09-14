@@ -560,6 +560,12 @@ parser recognizes an explicit post-name and total-vacancy header, validates row 
 totals, checks a complete UR/OBC-MOBC/SC/ST(P)/ST(H)/EWS breakup against the stated total, and
 creates stable post keys from post plus organisation/department.
 
+For ordinary PDF text extraction that loses table delimiters, a second bounded parser recognizes
+only an explicit repeated `N posts of X in/under Y` vacancy series. At least two complete, positive,
+uniquely keyed entries are required; otherwise the record remains `LEGACY_UNSPLIT` or becomes
+`AMBIGUOUS` when an attempted series is invalid. Repeated base Post names are deterministically
+qualified with their supported organisation so public and review identities remain distinct.
+
 Post-wise tables may add minimum/desirable qualification, subject/specialisation, minimum/maximum
 age, pay scale, grade pay, and experience only when the row maps to exactly one detected Post.
 Uncertain ownership becomes an `extraction.ambiguities` advertisement fact with a source locator;
@@ -750,6 +756,9 @@ all current approved field path/type/value triples and a deduplicated, provider-
 summary derived through `MasterField -> CandidateField -> SourceDocument -> SourceEndpoint`.
 Internal database provenance IDs, evidence excerpts, reviewer identities/notes, confidence
 breakdowns, hashes, raw-storage locations, operational errors, and historical values are excluded.
+Default list projection excludes only records deterministically known to be CLOSED before the
+previous 12-calendar-month cutoff. OPEN, UPCOMING, recently CLOSED, and unknown-end-date records
+remain visible; direct detail and all internal immutable history remain available.
 
 Application status is a read-time derivation from approved `application.start_date` and
 `application.end_date` DATE fields. Before start is UPCOMING, start/end boundaries are inclusive
@@ -890,6 +899,12 @@ lock contention become per-source scheduler results and do not terminate sibling
 Discovery's HTTP client supplies response-size, timeout, transient retry, and user-agent bounds;
 the source-specific request rate is auditable registry metadata for this sequential V1 runner.
 No scheduler path calls an LLM or writes Discovery output directly to Master.
+
+Scheduler `--dry-run` stops immediately after the same deterministic selection and local schedule
+metadata projection used by execution. It acquires no lock, constructs no orchestrator, performs no
+source I/O, creates no `PipelineRun`, and updates no endpoint timestamps. The distinct
+`--execute-no-commit` mode takes the normal lock/orchestrator/history path with the orchestrator's
+non-persistent pipeline behavior. Without either flag, persisted execution is unchanged.
 
 The private operations HTML layer calls the same scheduler, Publisher worker, and monitoring
 services used by CLI/workflows. Its POST boundary requires a matching browser Origin and

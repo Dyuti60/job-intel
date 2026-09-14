@@ -50,11 +50,24 @@ class ScheduledSourceResult:
     error: str | None = None
 
 
+@dataclass(frozen=True)
+class SourceSchedulePreview:
+    source_code: str
+    group: SourceScheduleGroup
+    priority: int
+    poll_interval_minutes: int
+    due: bool
+    last_attempted_at: datetime | None
+    last_successful_at: datetime | None
+
+
 @dataclass
 class SchedulerSummary:
     selection: SchedulerSelection
     dry_run: bool
     selected_sources: tuple[str, ...]
+    execute_no_commit: bool = False
+    previews: tuple[SourceSchedulePreview, ...] = ()
     results: list[ScheduledSourceResult] = field(default_factory=list)
 
     @property
@@ -148,14 +161,26 @@ class SourceSchedulerService:
         source: str | None = None,
         group: SourceScheduleGroup | None = None,
         dry_run: bool = False,
+        execute_no_commit: bool = False,
         trigger_type: PipelineTriggerType = PipelineTriggerType.CLI,
         evaluated_at: datetime | None = None,
     ) -> SchedulerSummary:
+        if dry_run and execute_no_commit:
+            raise ValueError("--dry-run and --execute-no-commit are mutually exclusive")
         started_at = evaluated_at or datetime.now(UTC)
         selected = self.select_sources(
             selection, source=source, group=group, evaluated_at=started_at
         )
-        aggregate = SchedulerSummary(selection, dry_run, selected)
+        previews = self._preview(selected, started_at)
+        aggregate = SchedulerSummary(
+            selection,
+            dry_run,
+            selected,
+            execute_no_commit=execute_no_commit,
+            previews=previews,
+        )
+        if dry_run:
+            return aggregate
         engine = self.session.get_bind()
         for code in selected:
             try:
@@ -166,10 +191,10 @@ class SourceSchedulerService:
                     summary, pipeline_run = PipelineHistoryService(self.session).execute(
                         PipelineOrchestratorService(self.session, self.settings, self.logger),
                         source=code,
-                        dry_run=dry_run,
+                        dry_run=execute_no_commit,
                         trigger_type=trigger_type,
                     )
-                    if not dry_run:
+                    if not execute_no_commit:
                         self._record_attempt(code, started_at, summary.status)
                     aggregate.results.append(
                         ScheduledSourceResult(
@@ -191,6 +216,42 @@ class SourceSchedulerService:
                 )
         return aggregate
 
+    def _preview(
+        self, selected: tuple[str, ...], evaluated_at: datetime
+    ) -> tuple[SourceSchedulePreview, ...]:
+        catalog = source_schedule_catalog()
+        endpoints = {
+            authority.code: endpoint
+            for authority, endpoint in self.session.execute(
+                select(RecruitingAuthority, SourceEndpoint).join(
+                    SourceEndpoint,
+                    SourceEndpoint.recruiting_authority_id == RecruitingAuthority.id,
+                )
+            )
+        }
+        previews = []
+        for code in selected:
+            default = catalog[code]
+            endpoint = endpoints.get(code)
+            interval = endpoint.poll_interval_minutes if endpoint else default.poll_interval_minutes
+            last_attempted = endpoint.last_attempted_at if endpoint else None
+            due = (
+                last_attempted is None
+                or last_attempted + timedelta(minutes=interval) <= evaluated_at
+            )
+            previews.append(
+                SourceSchedulePreview(
+                    source_code=code,
+                    group=endpoint.schedule_group if endpoint else default.group,
+                    priority=endpoint.priority if endpoint else default.priority,
+                    poll_interval_minutes=interval,
+                    due=due,
+                    last_attempted_at=last_attempted,
+                    last_successful_at=endpoint.last_successful_at if endpoint else None,
+                )
+            )
+        return tuple(previews)
+
     def _record_attempt(
         self, source_code: str, attempted_at: datetime, status: PipelineStatus
     ) -> None:
@@ -208,14 +269,31 @@ class SourceSchedulerService:
 
 
 def format_scheduler_summary(summary: SchedulerSummary) -> str:
+    mode = (
+        "PREVIEW"
+        if summary.dry_run
+        else "EXECUTE_NO_COMMIT"
+        if summary.execute_no_commit
+        else "EXECUTE"
+    )
     lines = [
         "================================================",
         " Assam Job Intelligence - Multi-source scheduler",
         f" Selection: {summary.selection.value}",
-        f" Dry run: {summary.dry_run}",
+        f" Mode: {mode}",
         f" Selected: {', '.join(summary.selected_sources) or 'none'}",
         "================================================",
     ]
+    for preview in summary.previews:
+        attempted = preview.last_attempted_at.isoformat() if preview.last_attempted_at else "never"
+        successful = (
+            preview.last_successful_at.isoformat() if preview.last_successful_at else "never"
+        )
+        lines.append(
+            f"{preview.source_code}: group={preview.group.value} priority={preview.priority} "
+            f"interval_minutes={preview.poll_interval_minutes} due={str(preview.due).lower()} "
+            f"last_attempted={attempted} last_successful={successful}"
+        )
     for result in summary.results:
         run = f" run={result.pipeline_run_id}" if result.pipeline_run_id else ""
         error = f" error={result.error}" if result.error else ""

@@ -448,6 +448,10 @@ def parse_official_advertisement_text(
         )
     unique = {field.field_path: field for field in fields}
     posts, split_status, split_note, warnings = parse_vacancy_table(raw_text)
+    if split_status == AdvertisementSplitStatus.LEGACY_UNSPLIT:
+        posts, split_status, split_note, warnings = parse_narrative_vacancies(
+            metadata.title, raw_text
+        )
     if split_status == AdvertisementSplitStatus.EXPLICIT:
         posts, ambiguities = apply_post_detail_tables(raw_text, posts)
         if ambiguities:
@@ -681,11 +685,142 @@ def parse_vacancy_table(
         note = "; ".join(errors)[:4000] or "Vacancy table could not be split safely."
         return (), AdvertisementSplitStatus.AMBIGUOUS, note, tuple(errors or [note])
     return (
-        tuple(parsed),
+        _qualify_duplicate_post_names(tuple(parsed)),
         AdvertisementSplitStatus.EXPLICIT,
         f"Deterministically parsed {len(parsed)} post rows from the vacancy table.",
         (),
     )
+
+
+_NARRATIVE_POST = re.compile(
+    r"\b(?P<total>[0-9][0-9,]*)\s+posts?\s+of\s+"
+    r"(?P<name>.+?)\s+(?:in|under)\s+(?P<organisation>.+?)"
+    r"(?=(?:,\s*|\s+and\s+)[0-9][0-9,]*\s+posts?\s+of\b|[.;]|$)",
+    re.I,
+)
+
+
+def parse_narrative_vacancies(
+    title: str, raw_text: str
+) -> tuple[
+    tuple[ParsedPost, ...],
+    AdvertisementSplitStatus,
+    str | None,
+    tuple[str, ...],
+]:
+    """Split an explicit bounded ``N posts of X in/under Y`` series."""
+    matches: list[re.Match[str]] = []
+    markers = 0
+    for candidate in (_clean_text(title), _clean_text(raw_text[:8000])):
+        candidate_markers = len(
+            re.findall(r"\b[0-9][0-9,]*\s+posts?\s+of\b", candidate, re.I)
+        )
+        candidate_matches = list(_NARRATIVE_POST.finditer(candidate))
+        if len(candidate_matches) >= 2 or candidate_markers >= 2:
+            matches = candidate_matches
+            markers = candidate_markers
+            break
+    if len(matches) < 2:
+        if markers >= 2:
+            note = "Narrative vacancy series could not be split completely and safely."
+            return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
+        return (), AdvertisementSplitStatus.LEGACY_UNSPLIT, None, ()
+    if len(matches) != markers:
+        note = "Narrative vacancy series was only partially matched; no Posts were created."
+        return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
+
+    parsed: list[ParsedPost] = []
+    seen_keys: set[str] = set()
+    for ordinal, match in enumerate(matches, start=1):
+        name = _clean_text(match.group("name")).strip(" ,-:")
+        organisation = _clean_text(match.group("organisation")).strip(" ,-:")
+        if not name or not organisation:
+            note = "Narrative vacancy series contains an incomplete Post or organization."
+            return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
+        total = int(match.group("total").replace(",", ""))
+        post_key = _stable_post_key(name, organisation)
+        if total < 1 or post_key in seen_keys:
+            note = "Narrative vacancy series contains an invalid total or duplicate Post."
+            return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
+        seen_keys.add(post_key)
+        locator = f"pdf:narrative-vacancies;item={ordinal}"
+        excerpt = match.group(0)[:8000]
+        parsed.append(
+            ParsedPost(
+                post_key=post_key,
+                ordinal=ordinal,
+                name=name,
+                normalized_name=" ".join(name.casefold().split()),
+                source_locator=locator,
+                facts=(
+                    ParsedField(
+                        "name",
+                        CandidateValueType.STRING,
+                        name,
+                        match.group("name"),
+                        f"{locator};field=post",
+                        excerpt,
+                    ),
+                    ParsedField(
+                        "organisation.name",
+                        CandidateValueType.STRING,
+                        organisation,
+                        match.group("organisation"),
+                        f"{locator};field=organisation",
+                        excerpt,
+                    ),
+                    ParsedField(
+                        "vacancies.total",
+                        CandidateValueType.INTEGER,
+                        total,
+                        match.group("total"),
+                        f"{locator};field=total",
+                        excerpt,
+                    ),
+                ),
+            )
+        )
+    posts = _qualify_duplicate_post_names(tuple(parsed))
+    return (
+        posts,
+        AdvertisementSplitStatus.EXPLICIT,
+        f"Deterministically parsed {len(posts)} Posts from an explicit vacancy series.",
+        (),
+    )
+
+
+def _qualify_duplicate_post_names(posts: tuple[ParsedPost, ...]) -> tuple[ParsedPost, ...]:
+    counts: dict[str, int] = {}
+    for post in posts:
+        counts[post.normalized_name] = counts.get(post.normalized_name, 0) + 1
+    qualified: list[ParsedPost] = []
+    for post in posts:
+        if counts[post.normalized_name] == 1:
+            qualified.append(post)
+            continue
+        organisation = next(
+            (
+                str(fact.value)
+                for fact in post.facts
+                if fact.field_path in {"organisation.name", "department.name"}
+            ),
+            "",
+        )
+        if not organisation:
+            qualified.append(post)
+            continue
+        base_name = " ".join(
+            word.capitalize() if word.islower() else word for word in post.name.split()
+        )
+        display_name = f"{base_name} - {organisation}"
+        facts = tuple(
+            replace(fact, value=display_name)
+            if fact.field_path == "name"
+            else fact
+            for fact in post.facts
+        )
+        qualified.append(replace(post, name=display_name, facts=facts))
+    return tuple(qualified)
 
 
 def apply_post_detail_tables(

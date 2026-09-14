@@ -205,10 +205,17 @@ bound, last attempt, and last successful scan. Run the catalog deterministically
 
 ```powershell
 uv run python -m workers.scheduler --source APSC --dry-run
+uv run python -m workers.scheduler --source ASDMA_ASSAM --execute-no-commit
 uv run python -m workers.scheduler --group HIGH_PRIORITY
 uv run python -m workers.scheduler --due --trigger SCHEDULED
 uv run python -m workers.scheduler --all-enabled
 ```
+
+Scheduler `--dry-run` is a fast local selection preview: it reports effective group, priority,
+polling interval, due state, and last attempt/success without locks, network access, pipeline runs,
+or schedule mutation. `--execute-no-commit` preserves the slower realistic full-pipeline exercise
+with non-persistent recruitment-domain behavior. The two flags are mutually exclusive; omitting
+both performs normal persisted execution.
 
 Sources execute in priority/code order under independent PostgreSQL advisory locks. A failed or
 locked source is recorded without stopping later sources. The single scheduled workflow invokes
@@ -227,6 +234,11 @@ GET /api/public/v1/recruitments
 GET /api/public/v1/recruitments/{job_id}
 POST /api/public/v1/recruitments/{job_id}/eligibility
 ```
+
+Default browsing retains open and upcoming jobs plus closed jobs whose closing date is within the
+previous 12 calendar months. Older closed jobs remain stored and internally auditable, and their
+direct public detail remains addressable. Records with an unknown closing date remain visible
+because the service cannot deterministically prove that they are outside the history window.
 
 The list supports `authority`, normalized `candidate_key`, literal text `q`, Post name, department,
 qualification, derived

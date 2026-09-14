@@ -40,6 +40,7 @@ class PublicRecruitmentViewService:
         "organization.name": "Organization",
         "organization.unit": "Organization / Unit",
         "vacancies.total": "Total Vacancies",
+        "advertisement.vacancies.total": "Advertisement Total Vacancies",
         "application.start_date": "Opening Date",
         "application.end_date": "Closing Date",
         "application.mode": "Application Mode",

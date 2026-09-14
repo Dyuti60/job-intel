@@ -23,7 +23,17 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("--group", choices=tuple(SourceScheduleGroup), type=SourceScheduleGroup)
     target.add_argument("--due", action="store_true")
     target.add_argument("--all-enabled", action="store_true")
-    parser.add_argument("--dry-run", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview scheduler selection only; do not fetch sources or execute pipelines.",
+    )
+    mode.add_argument(
+        "--execute-no-commit",
+        action="store_true",
+        help="Execute the complete source pipeline without committing recruitment-domain changes.",
+    )
     parser.add_argument(
         "--trigger",
         choices=tuple(PipelineTriggerType),
@@ -54,6 +64,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 source=args.source,
                 group=args.group,
                 dry_run=args.dry_run,
+                execute_no_commit=args.execute_no_commit,
                 trigger_type=args.trigger,
             )
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as error:

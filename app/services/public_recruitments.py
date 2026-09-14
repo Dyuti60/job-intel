@@ -85,7 +85,12 @@ class PublicRecruitmentService:
             query=query,
         )
         derived = [self._derive(record, evaluated_on) for record in records]
-        filtered = [item for item in derived if self._matches(item, filters)]
+        filtered = [
+            item
+            for item in derived
+            if self._within_default_history(item, evaluated_on)
+            and self._matches(item, filters)
+        ]
         ordered = sorted(filtered, key=lambda item: self._sort_key(item, sort))
         total = len(ordered)
         start = (page - 1) * page_size
@@ -224,7 +229,22 @@ class PublicRecruitmentService:
     def _public_path(record: PublicMasterRecord, field: MasterField) -> str:
         if record.post is None:
             return field.field_path
+        if not field.field_path.startswith("posts.") and any(
+            fact.fact_key == field.field_path for fact in record.post.facts
+        ):
+            return f"advertisement.{field.field_path}"
         return field.field_path.removeprefix(f"posts.{record.post.post_key}.")
+
+    @staticmethod
+    def _within_default_history(item: _DerivedRecord, evaluated_on: date) -> bool:
+        """Keep unknown windows visible; exclude only provably old closed jobs."""
+        if item.application.status != PublicApplicationStatus.CLOSED:
+            return True
+        try:
+            cutoff = evaluated_on.replace(year=evaluated_on.year - 1)
+        except ValueError:
+            cutoff = evaluated_on.replace(year=evaluated_on.year - 1, day=28)
+        return item.application.end_date is not None and item.application.end_date >= cutoff
 
     @staticmethod
     def _date_value(field: MasterField | None) -> date | None:
