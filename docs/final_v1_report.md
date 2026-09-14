@@ -115,9 +115,16 @@ prose-only relaxation rules intentionally do not produce guesses.
   checks, and a fresh full migration chain were completed during the milestones.
 - M6 exact commit `ca57d58212fb5a1c40be21c6658bfb1a79d8a9ef` passed GitHub CI run
   `34809437968`.
-- M7 adds private bounded operations controls, the cancellation-classifier correction, and final
-  readiness documentation. Its exact test, lint, container, commit, and workflow evidence is
-  recorded in the M7 task log and release handoff after the final gate.
+- M7 application commit `a857fc6b1a639572676ec8ff671a81b92f562034` passed GitHub CI run
+  `34811090018` after 338 local tests, lint, migration-drift checks, and a successful hardened
+  public Docker build.
+- Non-deploying Public Release run `34811277289` built and scanned the same M7 SHA, pushed its
+  immutable image, and published provenance successfully. No production deployment was requested.
+- Trusted Assam Pipeline run `34811450838`, attempt 2, successfully upgraded the persistent
+  database, reported migration head, ran a bounded DEE dry-run, and evaluated all-source
+  monitoring. Attempt 1 accurately failed at database connection because the project container was
+  not published on its configured `localhost:5433` endpoint; the endpoint was restored with its
+  named data volume preserved before the successful rerun.
 - Live 2026-09-14 validation reached the DEE, DME, and ASDMA official pages with HTTP 200. APSC and
   SLPRB returned gateway 502 during that validation and were recorded as unavailable rather than
   successful.
@@ -130,9 +137,9 @@ The Public Release workflow builds an immutable SHA-tagged public image, scans i
 GHCR, and publishes provenance before an optional protected deployment. Deployment additionally
 requires the `public-production` environment, protected database and backup secrets, public
 hostname/base-URL variables, DNS/TLS ingress, and an approved release decision. At report time the
-environment did not exist, the availability job was skipped, and Public Release and Restore
-Rehearsal had not yet run. Those are operator-owned activation prerequisites, not facts the code can
-fabricate.
+environment did not exist, the availability job was skipped, and Restore Rehearsal had not run. The
+non-deploying Public Release artifact gate did pass. Production activation and recovery rehearsal
+remain operator-owned prerequisites, not facts the code can fabricate.
 
 ## Explicit V2 deferrals
 

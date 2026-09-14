@@ -1594,7 +1594,14 @@ MasterPublisherService. T-010B adds no scheduler and no database objects.
 - `uv run ruff check .`, targeted Ruff formatting, `git diff --check`, `alembic current`, and
   `alembic check` passed. The hardened public Docker image built successfully as
   `assam-job-intelligence-public:m7`.
-- Exact commit and remote workflow evidence is added at the final release gate.
+- M7 application commit `a857fc6b1a639572676ec8ff671a81b92f562034` passed exact-SHA CI run
+  `34811090018`.
+- Public Release run `34811277289` passed with `deploy=false`, including the immutable image build,
+  HIGH/CRITICAL vulnerability policy, GHCR push, and provenance attestation.
+- Trusted Assam Pipeline run `34811450838` initially exposed an unavailable configured database
+  endpoint. The project PostgreSQL container was republished at `localhost:5433` with its named
+  volume preserved; attempt 2 then passed migration upgrade/current, a DEE dry-run, all-source
+  monitoring, and workflow cleanup.
 - Local ASDMA PipelineRun `59ca7661-3937-4498-8d69-835dca25aa86` completed `PARTIAL` only because
   one unresolved Human Review case remained; source failures were zero.
 
