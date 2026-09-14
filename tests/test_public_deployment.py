@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rehearse_restore import _bounded_failure
+from scripts.rehearse_restore import _bounded_failure, _docker_executable
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -26,6 +26,8 @@ def test_release_compose_isolates_application_behind_tls_edge() -> None:
     assert "public-web:" in compose and "expose:" in compose
     assert "public-web" not in compose.split("ports:", 1)[1].split("volumes:", 1)[0]
     assert "backend:\n    internal: true" in compose
+    assert "database-access:" in compose
+    assert '"host.docker.internal:host-gateway"' in compose
     assert "read_only: true" in compose
     assert "cap_drop:" in compose
     assert "AJI_PUBLIC_DATABASE_URL" not in compose
@@ -47,6 +49,14 @@ def test_deployment_script_requires_immutable_image_and_rolls_back() -> None:
     assert "ConvertTo-Json -Compress" in script
 
 
+def test_public_reader_contract_includes_post_projection_tables() -> None:
+    runbook = (ROOT / "docs/public_deployment.md").read_text(encoding="utf-8")
+
+    assert "public.master_posts" in runbook
+    assert "public.master_post_facts" in runbook
+    assert "host.docker.internal" in runbook
+
+
 def test_backup_script_keeps_coordinated_artifacts_outside_checkout() -> None:
     script = (ROOT / "scripts/create_runtime_backup.ps1").read_text(encoding="utf-8")
     assert "D:\\ASSAM_JOB_DATA\\backups" in script
@@ -61,10 +71,20 @@ def test_backup_script_keeps_coordinated_artifacts_outside_checkout() -> None:
 
 def test_restore_rehearsal_has_digest_pinned_docker_fallback() -> None:
     script = (ROOT / "scripts/rehearse_restore.py").read_text(encoding="utf-8")
-    assert "shutil.which(\"pg_restore\")" in script
-    assert "shutil.which(\"docker\")" in script
+    assert 'shutil.which("pg_restore")' in script
+    assert 'shutil.which("docker")' in script
     assert "18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73" in script
     assert "host.docker.internal" in script
+
+
+def test_restore_rehearsal_finds_standard_docker_desktop_cli(tmp_path, monkeypatch) -> None:
+    docker = tmp_path / "Docker" / "Docker" / "resources" / "bin" / "docker.exe"
+    docker.parent.mkdir(parents=True)
+    docker.write_bytes(b"")
+    monkeypatch.setattr("scripts.rehearse_restore.shutil.which", lambda _name: None)
+    monkeypatch.setenv("PROGRAMFILES", str(tmp_path))
+
+    assert _docker_executable() == str(docker)
 
 
 def test_restore_failure_summary_is_single_line_and_bounded() -> None:

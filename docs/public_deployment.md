@@ -47,6 +47,8 @@ GRANT SELECT ON TABLE
   public.recruitment_masters,
   public.recruitment_master_revisions,
   public.master_fields,
+  public.master_posts,
+  public.master_post_facts,
   public.candidate_fields,
   public.source_documents,
   public.source_endpoints,
@@ -96,6 +98,12 @@ credential and never stores either URL in the checkout or release audit.
 Master before conditional matching, and its body becomes a strong SHA-256 ETag. Keep reverse-proxy
 caching configured to revalidate and honor `no-store`; do not configure a stale-if-error policy for
 recruitment deadlines.
+
+The release Compose keeps edge-to-application traffic on an internal backend network and gives only
+the public application a separate database-access network. On the selected Docker Desktop host, a
+host PostgreSQL URL must use `host.docker.internal`, not `localhost`; the latter would refer to the
+application container itself. The public role remains read-only even though this network provides
+the route to PostgreSQL.
 
 The application defaults to 120 requests per 60 seconds per resolved client address and rejects
 request targets over 4096 bytes. These are bounded V0 safeguards, not a distributed denial-of-

@@ -48,6 +48,9 @@ services:
       - "8000"
     networks:
       - backend
+      - database-access
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     read_only: true
     tmpfs:
       - /tmp:size=32m,noexec,nosuid
@@ -71,6 +74,7 @@ networks:
   edge:
   backend:
     internal: true
+  database-access:
 
 volumes:
   caddy_data:

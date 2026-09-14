@@ -13,9 +13,20 @@ from sqlalchemy.engine import make_url
 
 _CREDENTIAL_URL = re.compile(r"(\w+://)[^\s:/]+:[^\s@]+@")
 _POSTGRES_IMAGE = (
-    "postgres:17-alpine@sha256:"
-    "18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73"
+    "postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73"
 )
+
+
+def _docker_executable() -> str | None:
+    discovered = shutil.which("docker")
+    if discovered is not None:
+        return discovered
+    program_files = os.environ.get("PROGRAMFILES")
+    if program_files:
+        desktop_cli = Path(program_files) / "Docker" / "Docker" / "resources" / "bin" / "docker.exe"
+        if desktop_cli.is_file():
+            return str(desktop_cli)
+    return None
 
 
 def _bounded_failure(result: subprocess.CompletedProcess[str]) -> str:
@@ -27,7 +38,7 @@ def _pg_restore_command(dump: Path, *arguments: str) -> list[str]:
     pg_restore = shutil.which("pg_restore")
     if pg_restore is not None:
         return [pg_restore, *arguments, str(dump)]
-    docker = shutil.which("docker")
+    docker = _docker_executable()
     if docker is None:
         raise RuntimeError("pg_restore or Docker is required on the trusted restore host")
     return [
