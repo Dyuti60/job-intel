@@ -14,7 +14,7 @@
   <div class="case-state">
     <span class="badge priority-{{ priority | lower }}">{{ priority }}</span>
     <strong>{{ status | replace('_', ' ') }}</strong>
-    {% if outcome %}<span class="outcome">{{ outcome | replace('_', ' ') }}</span>{% endif %}
+    {% if focused_outcome %}<span class="outcome">{{ focused_outcome | replace('_', ' ') }}</span>{% elif outcome %}<span class="outcome">{{ outcome | replace('_', ' ') }}</span>{% endif %}
   </div>
 </div>
 
@@ -49,7 +49,7 @@
     <dl class="facts">
       <dt>Policy</dt><dd>{{ policy_version }}</dd>
       <dt>Coverage</dt><dd>{{ coverage_ratio }}</dd>
-      <dt>Progress</dt><dd>{{ resolved_items }} of {{ total_items }} review items resolved</dd>
+      <dt>Progress</dt><dd>{{ focused_resolved_items }} of {{ focused_total_items }} review items resolved for this {{ 'Post' if focused_post else 'Advertisement' }}</dd>
     </dl>
     <div class="reasons">
       {% for reason in reasons %}<span class="reason" title="{{ reason.code }}">{{ reason.label }}</span>{% endfor %}
@@ -74,8 +74,12 @@
   <table><tbody>{% for row in breakdown %}<tr><th>{{ row.label }}</th><td>{{ row.value }}</td></tr>{% endfor %}</tbody></table>
 </details>
 
+{% if status == 'IN_REVIEW' and not focused_review_complete %}
+<form method="post" action="/review/cases/{{ case_id }}/submit" class="post-review-form">
+  {% if focused_post %}<input type="hidden" name="post" value="{{ focused_post.key }}">{% endif %}
+{% endif %}
 <section>
-  <div class="section-heading"><h2>Review items</h2><span>{{ resolved_items }} / {{ total_items }} resolved</span></div>
+  <div class="section-heading"><h2>Review items</h2><span>{{ focused_resolved_items }} / {{ focused_total_items }} resolved</span></div>
   {% for group in review_groups %}
   <div class="section-heading"><h3>{{ group['name'] }}</h3><span>{{ group['scope'] }}{% if group['key'] %} · {{ group['key'] }}{% endif %}</span></div>
   {% if not group['items'] %}<article class="card"><p class="muted">No review action is required for this Post; it may proceed independently.</p></article>{% endif %}
@@ -105,7 +109,11 @@
     </div>
 
     {% if item.status != 'RESOLVED' and status == 'IN_REVIEW' %}
-      {% include "review/_decision_controls.html" %}
+    <fieldset class="inline-decision">
+      <legend>Decision</legend>
+      <label><input required type="radio" name="item_{{ item.id }}" value="APPROVE_AS_IS"> Approve</label>
+      <label><input required type="radio" name="item_{{ item.id }}" value="REJECT"> Reject</label>
+    </fieldset>
     {% endif %}
 
     <details class="breakdown">
@@ -161,6 +169,24 @@
   {% endfor %}
   {% endfor %}
 </section>
+
+{% if status == 'IN_REVIEW' and not focused_review_complete %}
+<section class="card final-review-controls">
+  <label for="review-comment"><strong>Reviewer Comment</strong></label>
+  <textarea id="review-comment" required maxlength="8000" name="comment"></textarea>
+  <div class="toolbar">
+    <button type="submit" name="final_action" value="APPROVE_POST">Final Approve {{ 'Post' if focused_post else 'Advertisement' }}</button>
+    <button class="danger" type="submit" name="final_action" value="REJECT_POST">Final Reject {{ 'Post' if focused_post else 'Advertisement' }}</button>
+  </div>
+</section>
+</form>
+{% elif focused_review_complete %}
+<section class="card decision-summary">
+  <h2>{{ 'Post' if focused_post else 'Advertisement' }} review outcome</h2>
+  <p class="outcome-large">{{ focused_outcome | replace('_', ' ') }}</p>
+  <p class="muted">All decisions are final and read-only.</p>
+</section>
+{% endif %}
 
 {% if projection %}
 <section class="card projection">

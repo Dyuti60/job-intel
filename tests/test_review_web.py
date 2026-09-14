@@ -1,9 +1,10 @@
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.review import ReviewCase
+from app.models.review import ReviewCase, ReviewDecision, ReviewItem
 from tests.factories import (
     add_verification_assessment,
     complete_verification_run,
@@ -151,6 +152,40 @@ def _decision(
     return client.post(
         f"/review/items/{item_id}/decision",
         data=payload,
+        follow_redirects=False,
+    )
+
+
+def _submit_post(
+    client: TestClient,
+    case: dict,
+    post_key: str | None,
+    *,
+    final_action: str,
+    reject_post_item: bool = False,
+    comment: str = "Reviewed together against the retained official evidence.",
+    omit_item_id: str | None = None,
+):
+    data = {"comment": comment, "final_action": final_action}
+    if post_key is not None:
+        data["post"] = post_key
+    for item in case["items"]:
+        path = item["field_path_snapshot"]
+        belongs = (
+            post_key is None
+            or path is None
+            or not path.startswith("posts.")
+            or path.startswith(f"posts.{post_key}.")
+        )
+        if item["status"] != "PENDING" or not belongs or item["id"] == omit_item_id:
+            continue
+        decision = "APPROVE_AS_IS"
+        if reject_post_item and path is not None and path.startswith(f"posts.{post_key}."):
+            decision = "REJECT"
+        data[f"item_{item['id']}"] = decision
+    return client.post(
+        f"/review/cases/{case['id']}/submit",
+        data=data,
         follow_redirects=False,
     )
 
@@ -349,9 +384,11 @@ def test_started_case_shows_only_approve_reject_and_comment(client: TestClient) 
 
     page = client.get(f"/review/cases/{graph['case']['id']}")
 
-    assert "Approve or reject" in page.text
-    assert "Approval comment" in page.text
-    assert "Rejection comment" in page.text
+    assert 'type="radio"' in page.text
+    assert "Reviewer Comment" in page.text
+    assert page.text.count('name="comment"') == 1
+    assert "Final Approve Advertisement" in page.text
+    assert "Final Reject Advertisement" in page.text
     assert "Reviewer identifier" not in page.text
     assert "Correct and Approve" not in page.text
     assert "Request Re-verification" not in page.text
@@ -417,6 +454,145 @@ def test_revision_item_has_no_correction_control(client: TestClient) -> None:
     assert "Reject" in section
     assert "Correct and Approve" not in section
     assert "Request Re-verification" not in section
+
+
+def test_grouped_post_submission_approves_and_rejects_posts_independently(
+    client: TestClient, db_session: Session
+) -> None:
+    graph = _three_post_review_graph(client)
+    case_id = graph["case"]["id"]
+    _start_web_case(client, case_id)
+    case = client.get(f"/api/v1/review-cases/{case_id}").json()
+
+    police_page = client.get(
+        f"/review/cases/{case['id']}", params={"post": "assam_police"}
+    )
+    relevant_pending = [
+        item
+        for item in case["items"]
+        if item["field_path_snapshot"] is None
+        or not item["field_path_snapshot"].startswith("posts.")
+        or item["field_path_snapshot"].startswith("posts.assam_police.")
+    ]
+    assert police_page.text.count('type="radio"') == len(relevant_pending) * 2
+    assert police_page.text.count('name="comment"') == 1
+
+    approved = _submit_post(
+        client, case, "assam_police", final_action="APPROVE_POST"
+    )
+    assert approved.status_code == 303
+    assert "post=assam_police" in approved.headers["location"]
+    after_police = client.get(f"/api/v1/review-cases/{case['id']}").json()
+    by_path = {item["field_path_snapshot"]: item for item in after_police["items"]}
+    assert by_path["application.end_date"]["status"] == "RESOLVED"
+    assert by_path["posts.assam_police.vacancies.total"]["status"] == "RESOLVED"
+    assert by_path["posts.assam_commando_battalions.vacancies.total"]["status"] == "PENDING"
+    assert by_path["posts.dgcd_cghg.vacancies.total"]["status"] == "PENDING"
+    assert after_police["status"] == "IN_REVIEW"
+    assert db_session.scalar(select(func.count(ReviewItem.id))) == len(case["items"])
+    assert db_session.scalar(select(func.count(ReviewDecision.id))) == 2
+
+    active_queue = client.get("/review")
+    resolved_queue = client.get("/review", params={"status": "RESOLVED"})
+    police_link = f"/review/cases/{case['id']}?post=assam_police"
+    assert police_link not in active_queue.text
+    assert police_link in resolved_queue.text
+
+    approved_page = client.get(approved.headers["location"])
+    assert "Post review outcome" in approved_page.text
+    assert "APPROVED" in approved_page.text
+    assert 'type="radio"' not in approved_page.text
+    commando_page = client.get(
+        f"/review/cases/{case['id']}", params={"post": "assam_commando_battalions"}
+    )
+    shared = commando_page.text.split("Shared Advertisement review items", 1)[1].split(
+        "Grade IV Staff - Assam Commando Battalions", 1
+    )[0]
+    assert "Final decision: APPROVE AS IS" in shared
+    assert 'type="radio"' not in shared
+
+    rejected = _submit_post(
+        client,
+        after_police,
+        "assam_commando_battalions",
+        final_action="REJECT_POST",
+        reject_post_item=True,
+    )
+    assert rejected.status_code == 303
+    after_commando = client.get(f"/api/v1/review-cases/{case['id']}").json()
+    by_path = {item["field_path_snapshot"]: item for item in after_commando["items"]}
+    assert by_path["posts.assam_commando_battalions.vacancies.total"]["decision"][
+        "decision"
+    ] == "REJECT"
+    assert by_path["posts.dgcd_cghg.vacancies.total"]["status"] == "PENDING"
+    assert after_commando["status"] == "IN_REVIEW"
+
+    finished = _submit_post(
+        client, after_commando, "dgcd_cghg", final_action="APPROVE_POST"
+    )
+    assert finished.status_code == 303
+    resolved = client.get(f"/api/v1/review-cases/{case['id']}").json()
+    projection = client.get(
+        f"/api/v1/review-cases/{case['id']}/approved-projection"
+    ).json()
+    assert resolved["status"] == "RESOLVED"
+    assert resolved["outcome"] == "REJECTED"
+    assert projection["approved_post_keys"] == ["assam_police", "dgcd_cghg"]
+    assert projection["blocked_post_keys"] == ["assam_commando_battalions"]
+    assert projection["master_eligible"] is True
+
+
+def test_grouped_post_submission_validates_all_items_comment_and_focus(
+    client: TestClient,
+) -> None:
+    graph = _three_post_review_graph(client)
+    case_id = graph["case"]["id"]
+    _start_web_case(client, case_id)
+    case = client.get(f"/api/v1/review-cases/{case_id}").json()
+    police_items = [
+        item
+        for item in case["items"]
+        if item["field_path_snapshot"] is None
+        or not item["field_path_snapshot"].startswith("posts.")
+        or item["field_path_snapshot"].startswith("posts.assam_police.")
+    ]
+
+    missing_selection = _submit_post(
+        client,
+        case,
+        "assam_police",
+        final_action="APPROVE_POST",
+        omit_item_id=police_items[0]["id"],
+    )
+    missing_comment = _submit_post(
+        client,
+        case,
+        "assam_police",
+        final_action="APPROVE_POST",
+        comment="   ",
+    )
+
+    assert "post=assam_police" in missing_selection.headers["location"]
+    assert "error=" in missing_selection.headers["location"]
+    assert "post=assam_police" in missing_comment.headers["location"]
+    persisted = client.get(f"/api/v1/review-cases/{case['id']}").json()
+    assert all(item["status"] == "PENDING" for item in persisted["items"])
+
+
+def test_grouped_legacy_unsplit_review_submits_once(client: TestClient) -> None:
+    graph = _web_graph(client, "WEB_GROUPED_LEGACY")
+    case = graph["case"]
+    _start_web_case(client, case["id"])
+
+    page = client.get(f"/review/cases/{case['id']}")
+    response = _submit_post(client, case, None, final_action="APPROVE_POST")
+    resolved_page = client.get(response.headers["location"])
+
+    assert "Final Approve Advertisement" in page.text
+    assert response.status_code == 303
+    assert "Advertisement approved" in resolved_page.text
+    assert "Advertisement review outcome" in resolved_page.text
+    assert 'type="radio"' not in resolved_page.text
 
 
 def test_decision_form_errors_are_clear_and_do_not_resolve_item(client: TestClient) -> None:

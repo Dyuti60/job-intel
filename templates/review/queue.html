@@ -45,7 +45,7 @@
         <td><span class="badge priority-{{ case.priority | lower }}">{{ case.priority }}</span></td>
         <td>
           <a class="case-link" href="/review/cases/{{ case.id }}{% if case.post_key %}?post={{ case.post_key|urlencode }}{% endif %}">{{ case.post_name }}</a>
-          <small>{{ case.status | replace('_', ' ') }} · {{ case.pending_items }} pending / {{ case.total_items }} total</small>
+          <small>{{ (case.outcome or case.status) | replace('_', ' ') }} · {{ case.pending_items }} pending / {{ case.total_items }} total</small>
         </td>
         <td>{{ case.organization }}<small>Advertisement: {{ case.advertisement_title }}<br>{{ case.authority_name }} · {{ case.candidate_key }}</small></td>
         <td>{% if case.important_fields %}{% for field in case.important_fields %}<small><strong>{{ field.label }}:</strong> {{ field.value }}</small>{% endfor %}{% else %}<small>Advertisement-level facts</small>{% endif %}</td>

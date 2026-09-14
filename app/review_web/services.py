@@ -15,7 +15,12 @@ from app.models.candidates import (
 from app.models.confidence import ReviewPriority
 from app.models.discovery import SourceDocument
 from app.models.evidence import CandidateFieldEvidence, Evidence
-from app.models.review import ReviewCaseStatus, ReviewItemScope, ReviewItemStatus
+from app.models.review import (
+    ReviewCaseStatus,
+    ReviewDecisionType,
+    ReviewItemScope,
+    ReviewItemStatus,
+)
 from app.models.source_registry import SourceEndpoint
 from app.models.verification import FieldVerification, VerificationEvidenceAssessment
 from app.services.exceptions import DomainConflictError
@@ -88,6 +93,25 @@ class ReviewCaseViewService:
             ]
             rank = {"CRITICAL": 0, "HIGH": 1, "NORMAL": 2, "NONE": 3}
             cases.sort(key=lambda case: (rank[case.priority.value], case.opened_at, str(case.id)))
+        elif status == ReviewCaseStatus.RESOLVED:
+            cases = [
+                *self.review.list_cases(
+                    status=ReviewCaseStatus.IN_REVIEW,
+                    priority=priority,
+                    candidate_revision_id=None,
+                    verification_run_id=None,
+                    offset=0,
+                    limit=500,
+                ),
+                *self.review.list_cases(
+                    status=ReviewCaseStatus.RESOLVED,
+                    priority=priority,
+                    candidate_revision_id=None,
+                    verification_run_id=None,
+                    offset=0,
+                    limit=500,
+                ),
+            ]
         else:
             cases = self.review.list_cases(
                 status=status,
@@ -128,6 +152,15 @@ class ReviewCaseViewService:
                 entry_groups = [(None, list(case.items))]
             for post, grouped_items in entry_groups:
                 post_key = post.post_key if post is not None else None
+                scope_outcome = self._scope_outcome(grouped_items)
+                if status is None and scope_outcome is not None:
+                    continue
+                if status == ReviewCaseStatus.RESOLVED and scope_outcome is None:
+                    continue
+                if status == ReviewCaseStatus.IN_REVIEW and (
+                    case.status != ReviewCaseStatus.IN_REVIEW or scope_outcome is not None
+                ):
+                    continue
                 reasons = sorted(
                     {
                         reason
@@ -153,7 +186,8 @@ class ReviewCaseViewService:
                     "organization": self._organization(revision),
                     "important_fields": self._important_post_fields(post),
                     "review_reasons": [humanize(reason) for reason in reasons],
-                    "status": case.status.value,
+                    "status": "RESOLVED" if scope_outcome is not None else case.status.value,
+                    "outcome": scope_outcome,
                     "priority": case.priority.value,
                     "score": min(scores) if scores else case.revision_score_snapshot,
                     "policy_version": case.policy_version.value,
@@ -311,6 +345,8 @@ class ReviewCaseViewService:
         focused_post = next(
             (post for post in posts if post.post_key == focus_post_key), None
         )
+        focused_items = [item for group in review_groups for item in group["items"]]
+        focused_outcome = self._scope_outcome_from_views(focused_items)
         result = {
             "case": review_case,
             "case_id": review_case.id,
@@ -325,6 +361,12 @@ class ReviewCaseViewService:
             "breakdown": breakdown_rows(review_case.component_breakdown_snapshot),
             "coverage_ratio": str(revision_confidence.coverage_ratio),
             "outcome": review_case.outcome.value if review_case.outcome is not None else None,
+            "focused_outcome": focused_outcome,
+            "focused_review_complete": focused_outcome is not None,
+            "focused_resolved_items": sum(
+                item["status"] == ReviewItemStatus.RESOLVED.value for item in focused_items
+            ),
+            "focused_total_items": len(focused_items),
             "resolved_items": resolved,
             "total_items": len(items),
             "candidate": {
@@ -379,6 +421,32 @@ class ReviewCaseViewService:
                 ],
             }
         return result
+
+    @staticmethod
+    def _scope_outcome(items: list[Any]) -> str | None:
+        if not items or any(item.status != ReviewItemStatus.RESOLVED for item in items):
+            return None
+        return ReviewCaseViewService._decision_outcome(
+            [item.decision.decision for item in items if item.decision is not None]
+        )
+
+    @staticmethod
+    def _scope_outcome_from_views(items: list[dict[str, Any]]) -> str | None:
+        if not items or any(item["status"] != ReviewItemStatus.RESOLVED.value for item in items):
+            return None
+        return ReviewCaseViewService._decision_outcome(
+            [ReviewDecisionType(item["decision"]["decision"]) for item in items]
+        )
+
+    @staticmethod
+    def _decision_outcome(decisions: list[ReviewDecisionType]) -> str:
+        if ReviewDecisionType.REQUEST_REVERIFICATION in decisions:
+            return "REVERIFICATION_REQUESTED"
+        if ReviewDecisionType.REJECT in decisions:
+            return "REJECTED"
+        if ReviewDecisionType.CORRECT_AND_APPROVE in decisions:
+            return "APPROVED_WITH_CORRECTIONS"
+        return "APPROVED"
 
     @staticmethod
     def _organization(revision: RecruitmentCandidateRevision) -> str:

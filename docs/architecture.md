@@ -435,6 +435,15 @@ presentation. Structured facts appear before evidence; raw excerpts and assessme
 remain available inside collapsed native HTML details. All lifecycle and decision mutations use
 POST, while GET routes remain read-only.
 
+The detail screen uses one Post-level form: every pending item has an inline Approve/Reject choice,
+followed by one required reviewer comment and one final Post approval or rejection action. The
+service validates the complete focused scope before recording its immutable per-item decisions in
+one transaction. Resolved shared Advertisement items are reused read-only across sibling Posts;
+they are never duplicated. A completed Post appears in the resolved view while unresolved siblings
+remain independently actionable, and legacy-unsplit or ambiguous reviews use the same grouped
+workflow at Advertisement scope. Existing item-level review APIs remain available for compatible
+integrations.
+
 This interface is a localhost development tool. T-009 deliberately provides no authentication,
 authorization, CSRF protection, hardened sessions, assignment workflow, or production deployment
 controls. Those protections are mandatory before deployment to a shared or untrusted network.

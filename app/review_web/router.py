@@ -149,6 +149,44 @@ def cancel_case(
     return _case_redirect(case_id, post=post, message="Review case cancelled")
 
 
+@router.post("/cases/{case_id}/submit")
+async def submit_review_scope(
+    request: Request,
+    case_id: uuid.UUID,
+    session: DatabaseSession,
+    settings: ApplicationSettings,
+) -> RedirectResponse:
+    post: str | None = None
+    try:
+        form = await _read_form(request)
+        post = (form.get("post") or "").strip() or None
+        comment = (form.get("comment") or "").strip()
+        final_action = form.get("final_action")
+        if final_action not in {"APPROVE_POST", "REJECT_POST"}:
+            raise ValueError("Choose Final Approve Post or Final Reject Post")
+        item_decisions: dict[uuid.UUID, ReviewDecisionType] = {}
+        for name, value in form.items():
+            if not name.startswith("item_"):
+                continue
+            item_decisions[uuid.UUID(name.removeprefix("item_"))] = ReviewDecisionType(value)
+        ReviewService(session).submit_review_scope(
+            case_id,
+            post_key=post,
+            item_decisions=item_decisions,
+            reviewer_identifier=settings.review_web_reviewer_identifier,
+            decision_note=comment,
+            approve=final_action == "APPROVE_POST",
+        )
+    except (ValueError, ValidationError, DomainConflictError) as error:
+        message = str(error)
+        if isinstance(error, ValidationError):
+            message = "; ".join(item["msg"] for item in error.errors())
+        return _case_redirect(case_id, post=post, error=message)
+    outcome = "approved" if final_action == "APPROVE_POST" else "rejected"
+    label = "Post" if post is not None else "Advertisement"
+    return _case_redirect(case_id, post=post, message=f"{label} {outcome}")
+
+
 @router.post("/items/{item_id}/decision")
 async def decide_item(
     request: Request,

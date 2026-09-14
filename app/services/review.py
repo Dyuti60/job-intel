@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.candidates import AdvertisementSplitStatus
 from app.models.confidence import (
     ConfidencePolicyVersion,
     FieldConfidenceAssessment,
@@ -357,6 +358,101 @@ class ReviewService:
                 "Review decision conflicted with concurrent submission; retry"
             ) from error
         return decision, True
+
+    def submit_review_scope(
+        self,
+        case_id: uuid.UUID,
+        *,
+        post_key: str | None,
+        item_decisions: dict[uuid.UUID, ReviewDecisionType],
+        reviewer_identifier: str,
+        decision_note: str,
+        approve: bool,
+    ) -> ReviewCase:
+        """Apply one complete Post/legacy review form in a single transaction."""
+        review_case = self.get_case(case_id)
+        if review_case.status != ReviewCaseStatus.IN_REVIEW:
+            raise DomainConflictError(
+                f"Review decisions require an IN_REVIEW case, not {review_case.status.value}"
+            )
+        note = decision_note.strip()
+        if not note:
+            raise DomainConflictError("A reviewer comment is required")
+
+        revision = self.revisions.get(review_case.candidate_revision_id)
+        if revision is None:
+            raise DomainConflictError("Review case candidate revision is unavailable")
+        advertisement = revision.advertisement_revision
+        explicit_posts = (
+            advertisement.posts
+            if advertisement is not None
+            and advertisement.split_status == AdvertisementSplitStatus.EXPLICIT
+            else []
+        )
+        explicit_post_keys = {post.post_key for post in explicit_posts}
+        if explicit_posts and post_key not in explicit_post_keys:
+            raise DomainConflictError("A valid focused Post is required")
+        if not explicit_posts and post_key is not None:
+            raise DomainConflictError("This review is Advertisement-level")
+
+        relevant_items = [
+            item
+            for item in review_case.items
+            if post_key is None
+            or self._post_key(item.field_path_snapshot) in {None, post_key}
+        ]
+        pending_items = [item for item in relevant_items if item.status == ReviewItemStatus.PENDING]
+        pending_ids = {item.id for item in pending_items}
+        if set(item_decisions) != pending_ids:
+            raise DomainConflictError("Choose Approve or Reject for every pending review item")
+        if any(
+            decision not in {ReviewDecisionType.APPROVE_AS_IS, ReviewDecisionType.REJECT}
+            for decision in item_decisions.values()
+        ):
+            raise DomainConflictError("Post review supports only Approve or Reject")
+
+        decisions_by_item = {
+            item.id: (
+                item.decision.decision if item.decision is not None else item_decisions.get(item.id)
+            )
+            for item in relevant_items
+        }
+        if post_key is not None:
+            shared_rejections = any(
+                self._post_key(item.field_path_snapshot) is None
+                and decisions_by_item[item.id] == ReviewDecisionType.REJECT
+                for item in relevant_items
+            )
+            if shared_rejections:
+                raise DomainConflictError(
+                    "A shared Advertisement item cannot reject only one Post"
+                )
+            post_rejected = any(
+                self._post_key(item.field_path_snapshot) == post_key
+                and decisions_by_item[item.id] == ReviewDecisionType.REJECT
+                for item in relevant_items
+            )
+        else:
+            post_rejected = ReviewDecisionType.REJECT in decisions_by_item.values()
+
+        any_rejected = ReviewDecisionType.REJECT in decisions_by_item.values()
+        if approve and any_rejected:
+            raise DomainConflictError("Final Approve requires every item to be approved")
+        if not approve and not post_rejected:
+            raise DomainConflictError("Final Reject requires rejecting a focused Post item")
+
+        worker = ReviewService(self.session, commit=False)
+        for item in pending_items:
+            worker.decide_item(
+                item.id,
+                ReviewDecisionCreate(
+                    decision=item_decisions[item.id],
+                    reviewer_identifier=reviewer_identifier,
+                    decision_note=note,
+                ),
+            )
+        self._save()
+        return self.get_case(case_id)
 
     def approved_projection(self, case_id: uuid.UUID) -> dict[str, Any]:
         review_case = self.get_case(case_id)
