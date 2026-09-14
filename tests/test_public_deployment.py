@@ -87,6 +87,15 @@ def test_restore_rehearsal_finds_standard_docker_desktop_cli(tmp_path, monkeypat
     assert _docker_executable() == str(docker)
 
 
+def test_restore_rehearsal_prefers_configured_docker_cli(tmp_path, monkeypatch) -> None:
+    docker = tmp_path / "docker.exe"
+    docker.write_bytes(b"")
+    monkeypatch.setenv("AJI_DOCKER_EXE", str(docker))
+    monkeypatch.setattr("scripts.rehearse_restore.shutil.which", lambda _name: None)
+
+    assert _docker_executable() == str(docker)
+
+
 def test_restore_failure_summary_is_single_line_and_bounded() -> None:
     class Result:
         stderr = "first failure\nsecret-looking later detail"

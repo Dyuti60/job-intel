@@ -12,6 +12,7 @@ restrict deployment branches to `main`. Configure:
 
 - variable `PUBLIC_HOSTNAME`: the DNS hostname, without a scheme or path;
 - variable `PUBLIC_BASE_URL`: the matching `https://` origin;
+- variable `DOCKER_EXE`: the absolute Docker CLI path on the self-hosted runner;
 - secret `AJI_PUBLIC_DATABASE_URL`: the least-privilege public reader URL;
 - secret `AJI_BACKUP_DATABASE_URL`: the trusted runtime URL used only for pre-release backup;
 - secret `AJI_RESTORE_ADMIN_DATABASE_URL`: an administrative URL used only by manual isolated

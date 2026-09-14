@@ -18,6 +18,9 @@ _POSTGRES_IMAGE = (
 
 
 def _docker_executable() -> str | None:
+    configured = os.environ.get("AJI_DOCKER_EXE")
+    if configured and Path(configured).is_file():
+        return configured
     discovered = shutil.which("docker")
     if discovered is not None:
         return discovered

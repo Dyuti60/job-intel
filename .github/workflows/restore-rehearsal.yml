@@ -27,6 +27,7 @@ jobs:
     environment: public-production
     env:
       AJI_RESTORE_ADMIN_DATABASE_URL: ${{ secrets.AJI_RESTORE_ADMIN_DATABASE_URL }}
+      AJI_DOCKER_EXE: ${{ vars.DOCKER_EXE }}
       PSExecutionPolicyPreference: Bypass
     steps:
       - name: Check out repository
@@ -40,6 +41,16 @@ jobs:
         run: |
           uv python install 3.12
           uv sync --frozen --python 3.12
+
+      - name: Resolve protected Docker CLI
+        shell: powershell
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:AJI_DOCKER_EXE) -or
+              -not (Test-Path -LiteralPath $env:AJI_DOCKER_EXE -PathType Leaf)) {
+            throw "The protected DOCKER_EXE environment variable must identify docker.exe."
+          }
+          Split-Path -Parent $env:AJI_DOCKER_EXE |
+            Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Validate external paths and mask database credential
         shell: powershell

@@ -70,15 +70,15 @@ def test_public_release_builds_scans_attests_and_gates_deployment() -> None:
     assert "environment:\n      name: public-production" in workflow
     assert "AJI_PUBLIC_DATABASE_URL" in workflow
     assert "AJI_BACKUP_DATABASE_URL" in workflow
+    assert "DOCKER_EXE" in workflow
+    assert "Resolve protected Docker CLI" in workflow
     assert "create_runtime_backup.ps1" in workflow
     assert "deploy_public_release.ps1" in workflow
     assert "cancel-in-progress: false" in workflow
 
 
 def test_public_availability_and_restore_workflows_are_bounded() -> None:
-    availability = (ROOT / ".github/workflows/public-availability.yml").read_text(
-        encoding="utf-8"
-    )
+    availability = (ROOT / ".github/workflows/public-availability.yml").read_text(encoding="utf-8")
     restore = (ROOT / ".github/workflows/restore-rehearsal.yml").read_text(encoding="utf-8")
     assert 'cron: "*/30 * * * *"' in availability
     assert "runs-on: ubuntu-latest" in availability
@@ -88,5 +88,7 @@ def test_public_availability_and_restore_workflows_are_bounded() -> None:
     assert "runs-on: [self-hosted, Windows, X64]" in restore
     assert "environment: public-production" in restore
     assert "AJI_RESTORE_ADMIN_DATABASE_URL" in restore
+    assert "DOCKER_EXE" in restore
+    assert "Resolve protected Docker CLI" in restore
     assert "rehearse_restore.py" in restore
     assert "Restore inputs must remain outside" in restore

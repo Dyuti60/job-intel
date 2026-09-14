@@ -130,6 +130,7 @@ jobs:
       AJI_BACKUP_DATABASE_URL: ${{ secrets.AJI_BACKUP_DATABASE_URL }}
       AJI_PUBLIC_HOSTNAME: ${{ vars.PUBLIC_HOSTNAME }}
       AJI_PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+      AJI_DOCKER_EXE: ${{ vars.DOCKER_EXE }}
       AJI_PUBLIC_LOG_ROOT: D:\ASSAM_JOB_DATA\public-release\logs
       AJI_PUBLIC_RELEASE_AUDIT: D:\ASSAM_JOB_DATA\public-release\releases.jsonl
       AJI_BACKUP_ROOT: D:\ASSAM_JOB_DATA\backups
@@ -148,6 +149,16 @@ jobs:
         run: |
           uv python install 3.12
           uv sync --frozen --python 3.12
+
+      - name: Resolve protected Docker CLI
+        shell: powershell
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:AJI_DOCKER_EXE) -or
+              -not (Test-Path -LiteralPath $env:AJI_DOCKER_EXE -PathType Leaf)) {
+            throw "The protected DOCKER_EXE environment variable must identify docker.exe."
+          }
+          Split-Path -Parent $env:AJI_DOCKER_EXE |
+            Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Resolve protected deployment configuration
         shell: powershell
