@@ -2,7 +2,9 @@ import logging
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from fastapi.testclient import TestClient
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.models.candidates import (
@@ -23,9 +25,16 @@ from sources.adapters.official_recruitment_archive import (
     ArchiveNotice,
     ArchiveNoticeMetadata,
     archive_candidate_key,
+    parse_narrative_vacancies,
     parse_official_advertisement_text,
 )
 from sources.http import FetchedResource
+from tests.factories import (
+    create_ready_candidate_revision,
+    create_revision,
+    create_run,
+    observe_document,
+)
 from tests.test_master_api import _publish, _verify_revision
 
 FIXTURES = Path(__file__).parent / "fixtures" / "slprb"
@@ -123,6 +132,134 @@ def test_partial_narrative_series_is_ambiguous_and_creates_no_posts() -> None:
     assert extraction.split_status == AdvertisementSplitStatus.AMBIGUOUS
     assert extraction.posts == ()
     assert "split completely and safely" in (extraction.split_note or "")
+
+
+def test_narrative_trailing_organisation_qualifiers_are_group_bounded() -> None:
+    cases = [
+        (
+            "14 posts of Constable (Dispatch Rider), 20 posts of Constable "
+            "(Messenger) & 3 posts of Constable (Handymen) in APRO",
+            [
+                ("Constable (Dispatch Rider) - APRO", "APRO", 14),
+                ("Constable (Messenger) - APRO", "APRO", 20),
+                ("Constable (Handymen) - APRO", "APRO", 3),
+            ],
+        ),
+        (
+            "90 posts of Driver & 4 posts of Driver Operator in Fire & Emergency Services",
+            [
+                ("Driver - Fire & Emergency Services", "Fire & Emergency Services", 90),
+                (
+                    "Driver Operator - Fire & Emergency Services",
+                    "Fire & Emergency Services",
+                    4,
+                ),
+            ],
+        ),
+        (
+            "7 posts of Driver Constable & 106 posts of Driver in Forest Department",
+            [
+                ("Driver Constable - Forest Department", "Forest Department", 7),
+                ("Driver - Forest Department", "Forest Department", 106),
+            ],
+        ),
+        (
+            "20 posts of Technical Assistant and 10 posts of Field Assistant in Unit X",
+            [
+                ("Technical Assistant - Unit X", "Unit X", 20),
+                ("Field Assistant - Unit X", "Unit X", 10),
+            ],
+        ),
+    ]
+    for text, expected in cases:
+        posts, status, _note, _warnings = parse_narrative_vacancies(text, text)
+        actual = [
+            (
+                post.name,
+                next(
+                    fact.value
+                    for fact in post.facts
+                    if fact.field_path == "organisation.name"
+                ),
+                next(
+                    fact.value
+                    for fact in post.facts
+                    if fact.field_path == "vacancies.total"
+                ),
+            )
+            for post in posts
+        ]
+        assert status == AdvertisementSplitStatus.EXPLICIT
+        assert actual == expected
+
+
+def test_complete_grouped_narrative_extracts_eight_posts_and_aggregate() -> None:
+    title = (
+        "Advertisement for 127 posts of Driver Constable in Assam Police, "
+        "14 posts of Constable (Dispatch Rider), 20 posts of Constable (Messenger) & "
+        "3 posts of Constable (Handymen) in APRO and 90 posts of Driver & "
+        "4 posts of Driver Operator in Fire & Emergency Services and "
+        "7 posts of Driver Constable & 106 posts of Driver in Forest Department"
+    )
+    metadata = ArchiveNoticeMetadata(
+        title=title,
+        document_url="https://slprbassam.in/pdf/grouped-driver-posts.pdf",
+        notification_number="SLPRB/REC/2026/48",
+        notification_date=date(2026, 9, 14),
+    )
+
+    extraction = parse_official_advertisement_text(
+        _text("grouped_narrative_vacancies.txt"),
+        metadata,
+        "State Level Police Recruitment Board, Assam",
+    )
+
+    expected = [
+        ("Driver Constable - Assam Police", 127),
+        ("Constable (Dispatch Rider) - APRO", 14),
+        ("Constable (Messenger) - APRO", 20),
+        ("Constable (Handymen) - APRO", 3),
+        ("Driver - Fire & Emergency Services", 90),
+        ("Driver Operator - Fire & Emergency Services", 4),
+        ("Driver Constable - Forest Department", 7),
+        ("Driver - Forest Department", 106),
+    ]
+    actual = [
+        (
+            post.name,
+            next(fact.value for fact in post.facts if fact.field_path == "vacancies.total"),
+        )
+        for post in extraction.posts
+    ]
+    shared = {field.field_path: field.value for field in extraction.fields}
+    assert extraction.split_status == AdvertisementSplitStatus.EXPLICIT
+    assert actual == expected
+    assert len({post.post_key for post in extraction.posts}) == 8
+    assert shared["vacancies.total"] == 371
+    assert all(
+        next(fact.value for fact in post.facts if fact.field_path == "vacancies.total")
+        != 371
+        for post in extraction.posts
+    )
+
+
+def test_narrative_organisation_does_not_cross_sentence_or_unrelated_clause() -> None:
+    unsafe = (
+        "10 posts of Constable (A). 5 posts of Constable (B) in Unit B",
+        "10 posts of Constable (A), unrelated work and "
+        "5 posts of Constable (B) in Unit B",
+    )
+    for text in unsafe:
+        posts, status, _note, _warnings = parse_narrative_vacancies(text, text)
+        assert status == AdvertisementSplitStatus.AMBIGUOUS
+        assert posts == ()
+
+
+def test_simple_fully_qualified_narrative_names_remain_unchanged() -> None:
+    text = "10 posts of Post A in Unit A and 5 posts of Post B under Unit B"
+    posts, status, _note, _warnings = parse_narrative_vacancies(text, text)
+    assert status == AdvertisementSplitStatus.EXPLICIT
+    assert [post.name for post in posts] == ["Post A", "Post B"]
 
 
 def test_malformed_vacancy_table_is_ambiguous_and_fabricates_no_posts() -> None:
@@ -320,3 +457,98 @@ def test_slprb_narrative_publishes_three_isolated_master_posts_and_public_jobs(
         assert values["application.end_date"] == "2026-10-20"
         assert detail["sources"][0]["document_url"] == metadata.document_url
         assert sum(field["field_path"] == "vacancies.total" for field in detail["fields"]) == 1
+
+
+def test_explicit_revision_supersedes_unsplit_public_view_without_deleting_history(
+    client: TestClient, db_session: Session
+) -> None:
+    authority, document, candidate, legacy_revision = create_ready_candidate_revision(
+        client,
+        fields=[
+            {
+                "field_path": "recruitment_name",
+                "value_type": "STRING",
+                "value": "Grouped Driver Advertisement",
+            },
+            {"field_path": "vacancies.total", "value_type": "INTEGER", "value": 371},
+        ],
+        authority_overrides={
+            "code": "SLPRB_GROUPED_SUPERSEDE",
+            "name": "State Level Police Recruitment Board, Assam",
+            "official_website_url": "https://slprbassam.in",
+        },
+        endpoint_overrides={"canonical_url": "https://slprbassam.in/notices"},
+    )
+    first_verified = _verify_revision(client, document, legacy_revision)
+    first = _publish(client, first_verified["confidence"]["id"]).json()
+    legacy_public_id = first["master"]["id"]
+
+    discovery = create_run(client, document["source_endpoint_id"])
+    updated_document = observe_document(
+        client,
+        discovery["id"],
+        document_url="https://slprbassam.in/pdf/grouped-driver-posts-v2.pdf",
+        content_text="grouped driver advertisement with explicit post mapping",
+    )["document"]
+    extraction = parse_official_advertisement_text(
+        _text("grouped_narrative_vacancies.txt"),
+        ArchiveNoticeMetadata(
+            title=(
+                "Advertisement for 127 posts of Driver Constable in Assam Police, "
+                "14 posts of Constable (Dispatch Rider), 20 posts of Constable (Messenger) & "
+                "3 posts of Constable (Handymen) in APRO and 90 posts of Driver & "
+                "4 posts of Driver Operator in Fire & Emergency Services and "
+                "7 posts of Driver Constable & 106 posts of Driver in Forest Department"
+            ),
+            document_url=updated_document["document_url"],
+            notification_number=None,
+            notification_date=None,
+        ),
+        authority["name"],
+    )
+    explicit_revision = create_revision(
+        client,
+        candidate["id"],
+        updated_document["id"],
+        fields=[
+            {
+                "field_path": field.field_path,
+                "value_type": field.value_type.value,
+                "value": field.value,
+            }
+            for field in extraction.fields
+        ],
+        split_status="EXPLICIT",
+        posts=[
+            {
+                "post_key": post.post_key,
+                "ordinal": post.ordinal,
+                "name": post.name,
+                "facts": [
+                    {
+                        "field_path": fact.field_path,
+                        "value_type": fact.value_type.value,
+                        "value": fact.value,
+                    }
+                    for fact in post.facts
+                ],
+            }
+            for post in extraction.posts
+        ],
+    )
+    verified = _verify_revision(client, updated_document, explicit_revision)
+    second = _publish(client, verified["confidence"]["id"]).json()
+
+    public = client.get(
+        "/api/public/v1/recruitments", params={"as_of": "2026-09-20"}
+    ).json()
+    history = client.get(
+        f"/api/v1/recruitment-master/{first['master']['id']}/revisions"
+    ).json()
+    assert second["master"]["id"] == first["master"]["id"]
+    assert second["master_revision"]["revision_number"] == 2
+    assert len(history) == 2
+    assert public["total"] == 8
+    assert legacy_public_id not in {item["id"] for item in public["items"]}
+    assert client.get(f"/api/public/v1/recruitments/{legacy_public_id}").status_code == 404
+    assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 8

@@ -573,10 +573,14 @@ totals, checks a complete UR/OBC-MOBC/SC/ST(P)/ST(H)/EWS breakup against the sta
 creates stable post keys from post plus organisation/department.
 
 For ordinary PDF text extraction that loses table delimiters, a second bounded parser recognizes
-only an explicit repeated `N posts of X in/under Y` vacancy series. At least two complete, positive,
-uniquely keyed entries are required; otherwise the record remains `LEGACY_UNSPLIT` or becomes
-`AMBIGUOUS` when an attempted series is invalid. Repeated base Post names are deterministically
-qualified with their supported organisation so public and review identities remain distinct.
+an explicit repeated `N posts of X in/under Y` vacancy series. It also supports a contiguous group
+of comma, `&`, or `and`-separated vacancy clauses whose final clause supplies one trailing
+organisation qualifier; that qualifier propagates backward only to the pending clauses in that
+group. An explicit qualifier closes the group, and sentence boundaries, incomplete groups, or
+unrelated residual clauses make the whole attempted series `AMBIGUOUS`. At least two complete,
+positive, uniquely keyed entries are required. Repeated base Post names and trailing-qualified
+group members are displayed with their supported organisation, while stable identity always uses
+the base Post plus organisation so same-named Posts in different units remain distinct.
 
 Post-wise tables may add minimum/desirable qualification, subject/specialisation, minimum/maximum
 age, pay scale, grade pay, and experience only when the row maps to exactly one detected Post.

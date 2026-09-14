@@ -692,12 +692,13 @@ def parse_vacancy_table(
     )
 
 
-_NARRATIVE_POST = re.compile(
-    r"\b(?P<total>[0-9][0-9,]*)\s+posts?\s+of\s+"
-    r"(?P<name>.+?)\s+(?:in|under)\s+(?P<organisation>.+?)"
-    r"(?=(?:,\s*|\s+and\s+)[0-9][0-9,]*\s+posts?\s+of\b|[.;]|$)",
-    re.I,
+_NARRATIVE_MARKER = re.compile(
+    r"\b(?P<total>[0-9][0-9,]*)\s+posts?\s+of\s+", re.I
 )
+_NARRATIVE_ORGANISATION = re.compile(
+    r"^(?P<name>.+)\s+(?:in|under)\s+(?P<organisation>.+)$", re.I
+)
+_NARRATIVE_SEPARATOR = re.compile(r"(?P<separator>,|&|\band\b)\s*$", re.I)
 
 
 def parse_narrative_vacancies(
@@ -708,56 +709,106 @@ def parse_narrative_vacancies(
     str | None,
     tuple[str, ...],
 ]:
-    """Split an explicit bounded ``N posts of X in/under Y`` series."""
-    matches: list[re.Match[str]] = []
-    markers = 0
+    """Split bounded vacancy groups, including a shared trailing organization."""
+    candidate = ""
+    markers: list[re.Match[str]] = []
     for candidate in (_clean_text(title), _clean_text(raw_text[:8000])):
-        candidate_markers = len(
-            re.findall(r"\b[0-9][0-9,]*\s+posts?\s+of\b", candidate, re.I)
-        )
-        candidate_matches = list(_NARRATIVE_POST.finditer(candidate))
-        if len(candidate_matches) >= 2 or candidate_markers >= 2:
-            matches = candidate_matches
+        candidate_markers = list(_NARRATIVE_MARKER.finditer(candidate))
+        if len(candidate_markers) >= 2:
             markers = candidate_markers
             break
-    if len(matches) < 2:
-        if markers >= 2:
-            note = "Narrative vacancy series could not be split completely and safely."
-            return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
+    if len(markers) < 2:
         return (), AdvertisementSplitStatus.LEGACY_UNSPLIT, None, ()
-    if len(matches) != markers:
-        note = "Narrative vacancy series was only partially matched; no Posts were created."
-        return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
+
+    grouped: list[tuple[re.Match[str], str, str, str, bool]] = []
+    pending: list[tuple[re.Match[str], str]] = []
+    group_start = markers[0].start()
+    for index, marker in enumerate(markers):
+        body_end = markers[index + 1].start() if index + 1 < len(markers) else len(candidate)
+        body = candidate[marker.end() : body_end].strip()
+        if index + 1 < len(markers):
+            separator = _NARRATIVE_SEPARATOR.search(body)
+            if separator is None:
+                return _ambiguous_narrative()
+            body = body[: separator.start()].strip()
+            if re.search(r"[.;]", body):
+                return _ambiguous_narrative()
+        else:
+            boundary = re.search(r"[.;]", body)
+            if boundary is not None:
+                body = body[: boundary.start()].strip()
+        if not body or re.search(r"[,;]|\band\b", body, re.I):
+            return _ambiguous_narrative()
+
+        qualified = _NARRATIVE_ORGANISATION.match(body)
+        if qualified is None:
+            pending.append((marker, body.strip(" ,-:")))
+            continue
+        name = _clean_text(qualified.group("name")).strip(" ,-:")
+        organisation = _clean_text(qualified.group("organisation")).strip(" ,-:")
+        if not name or not organisation or re.search(r"[,;]", organisation):
+            return _ambiguous_narrative()
+        pending.append((marker, name))
+        group_excerpt = candidate[group_start : body_end].strip(" ,&")[:8000]
+        grouped_qualifier = len(pending) > 1
+        grouped.extend(
+            (
+                pending_marker,
+                pending_name,
+                organisation,
+                group_excerpt,
+                grouped_qualifier,
+            )
+            for pending_marker, pending_name in pending
+        )
+        pending = []
+        if index + 1 < len(markers):
+            group_start = markers[index + 1].start()
+    if pending or len(grouped) != len(markers):
+        return _ambiguous_narrative()
 
     parsed: list[ParsedPost] = []
     seen_keys: set[str] = set()
-    for ordinal, match in enumerate(matches, start=1):
-        name = _clean_text(match.group("name")).strip(" ,-:")
-        organisation = _clean_text(match.group("organisation")).strip(" ,-:")
-        if not name or not organisation:
-            note = "Narrative vacancy series contains an incomplete Post or organization."
-            return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
-        total = int(match.group("total").replace(",", ""))
-        post_key = _stable_post_key(name, organisation)
+    name_counts: dict[str, int] = {}
+    for _marker, name, _organisation, _excerpt, _grouped_qualifier in grouped:
+        normalized = " ".join(name.casefold().split())
+        name_counts[normalized] = name_counts.get(normalized, 0) + 1
+    for ordinal, (
+        marker,
+        base_name,
+        organisation,
+        excerpt,
+        grouped_qualifier,
+    ) in enumerate(grouped, start=1):
+        normalized_name = " ".join(base_name.casefold().split())
+        qualified_base_name = " ".join(
+            word.capitalize() if word.islower() else word for word in base_name.split()
+        )
+        name = (
+            f"{qualified_base_name} - {organisation}"
+            if grouped_qualifier or name_counts[normalized_name] > 1
+            else base_name
+        )
+        total = int(marker.group("total").replace(",", ""))
+        post_key = _stable_post_key(base_name, organisation)
         if total < 1 or post_key in seen_keys:
             note = "Narrative vacancy series contains an invalid total or duplicate Post."
             return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
         seen_keys.add(post_key)
         locator = f"pdf:narrative-vacancies;item={ordinal}"
-        excerpt = match.group(0)[:8000]
         parsed.append(
             ParsedPost(
                 post_key=post_key,
                 ordinal=ordinal,
                 name=name,
-                normalized_name=" ".join(name.casefold().split()),
+                normalized_name=normalized_name,
                 source_locator=locator,
                 facts=(
                     ParsedField(
                         "name",
                         CandidateValueType.STRING,
                         name,
-                        match.group("name"),
+                        base_name,
                         f"{locator};field=post",
                         excerpt,
                     ),
@@ -765,7 +816,7 @@ def parse_narrative_vacancies(
                         "organisation.name",
                         CandidateValueType.STRING,
                         organisation,
-                        match.group("organisation"),
+                        organisation,
                         f"{locator};field=organisation",
                         excerpt,
                     ),
@@ -773,20 +824,30 @@ def parse_narrative_vacancies(
                         "vacancies.total",
                         CandidateValueType.INTEGER,
                         total,
-                        match.group("total"),
+                        marker.group("total"),
                         f"{locator};field=total",
                         excerpt,
                     ),
                 ),
             )
         )
-    posts = _qualify_duplicate_post_names(tuple(parsed))
+    posts = tuple(parsed)
     return (
         posts,
         AdvertisementSplitStatus.EXPLICIT,
         f"Deterministically parsed {len(posts)} Posts from an explicit vacancy series.",
         (),
     )
+
+
+def _ambiguous_narrative() -> tuple[
+    tuple[ParsedPost, ...],
+    AdvertisementSplitStatus,
+    str,
+    tuple[str, ...],
+]:
+    note = "Narrative vacancy series could not be split completely and safely."
+    return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
 
 
 def _qualify_duplicate_post_names(posts: tuple[ParsedPost, ...]) -> tuple[ParsedPost, ...]:
