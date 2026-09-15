@@ -9,10 +9,11 @@
 </div>
 
 <section class="metrics" aria-label="Queue counts">
-  <div class="metric"><strong>{{ counts.queued }}</strong><span>Queued</span></div>
-  <div class="metric critical"><strong>{{ counts.critical }}</strong><span>Critical active</span></div>
-  <div class="metric high"><strong>{{ counts.high }}</strong><span>High active</span></div>
+  <div class="metric"><strong>{{ counts.review_required }}</strong><span>Review required</span></div>
   <div class="metric"><strong>{{ counts.in_review }}</strong><span>In review</span></div>
+  <div class="metric"><strong>{{ counts.approved }}</strong><span>Approved / resolved</span></div>
+  <div class="metric critical"><strong>{{ counts.rejected }}</strong><span>Rejected</span></div>
+  <div class="metric"><strong>{{ counts.published }}</strong><span>Published</span></div>
 </section>
 
 <form class="filters card" method="get" action="/review">

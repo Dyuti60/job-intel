@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.candidates import CandidateField
+from app.models.master import MasterPost, MasterPublicationEvent
 from app.models.review import ReviewCase, ReviewDecision, ReviewItem
 from tests.factories import (
     add_verification_assessment,
@@ -250,7 +251,8 @@ def test_queue_page_lists_counts_orders_and_filters(client: TestClient) -> None:
     assert page.status_code == 200
     assert page.headers["content-type"].startswith("text/html")
     assert "Human Review Queue" in page.text
-    assert "Queued" in page.text and "Critical active" in page.text and "In review" in page.text
+    assert "Review required" in page.text
+    assert "Approved / resolved" in page.text and "In review" in page.text
     assert page.text.index("WEB_QUEUE_HIGH_RECRUITMENT") < page.text.index(
         "WEB_QUEUE_NORMAL_RECRUITMENT"
     )
@@ -768,6 +770,145 @@ def test_grouped_post_submission_approves_and_rejects_posts_independently(
     assert projection["approved_post_keys"] == ["assam_police", "dgcd_cghg"]
     assert projection["blocked_post_keys"] == ["assam_commando_battalions"]
     assert projection["master_eligible"] is True
+
+
+def test_review_metrics_and_manual_publication_are_post_scoped_and_idempotent(
+    client: TestClient, db_session: Session
+) -> None:
+    graph = _three_post_review_graph(client)
+    case_id = graph["case"]["id"]
+    _start_web_case(client, case_id)
+    case = client.get(f"/api/v1/review-cases/{case_id}").json()
+
+    approved = _submit_post(
+        client, case, "assam_police", final_action="APPROVE_POST"
+    )
+    after_approved = client.get(f"/api/v1/review-cases/{case_id}").json()
+    rejected = _submit_post(
+        client,
+        after_approved,
+        "assam_commando_battalions",
+        final_action="REJECT_POST",
+        reject_post_item=True,
+    )
+    assert approved.status_code == 303 and rejected.status_code == 303
+
+    approved_page = client.get(
+        f"/review/cases/{case_id}", params={"post": "assam_police"}
+    )
+    pending_page = client.get(
+        f"/review/cases/{case_id}", params={"post": "dgcd_cghg"}
+    )
+    rejected_page = client.get(
+        f"/review/cases/{case_id}",
+        params={"post": "assam_commando_battalions"},
+    )
+    assert "READY TO PUBLISH" in approved_page.text
+    assert "Publish Job" in approved_page.text
+    assert "Publish Job" not in pending_page.text
+    assert "Publish Job" not in rejected_page.text
+
+    dashboard = client.get("/review")
+    assert "Review required</span></div>" in dashboard.text
+    metrics = (
+        (1, "Review required"),
+        (1, "In review"),
+        (1, "Approved / resolved"),
+        (1, "Rejected"),
+        (0, "Published"),
+    )
+    for value, label in metrics:
+        assert f"<strong>{value}</strong><span>{label}</span>" in dashboard.text
+
+    get_publish = client.get(f"/review/cases/{case_id}/publish")
+    first = client.post(
+        f"/review/cases/{case_id}/publish",
+        data={"post": "assam_police"},
+        follow_redirects=False,
+    )
+    replay = client.post(
+        f"/review/cases/{case_id}/publish",
+        data={"post": "assam_police"},
+        follow_redirects=False,
+    )
+    assert get_publish.status_code == 405
+    assert first.status_code == 303 and "message=Job+published" in first.headers["location"]
+    assert replay.status_code == 303 and "message=Job+published" in replay.headers["location"]
+
+    published_page = client.get(first.headers["location"])
+    assert "PUBLISHED" in published_page.text
+    assert "View Public Job" in published_page.text
+    assert "Publish Job" not in published_page.text
+    listing = client.get("/api/public/v1/recruitments", params={"page_size": 10}).json()
+    assert listing["total"] == 1
+    assert listing["items"][0]["display_name"] == "Grade IV Staff - Assam Police"
+    assert listing["items"][0]["vacancies_total"] == 181
+    assert client.get(f"/jobs/{listing['items'][0]['id']}").status_code == 200
+
+    assert db_session.scalar(select(func.count(MasterPost.id))) == 1
+    assert db_session.scalar(select(func.count(MasterPublicationEvent.id))) == 1
+    dashboard = client.get("/review")
+    assert "<strong>1</strong><span>Published</span>" in dashboard.text
+
+
+def test_incremental_post_publication_keeps_prior_post_and_complete_details(
+    client: TestClient,
+) -> None:
+    graph = _three_post_review_graph(client)
+    case_id = graph["case"]["id"]
+    _start_web_case(client, case_id)
+    case = client.get(f"/api/v1/review-cases/{case_id}").json()
+    _submit_post(client, case, "assam_police", final_action="APPROVE_POST")
+    after_police = client.get(f"/api/v1/review-cases/{case_id}").json()
+    client.post(
+        f"/review/cases/{case_id}/publish", data={"post": "assam_police"}
+    )
+    first_listing = client.get(
+        "/api/public/v1/recruitments", params={"page_size": 10}
+    ).json()
+    police_public_id = first_listing["items"][0]["id"]
+    _submit_post(
+        client,
+        after_police,
+        "assam_commando_battalions",
+        final_action="APPROVE_POST",
+    )
+    second = client.post(
+        f"/review/cases/{case_id}/publish",
+        data={"post": "assam_commando_battalions"},
+    )
+    assert second.status_code == 200
+
+    listing = client.get("/api/public/v1/recruitments", params={"page_size": 10}).json()
+    assert listing["total"] == 2
+    assert {item["display_name"] for item in listing["items"]} == {
+        "Grade IV Staff - Assam Police",
+        "Grade IV Staff - Assam Commando Battalions",
+    }
+    assert {item["vacancies_total"] for item in listing["items"]} == {181, 6}
+    assert next(
+        item["id"]
+        for item in listing["items"]
+        if item["display_name"] == "Grade IV Staff - Assam Police"
+    ) == police_public_id
+    for item in listing["items"]:
+        detail_response = client.get(f"/api/public/v1/recruitments/{item['id']}")
+        fields = {
+            field["field_path"]: field["value"]
+            for field in detail_response.json()["fields"]
+        }
+        assert fields["advertisement.vacancies.total"] == 256
+        assert fields["application.fee"] == "Rs. 250"
+        assert fields["selection.process"] == "Written Test and Physical Test"
+        assert fields["qualification.minimum"] == "Class VIII passed"
+        assert "posts.dgcd_cghg.vacancies.total" not in fields
+        html = client.get(f"/jobs/{item['id']}").text
+        assert "Application Details" in html
+        assert "Selection Process" in html
+
+    cards = client.get("/jobs").text
+    assert cards.count('class="job-card"') == 2
+    assert "SLPRB Grade IV Advertisement</h2>" not in cards
 
 
 def test_grouped_post_submission_validates_all_items_comment_and_focus(

@@ -454,11 +454,19 @@ the same deterministic Candidate value normalizer used by ingestion. The immutab
 remains unchanged, and the one shared Advertisement ReviewItem/ReviewDecision is reused by every
 sibling Post.
 
+Review queue metrics use the same logical units as the Post-first queue: each explicit Post is one
+unit, shared Advertisement items contribute context without adding a unit, and an unsplit or
+ambiguous Advertisement is one compatibility unit. Consequently an in-progress multi-Post case can
+simultaneously contribute approved, rejected, and review-required Post counts. Published counts are
+resolved against MasterPosts in the current Master revision rather than inferred from ReviewCase
+state.
+
 This interface is a localhost development tool. T-009 deliberately provides no authentication,
 authorization, CSRF protection, hardened sessions, assignment workflow, or production deployment
 controls. Those protections are mandatory before deployment to a shared or untrusted network.
-The resolved-case projection remains a non-persistent preview: the web layer does not approve,
-publish, or create Recruitment Master data.
+The resolved-case projection remains a non-persistent preview. The separate explicit Publish Job
+mutation delegates eligible Post publication to the Master Publisher; rendering the preview itself
+never creates Recruitment Master data.
 
 ## Approved Recruitment Master and deterministic Publisher
 
@@ -513,8 +521,16 @@ the logical master's `last_verified_at`; historical revision timestamps remain i
 Publication runs in one database transaction. Master, revision, fields, changes, event, and current
 pointer either persist together or roll back together. The Master API is internal and read-only
 apart from the focused Publisher operation. It exposes current state, immutable revisions,
-field-level provenance, changes, and publication events; it is not the future public job-search
-contract.
+field-level provenance, changes, and publication events; it is not the public job-search contract.
+
+Human approval and publication remain separate. For a routing-driven explicit Advertisement, the
+private Review UI may request Post-scoped publication only after the selected Post and all shared
+required items are resolved with approving decisions. The request calls `MasterPublisherService`
+directly; it never shells out or recreates publication policy in the web layer. Each scoped event is
+unique by Confidence assessment and Post key. Publishing another approved sibling creates or reuses
+an immutable Master revision containing that sibling plus Posts already published from the same
+Candidate revision. Stable Post public IDs do not change. Replaying a scoped request returns its
+existing event, while ordinary automatic/full publication retains its revision-wide event identity.
 
 ## Executable Master Publisher worker
 

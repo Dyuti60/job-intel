@@ -511,6 +511,87 @@ class ReviewService:
             "fields": fields,
         }
 
+    def approved_post_projection(
+        self, case_id: uuid.UUID, post_keys: set[str]
+    ) -> dict[str, Any]:
+        """Project only explicitly selected, independently approved Posts."""
+        review_case = self.get_case(case_id)
+        if review_case.status not in {
+            ReviewCaseStatus.IN_REVIEW,
+            ReviewCaseStatus.RESOLVED,
+        }:
+            raise DomainConflictError("Focused Post review is not ready for publication")
+        revision = self.revisions.get(review_case.candidate_revision_id)
+        if revision is None or revision.advertisement_revision is None:
+            raise DomainConflictError("Review case Advertisement revision is unavailable")
+        advertisement = revision.advertisement_revision
+        if advertisement.split_status != AdvertisementSplitStatus.EXPLICIT:
+            raise DomainConflictError("Post-scoped publication requires explicit Posts")
+        available = {post.post_key for post in advertisement.posts}
+        if not post_keys or not post_keys.issubset(available):
+            raise DomainConflictError("Selected Post is not part of this Advertisement")
+
+        relevant_items = [
+            item
+            for item in review_case.items
+            if self._post_key(item.field_path_snapshot) is None
+            or self._post_key(item.field_path_snapshot) in post_keys
+        ]
+        if any(item.status != ReviewItemStatus.RESOLVED for item in relevant_items):
+            raise DomainConflictError(
+                "Selected Post has unresolved required review items"
+            )
+        if any(
+            item.decision is None
+            or item.decision.decision
+            in {ReviewDecisionType.REJECT, ReviewDecisionType.REQUEST_REVERIFICATION}
+            for item in relevant_items
+        ):
+            raise DomainConflictError("Selected Post review is not approved")
+
+        decisions_by_field = {
+            item.candidate_field_id: item.decision
+            for item in relevant_items
+            if item.scope == ReviewItemScope.FIELD
+        }
+        fields = []
+        for field in revision.fields:
+            field_post_key = self._post_key(field.field_path)
+            if field_post_key is not None and field_post_key not in post_keys:
+                continue
+            decision = decisions_by_field.get(field.id)
+            corrected = bool(
+                decision is not None
+                and decision.decision == ReviewDecisionType.CORRECT_AND_APPROVE
+            )
+            fields.append(
+                {
+                    "candidate_field_id": field.id,
+                    "field_path": field.field_path,
+                    "value_type": field.value_type,
+                    "original_value": copy.deepcopy(field.value),
+                    "effective_value": copy.deepcopy(
+                        decision.corrected_value if corrected else field.value
+                    ),
+                    "approved": True,
+                    "corrected": corrected,
+                    "review_decision_id": decision.id if decision is not None else None,
+                }
+            )
+        return {
+            "review_case_id": review_case.id,
+            "candidate_revision_id": review_case.candidate_revision_id,
+            "outcome": (
+                ReviewCaseOutcome.APPROVED_WITH_CORRECTIONS
+                if any(field["corrected"] for field in fields)
+                else ReviewCaseOutcome.APPROVED
+            ),
+            "master_eligible": True,
+            "approved_post_keys": sorted(post_keys),
+            "blocked_post_keys": sorted(available - post_keys),
+            "fields": fields,
+        }
+
     @staticmethod
     def _routing_approved_projection(review_case: ReviewCase, revision) -> dict[str, Any]:
         decisions_by_field = {

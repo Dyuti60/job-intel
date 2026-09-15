@@ -104,15 +104,19 @@ class MasterPublisherService:
         self.review_cases = ReviewCaseRepository(session)
 
     def publish(
-        self, revision_confidence_assessment_id: uuid.UUID
+        self,
+        revision_confidence_assessment_id: uuid.UUID,
+        *,
+        post_key: str | None = None,
     ) -> tuple[RecruitmentMaster, RecruitmentMasterRevision, MasterPublicationEvent, bool]:
         assessment = self.confidence.get(revision_confidence_assessment_id)
         if assessment is None:
             raise ResourceNotFoundError("Revision confidence assessment not found")
         revision, run, field_assessments = self._validate_verification(assessment)
         candidate = revision.recruitment_candidate
+        post_keys = self._publication_post_keys(revision, post_key) if post_key else None
         effective_fields, publication_path, review_case = self._effective_projection(
-            assessment, revision, field_assessments
+            assessment, revision, field_assessments, post_keys=post_keys
         )
         projection_hash = compute_projection_hash(
             authority_code=candidate.recruiting_authority.code,
@@ -123,21 +127,28 @@ class MasterPublisherService:
             ],
         )
 
-        existing_event = self.events.get_by_confidence_assessment(assessment.id)
+        existing_event = self.events.get_by_confidence_assessment(
+            assessment.id, post_key=post_key
+        )
         if existing_event is not None:
             master_revision = self.master_revisions.get(existing_event.master_revision_id)
             master = self.masters.get(existing_event.recruitment_master_id)
             if master is None or master_revision is None:
                 raise DomainConflictError("Publication event provenance is unavailable")
             if (
-                master_revision.projection_hash != projection_hash
+                (post_key is None and master_revision.projection_hash != projection_hash)
                 or existing_event.source_candidate_revision_id != revision.id
                 or existing_event.verification_run_id != run.id
                 or existing_event.publication_path != publication_path
                 or existing_event.review_case_id
                 != (review_case.id if review_case is not None else None)
+                or existing_event.post_key != post_key
             ):
                 raise DomainConflictError("Persisted publication event fails integrity validation")
+            if post_key is not None and post_key not in {
+                post.post_key for post in master_revision.posts
+            }:
+                raise DomainConflictError("Published Post event fails integrity validation")
             return master, master_revision, existing_event, False
 
         now = datetime.now(UTC)
@@ -211,6 +222,7 @@ class MasterPublisherService:
                 source_candidate_revision_id=revision.id,
                 verification_run_id=run.id,
                 revision_confidence_assessment_id=assessment.id,
+                post_key=post_key,
                 review_case_id=review_case.id if review_case is not None else None,
                 publication_path=publication_path,
                 result=(
@@ -222,7 +234,9 @@ class MasterPublisherService:
             self.session.commit()
         except IntegrityError as error:
             self.session.rollback()
-            replay = self.events.get_by_confidence_assessment(assessment.id)
+            replay = self.events.get_by_confidence_assessment(
+                assessment.id, post_key=post_key
+            )
             if replay is not None:
                 master = self.masters.get(replay.recruitment_master_id)
                 master_revision = self.master_revisions.get(replay.master_revision_id)
@@ -241,15 +255,35 @@ class MasterPublisherService:
             revision_created,
         )
 
-    def preview(self, revision_confidence_assessment_id: uuid.UUID) -> MasterPublicationPreview:
+    def publish_post(
+        self, revision_confidence_assessment_id: uuid.UUID, post_key: str
+    ) -> tuple[RecruitmentMaster, RecruitmentMasterRevision, MasterPublicationEvent, bool]:
+        """Publish one Post while retaining approved siblings from this revision."""
+        return self.publish(
+            revision_confidence_assessment_id,
+            post_key=post_key,
+        )
+
+    def preview_post(
+        self, revision_confidence_assessment_id: uuid.UUID, post_key: str
+    ) -> MasterPublicationPreview:
+        return self.preview(revision_confidence_assessment_id, post_key=post_key)
+
+    def preview(
+        self,
+        revision_confidence_assessment_id: uuid.UUID,
+        *,
+        post_key: str | None = None,
+    ) -> MasterPublicationPreview:
         """Validate and classify a publication without changing Master persistence."""
         assessment = self.confidence.get(revision_confidence_assessment_id)
         if assessment is None:
             raise ResourceNotFoundError("Revision confidence assessment not found")
         revision, _, field_assessments = self._validate_verification(assessment)
         candidate = revision.recruitment_candidate
+        post_keys = self._publication_post_keys(revision, post_key) if post_key else None
         effective_fields, publication_path, _ = self._effective_projection(
-            assessment, revision, field_assessments
+            assessment, revision, field_assessments, post_keys=post_keys
         )
         projection_hash = compute_projection_hash(
             authority_code=candidate.recruiting_authority.code,
@@ -270,8 +304,35 @@ class MasterPublisherService:
                 master is not None
                 and self.master_revisions.get_by_hash(master.id, projection_hash) is not None
             ),
-            already_processed=(self.events.get_by_confidence_assessment(assessment.id) is not None),
+            already_processed=(
+                self.events.get_by_confidence_assessment(
+                    assessment.id, post_key=post_key
+                )
+                is not None
+            ),
         )
+
+    def _publication_post_keys(self, revision: Any, post_key: str) -> set[str]:
+        advertisement = revision.advertisement_revision
+        available = (
+            {post.post_key for post in advertisement.posts}
+            if advertisement is not None
+            else set()
+        )
+        if post_key not in available:
+            raise DomainConflictError("The selected explicit Post is unavailable")
+        selected = {post_key}
+        candidate = revision.recruitment_candidate
+        master = self.masters.get_by_identity(
+            candidate.recruiting_authority_id, candidate.candidate_key
+        )
+        if (
+            master is not None
+            and master.current_revision is not None
+            and master.current_revision.source_candidate_revision_id == revision.id
+        ):
+            selected.update(post.post_key for post in master.current_revision.posts)
+        return selected
 
     def get_master(self, master_id: uuid.UUID) -> RecruitmentMaster:
         master = self.masters.get(master_id)
@@ -415,9 +476,15 @@ class MasterPublisherService:
         assessment: RevisionConfidenceAssessment,
         revision: Any,
         field_assessments: list[FieldConfidenceAssessment],
+        *,
+        post_keys: set[str] | None = None,
     ) -> tuple[list[dict[str, Any]], PublicationPath, ReviewCase | None]:
         if assessment.policy_version == ConfidencePolicyVersion.V2:
-            return self._effective_routing_projection(assessment, revision)
+            return self._effective_routing_projection(
+                assessment, revision, post_keys=post_keys
+            )
+        if post_keys is not None:
+            raise DomainConflictError("Post-scoped publication requires Confidence V2 routing")
         if not assessment.review_required:
             return (
                 [
@@ -486,7 +553,11 @@ class MasterPublisherService:
         return effective_fields, path, review_case
 
     def _effective_routing_projection(
-        self, assessment: RevisionConfidenceAssessment, revision: Any
+        self,
+        assessment: RevisionConfidenceAssessment,
+        revision: Any,
+        *,
+        post_keys: set[str] | None = None,
     ) -> tuple[list[dict[str, Any]], PublicationPath, ReviewCase | None]:
         routing, _ = ReviewRoutingService(self.session, commit=False).assess(assessment.id)
         if not routing.review_required:
@@ -509,8 +580,13 @@ class MasterPublisherService:
         if case_row is None:
             raise DomainConflictError("Required routing-driven ReviewCase is missing")
         review_case = ReviewService(self.session).get_case(case_row.id)
-        if review_case.status != ReviewCaseStatus.RESOLVED:
+        if post_keys is None and review_case.status != ReviewCaseStatus.RESOLVED:
             raise DomainConflictError("Required routing-driven ReviewCase is not resolved")
+        if post_keys is not None and review_case.status not in {
+            ReviewCaseStatus.IN_REVIEW,
+            ReviewCaseStatus.RESOLVED,
+        }:
+            raise DomainConflictError("Focused Post review is not ready for publication")
         if (
             review_case.candidate_revision_id != assessment.candidate_revision_id
             or review_case.verification_run_id != assessment.verification_run_id
@@ -531,7 +607,13 @@ class MasterPublisherService:
         self._validate_routing_review_items(
             review_case, routing.field_routes, routing.reason_codes, field_confidences
         )
-        projection = ReviewService(self.session).approved_projection(review_case.id)
+        projection = (
+            ReviewService(self.session).approved_projection(review_case.id)
+            if post_keys is None
+            else ReviewService(self.session).approved_post_projection(
+                review_case.id, post_keys
+            )
+        )
         if not projection["master_eligible"]:
             raise DomainConflictError("Routing review has no publishable Advertisement or Post")
         items_by_field = {

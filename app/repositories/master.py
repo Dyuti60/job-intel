@@ -142,11 +142,12 @@ class MasterPublicationEventRepository:
         self.session.add(event)
 
     def get_by_confidence_assessment(
-        self, assessment_id: uuid.UUID
+        self, assessment_id: uuid.UUID, *, post_key: str | None = None
     ) -> MasterPublicationEvent | None:
         return self.session.scalar(
             select(MasterPublicationEvent).where(
-                MasterPublicationEvent.revision_confidence_assessment_id == assessment_id
+                MasterPublicationEvent.revision_confidence_assessment_id == assessment_id,
+                MasterPublicationEvent.post_key == post_key,
             )
         )
 

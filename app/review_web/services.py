@@ -17,6 +17,12 @@ from app.models.candidates import (
 from app.models.confidence import ReviewPriority
 from app.models.discovery import SourceDocument
 from app.models.evidence import CandidateFieldEvidence, Evidence
+from app.models.master import (
+    MasterPost,
+    RecruitmentMaster,
+    RecruitmentMasterRevision,
+    RecruitmentMasterStatus,
+)
 from app.models.review import (
     ReviewCaseStatus,
     ReviewDecisionType,
@@ -27,6 +33,7 @@ from app.models.source_registry import SourceEndpoint
 from app.models.verification import FieldVerification, VerificationEvidenceAssessment
 from app.repositories.confidence import FieldConfidenceRepository
 from app.services.exceptions import DomainConflictError
+from app.services.master import MasterPublisherService
 from app.services.review import ReviewService
 
 
@@ -68,6 +75,7 @@ class ReviewCaseViewService:
     def __init__(self, session: Session) -> None:
         self.session = session
         self.review = ReviewService(session)
+        self._published_post_cache: dict[uuid.UUID, MasterPost | None] = {}
 
     def queue(
         self,
@@ -129,30 +137,7 @@ class ReviewCaseViewService:
         for case in cases:
             revision = self._revision(case.candidate_revision_id)
             candidate = revision.recruitment_candidate
-            posts = (
-                revision.advertisement_revision.posts
-                if revision.advertisement_revision is not None
-                else []
-            )
-            item_groups: dict[str | None, list[Any]] = {}
-            for item in case.items:
-                post_key = ReviewService._post_key(item.field_path_snapshot)
-                item_groups.setdefault(post_key, []).append(item)
-            explicit_posts = (
-                posts
-                if revision.advertisement_revision is not None
-                and revision.advertisement_revision.split_status
-                == AdvertisementSplitStatus.EXPLICIT
-                else []
-            )
-            shared_items = item_groups.get(None, [])
-            entry_groups = [
-                (post, [*shared_items, *item_groups.get(post.post_key, [])])
-                for post in explicit_posts
-                if shared_items or item_groups.get(post.post_key)
-            ]
-            if not explicit_posts:
-                entry_groups = [(None, list(case.items))]
+            entry_groups = self._review_units(case, revision)
             for post, grouped_items in entry_groups:
                 post_key = post.post_key if post is not None else None
                 scope_outcome = self._scope_outcome(grouped_items)
@@ -199,6 +184,7 @@ class ReviewCaseViewService:
                     ),
                     "total_items": len(grouped_items),
                     "opened_at": case.opened_at,
+                    "published": self._published_post(post),
                 })
         all_cases = self.review.list_cases(
             status=None,
@@ -208,21 +194,38 @@ class ReviewCaseViewService:
             offset=0,
             limit=500,
         )
+        all_units = [
+            (case, post, grouped_items, self._scope_outcome(grouped_items))
+            for case in all_cases
+            for post, grouped_items in self._review_units(
+                case, self._revision(case.candidate_revision_id)
+            )
+        ]
+        approved_outcomes = {"APPROVED", "APPROVED_WITH_CORRECTIONS"}
         return {
             "cases": entries,
             "counts": {
-                "queued": sum(case.status == ReviewCaseStatus.QUEUED for case in all_cases),
-                "critical": sum(
-                    case.status in {ReviewCaseStatus.QUEUED, ReviewCaseStatus.IN_REVIEW}
-                    and case.priority.value == "CRITICAL"
-                    for case in all_cases
+                "review_required": sum(
+                    outcome is None and case.status != ReviewCaseStatus.CANCELLED
+                    for case, _post, _items, outcome in all_units
                 ),
-                "high": sum(
-                    case.status in {ReviewCaseStatus.QUEUED, ReviewCaseStatus.IN_REVIEW}
-                    and case.priority.value == "HIGH"
-                    for case in all_cases
+                "in_review": sum(
+                    outcome is None and case.status == ReviewCaseStatus.IN_REVIEW
+                    for case, _post, _items, outcome in all_units
                 ),
-                "in_review": sum(case.status == ReviewCaseStatus.IN_REVIEW for case in all_cases),
+                "approved": sum(
+                    outcome in approved_outcomes
+                    for _case, _post, _items, outcome in all_units
+                ),
+                "rejected": sum(
+                    outcome == "REJECTED"
+                    for _case, _post, _items, outcome in all_units
+                ),
+                "published": sum(
+                    self._published_post(post) is not None
+                    for _case, post, _items, _outcome in all_units
+                    if post is not None
+                ),
             },
         }
 
@@ -334,6 +337,9 @@ class ReviewCaseViewService:
         )
         focused_items = [item for group in review_groups for item in group["items"]]
         focused_outcome = self._scope_outcome_from_views(focused_items)
+        publication = self._publication_view(
+            review_case, focused_post, focused_outcome
+        )
         item_by_field_id = {
             item["candidate_field_id"]: item
             for item in items
@@ -434,6 +440,7 @@ class ReviewCaseViewService:
             "attribute_groups": attribute_groups,
             "revision_items": [item for item in focused_items if item["scope"] == "REVISION"],
             "projection": None,
+            "publication": publication,
         }
         if review_case.status == ReviewCaseStatus.RESOLVED:
             projection = self.review.approved_projection(review_case.id)
@@ -460,6 +467,98 @@ class ReviewCaseViewService:
                 ],
             }
         return result
+
+    @staticmethod
+    def _review_units(
+        review_case: Any, revision: RecruitmentCandidateRevision
+    ) -> list[tuple[RecruitmentPost | None, list[Any]]]:
+        item_groups: dict[str | None, list[Any]] = {}
+        for item in review_case.items:
+            post_key = ReviewService._post_key(item.field_path_snapshot)
+            item_groups.setdefault(post_key, []).append(item)
+        advertisement = revision.advertisement_revision
+        explicit_posts = (
+            advertisement.posts
+            if advertisement is not None
+            and advertisement.split_status == AdvertisementSplitStatus.EXPLICIT
+            else []
+        )
+        if not explicit_posts:
+            return [(None, list(review_case.items))]
+        shared_items = item_groups.get(None, [])
+        return [
+            (post, [*shared_items, *item_groups.get(post.post_key, [])])
+            for post in explicit_posts
+            if shared_items or item_groups.get(post.post_key)
+        ]
+
+    def _published_post(self, post: RecruitmentPost | None) -> MasterPost | None:
+        if post is None:
+            return None
+        if post.id in self._published_post_cache:
+            return self._published_post_cache[post.id]
+        published = self.session.scalar(
+            select(MasterPost)
+            .join(
+                RecruitmentMasterRevision,
+                RecruitmentMasterRevision.id == MasterPost.master_revision_id,
+            )
+            .join(
+                RecruitmentMaster,
+                RecruitmentMaster.current_revision_id == RecruitmentMasterRevision.id,
+            )
+            .where(
+                MasterPost.source_recruitment_post_id == post.id,
+                RecruitmentMaster.status == RecruitmentMasterStatus.ACTIVE,
+            )
+        )
+        self._published_post_cache[post.id] = published
+        return published
+
+    def _publication_view(
+        self,
+        review_case: Any,
+        post: RecruitmentPost | None,
+        focused_outcome: str | None,
+    ) -> dict[str, Any] | None:
+        if post is None:
+            return None
+        published = self._published_post(post)
+        if published is not None:
+            return {
+                "status": "PUBLISHED",
+                "public_id": published.public_id,
+                "public_url": f"/jobs/{published.public_id}",
+                "blocker": None,
+            }
+        if focused_outcome not in {"APPROVED", "APPROVED_WITH_CORRECTIONS"}:
+            return {
+                "status": "BLOCKED",
+                "public_id": None,
+                "public_url": None,
+                "blocker": (
+                    "This Post must complete review approval before publication."
+                    if focused_outcome is None
+                    else "This Post review outcome is not publishable."
+                ),
+            }
+        try:
+            MasterPublisherService(self.session).preview_post(
+                review_case.revision_confidence_assessment_id, post.post_key
+            )
+        except DomainConflictError as error:
+            return {
+                "status": "BLOCKED",
+                "public_id": None,
+                "public_url": None,
+                "blocker": str(error),
+            }
+        return {
+            "status": "READY_TO_PUBLISH",
+            "public_id": None,
+            "public_url": None,
+            "blocker": None,
+        }
 
     def _attribute(
         self,

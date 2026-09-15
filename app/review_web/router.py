@@ -20,6 +20,7 @@ from app.review_web.services import ReviewCaseViewService
 from app.schemas.review import ReviewDecisionCreate
 from app.services.candidate_values import normalize_typed_value
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
+from app.services.master import MasterPublisherService
 from app.services.review import ReviewService
 
 router = APIRouter(prefix="/review", tags=["review-web"])
@@ -246,6 +247,33 @@ async def submit_review_scope(
     outcome = "approved" if final_action == "APPROVE_POST" else "rejected"
     label = "Post" if post is not None else "Advertisement"
     return _case_redirect(case_id, post=post, message=f"{label} {outcome}")
+
+
+@router.post("/cases/{case_id}/publish")
+async def publish_reviewed_post(
+    request: Request,
+    case_id: uuid.UUID,
+    session: DatabaseSession,
+) -> RedirectResponse:
+    post: str | None = None
+    try:
+        form = await _read_form(request)
+        post = (form.get("post") or "").strip() or None
+        if post is None:
+            raise ValueError("A focused Post is required for publication")
+        review_case = ReviewService(session).get_case(case_id)
+        _, revision, _, _ = MasterPublisherService(session).publish_post(
+            review_case.revision_confidence_assessment_id,
+            post,
+        )
+        published_post = next(
+            (item for item in revision.posts if item.post_key == post), None
+        )
+        if published_post is None:
+            raise DomainConflictError("Published Master revision does not contain this Post")
+    except (ValueError, ResourceNotFoundError, DomainConflictError) as error:
+        return _case_redirect(case_id, post=post, error=str(error))
+    return _case_redirect(case_id, post=post, message="Job published")
 
 
 @router.post("/items/{item_id}/decision")

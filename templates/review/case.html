@@ -123,6 +123,23 @@
 </section>
 {% endif %}
 
+{% if publication %}
+<section class="card publication-state">
+  <p class="eyebrow">Publication</p>
+  <h2>{{ publication.status | replace('_', ' ') }}</h2>
+  {% if publication.status == 'READY_TO_PUBLISH' %}
+  <p>This approved Post is eligible to cross the Master publication boundary.</p>
+  <form method="post" action="/review/cases/{{ case_id }}/publish">
+    <input type="hidden" name="post" value="{{ focused_post.key }}">
+    <button type="submit">Publish Job</button>
+  </form>
+  {% elif publication.status == 'PUBLISHED' %}
+  <p>This Post is active in the current approved Master representation.</p>
+  <a class="button" href="{{ publication.public_url }}">View Public Job</a>
+  {% elif publication.blocker %}<p class="muted">{{ publication.blocker }}</p>{% endif %}
+</section>
+{% endif %}
+
 {% if projection %}
 <section class="card projection">
   <p class="eyebrow">Internal preview only</p>

@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -293,14 +294,30 @@ class MasterPostFact(Base):
 class MasterPublicationEvent(Base):
     __tablename__ = "master_publication_events"
     __table_args__ = (
-        UniqueConstraint(
-            "revision_confidence_assessment_id", name="uq_master_publication_events_confidence"
+        Index(
+            "uq_master_publication_events_confidence_full",
+            "revision_confidence_assessment_id",
+            unique=True,
+            postgresql_where=text("post_key IS NULL"),
+            sqlite_where=text("post_key IS NULL"),
+        ),
+        Index(
+            "uq_master_publication_events_confidence_post",
+            "revision_confidence_assessment_id",
+            "post_key",
+            unique=True,
+            postgresql_where=text("post_key IS NOT NULL"),
+            sqlite_where=text("post_key IS NOT NULL"),
         ),
         CheckConstraint(
             "(publication_path = 'VERIFIED_NO_REVIEW' AND review_case_id IS NULL) OR "
             "(publication_path IN ('HUMAN_APPROVED', 'HUMAN_CORRECTED') "
             "AND review_case_id IS NOT NULL)",
             name="ck_master_publication_events_review_path",
+        ),
+        CheckConstraint(
+            "post_key IS NULL OR publication_path IN ('HUMAN_APPROVED', 'HUMAN_CORRECTED')",
+            name="ck_master_publication_events_post_path",
         ),
         Index("ix_master_publication_events_master_id", "recruitment_master_id"),
         Index("ix_master_publication_events_revision_id", "master_revision_id"),
@@ -323,6 +340,7 @@ class MasterPublicationEvent(Base):
     revision_confidence_assessment_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("revision_confidence_assessments.id", ondelete="RESTRICT"), nullable=False
     )
+    post_key: Mapped[str | None] = mapped_column(String(128))
     review_case_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("review_cases.id", ondelete="RESTRICT")
     )

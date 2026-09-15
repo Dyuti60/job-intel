@@ -102,6 +102,7 @@ class MasterPublicationEventRead(MasterSchema):
     source_candidate_revision_id: uuid.UUID
     verification_run_id: uuid.UUID
     revision_confidence_assessment_id: uuid.UUID
+    post_key: str | None
     review_case_id: uuid.UUID | None
     publication_path: PublicationPath
     result: PublicationResult
