@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session, selectinload
 from app.models.candidates import (
     AdvertisementRevision,
     AdvertisementSplitStatus,
+    CandidateField,
+    CandidateValueType,
     RecruitmentCandidate,
     RecruitmentCandidateRevision,
     RecruitmentPost,
@@ -23,6 +25,7 @@ from app.models.review import (
 )
 from app.models.source_registry import SourceEndpoint
 from app.models.verification import FieldVerification, VerificationEvidenceAssessment
+from app.repositories.confidence import FieldConfidenceRepository
 from app.services.exceptions import DomainConflictError
 from app.services.review import ReviewService
 
@@ -250,6 +253,7 @@ class ReviewCaseViewService:
         for item in review_case.items:
             item_view: dict[str, Any] = {
                 "id": item.id,
+                "candidate_field_id": item.candidate_field_id,
                 "scope": item.scope.value,
                 "status": item.status.value,
                 "priority": item.priority.value,
@@ -282,24 +286,7 @@ class ReviewCaseViewService:
                 item_view["extraction_evidence"] = self._extraction_evidence(
                     item.candidate_field_id
                 )
-                item_view["verification"] = {
-                    "id": field_verification.id,
-                    "outcome": (
-                        field_verification.outcome.value
-                        if field_verification.outcome is not None
-                        else None
-                    ),
-                    "reason": (
-                        field_verification.reason_code.value
-                        if field_verification.reason_code is not None
-                        else None
-                    ),
-                    "finding": field_verification.finding_summary,
-                    "assessments": [
-                        self._verification_assessment(assessment)
-                        for assessment in field_verification.assessments
-                    ],
-                }
+                item_view["verification"] = self._verification_view(field_verification)
             items.append(item_view)
 
         resolved = sum(item["status"] == ReviewItemStatus.RESOLVED.value for item in items)
@@ -347,6 +334,56 @@ class ReviewCaseViewService:
         )
         focused_items = [item for group in review_groups for item in group["items"]]
         focused_outcome = self._scope_outcome_from_views(focused_items)
+        item_by_field_id = {
+            item["candidate_field_id"]: item
+            for item in items
+            if item["candidate_field_id"] is not None
+        }
+        confidence_by_field_id = {
+            assessment.field_verification.candidate_field_id: assessment
+            for assessment in FieldConfidenceRepository(self.session).list_for_run(
+                review_case.verification_run_id, review_case.policy_version
+            )
+        }
+        shared_attributes = []
+        post_attributes = []
+        for field in revision.fields:
+            field_post_key = ReviewService._post_key(field.field_path)
+            if field_post_key is not None and field_post_key != focus_post_key:
+                continue
+            attribute = self._attribute(
+                field,
+                confidence_by_field_id.get(field.id),
+                item_by_field_id.get(field.id),
+            )
+            if field_post_key is None:
+                shared_attributes.append(attribute)
+            else:
+                post_attributes.append(attribute)
+        attribute_groups = []
+        if focused_post is not None:
+            attribute_groups.append(
+                {
+                    "scope": "POST",
+                    "name": "Post-specific attributes",
+                    "attributes": post_attributes,
+                }
+            )
+            attribute_groups.append(
+                {
+                    "scope": "ADVERTISEMENT",
+                    "name": "Shared Advertisement attributes",
+                    "attributes": shared_attributes,
+                }
+            )
+        else:
+            attribute_groups.append(
+                {
+                    "scope": "ADVERTISEMENT",
+                    "name": "Advertisement attributes",
+                    "attributes": shared_attributes,
+                }
+            )
         result = {
             "case": review_case,
             "case_id": review_case.id,
@@ -394,6 +431,8 @@ class ReviewCaseViewService:
             ],
             "items": items,
             "review_groups": review_groups,
+            "attribute_groups": attribute_groups,
+            "revision_items": [item for item in focused_items if item["scope"] == "REVISION"],
             "projection": None,
         }
         if review_case.status == ReviewCaseStatus.RESOLVED:
@@ -421,6 +460,148 @@ class ReviewCaseViewService:
                 ],
             }
         return result
+
+    def _attribute(
+        self,
+        field: CandidateField,
+        confidence: Any | None,
+        review_item: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        post_key = ReviewService._post_key(field.field_path)
+        relative_path = (
+            field.field_path.removeprefix(f"posts.{post_key}.")
+            if post_key is not None
+            else field.field_path
+        )
+        if review_item is not None:
+            evidence = review_item["extraction_evidence"]
+            verification = review_item["verification"]
+            breakdown = review_item["breakdown"]
+            reasons = review_item["review_reasons"]
+            decision = review_item["decision"]
+        else:
+            evidence = self._extraction_evidence(field.id)
+            field_verification = (
+                self._field_verification(confidence.field_verification_id)
+                if confidence is not None
+                else None
+            )
+            verification = (
+                self._verification_view(field_verification)
+                if field_verification is not None
+                else None
+            )
+            breakdown = (
+                breakdown_rows(confidence.component_breakdown)
+                if confidence is not None
+                else []
+            )
+            reasons = (
+                [
+                    {"code": reason, "label": humanize(reason)}
+                    for reason in confidence.review_reason_codes
+                ]
+                if confidence is not None
+                else []
+            )
+            decision = None
+        final_value = field.value
+        status = "TRUSTED / AUTO-ACCEPTED"
+        if decision is not None:
+            status = decision["decision"].replace("_", " ")
+            if decision["decision"] == ReviewDecisionType.CORRECT_AND_APPROVE.value:
+                final_value = decision["corrected_value_raw"]
+            elif decision["decision"] == ReviewDecisionType.REJECT.value:
+                final_value = None
+        elif review_item is not None:
+            status = "REVIEW REQUIRED"
+        return {
+            "candidate_field_id": field.id,
+            "review_item_id": review_item["id"] if review_item is not None else None,
+            "field_path": field.field_path,
+            "relative_path": relative_path,
+            "label": self._attribute_label(relative_path, post_key is not None),
+            "scope": "POST" if post_key is not None else "ADVERTISEMENT",
+            "value_type": field.value_type.value,
+            "input_type": self._input_type(field.value_type, field.value),
+            "extracted_value": field.value,
+            "extracted_value_display": display_value(field.value),
+            "form_value": self._form_value(field.value_type, field.value),
+            "final_value": final_value,
+            "final_value_display": (
+                "Not trusted"
+                if final_value is None and field.value is not None
+                else display_value(final_value)
+            ),
+            "confidence_score": confidence.score if confidence is not None else None,
+            "criticality": confidence.criticality.value if confidence is not None else None,
+            "review_required": review_item is not None,
+            "actionable": (
+                review_item is not None
+                and review_item["status"] == ReviewItemStatus.PENDING.value
+            ),
+            "status": status,
+            "decision": decision,
+            "review_reasons": reasons,
+            "breakdown": breakdown,
+            "extraction_evidence": evidence,
+            "verification": verification,
+        }
+
+    @staticmethod
+    def _attribute_label(relative_path: str, post_scoped: bool) -> str:
+        labels = {
+            "name": "Post Name",
+            "post.name": "Post Name",
+            "application.start_date": "Application Start Date",
+            "application.end_date": "Application End Date",
+            "application.fee": "Application Fee",
+            "application.mode": "Application Mode",
+            "notification.number": "Advertisement Number",
+            "advertisement.number": "Advertisement Number",
+            "selection.process": "Selection Process",
+            "selection_process": "Selection Process",
+            "qualification.minimum": "Minimum Qualification",
+            "age.minimum": "Minimum Age",
+            "age.maximum": "Maximum Age",
+            "experience.minimum": "Minimum Experience",
+            "experience.minimum_months": "Minimum Experience (Months)",
+            "pay.scale": "Pay Scale",
+            "salary.minimum": "Minimum Salary",
+            "salary.maximum": "Maximum Salary",
+            "organisation.name": "Organisation",
+            "organization.name": "Organisation",
+            "department.name": "Department",
+        }
+        if relative_path == "vacancies.total":
+            return "Post Vacancies" if post_scoped else "Advertisement Total Vacancies"
+        return labels.get(relative_path, humanize(relative_path.replace(".", "_")))
+
+    @staticmethod
+    def _input_type(value_type: CandidateValueType, value: Any) -> str:
+        if value_type == CandidateValueType.DATE:
+            return "date"
+        if value_type == CandidateValueType.INTEGER:
+            return "number"
+        if value_type == CandidateValueType.DECIMAL:
+            return "decimal"
+        if value_type == CandidateValueType.BOOLEAN:
+            return "boolean"
+        if value_type == CandidateValueType.JSON or (
+            value_type == CandidateValueType.STRING and len(str(value)) > 160
+        ):
+            return "textarea"
+        if value_type == CandidateValueType.NULL:
+            return "readonly"
+        return "text"
+
+    @staticmethod
+    def _form_value(value_type: CandidateValueType, value: Any) -> str:
+        if value_type == CandidateValueType.JSON:
+            return json.dumps(value, ensure_ascii=False, sort_keys=True)
+        if value_type == CandidateValueType.BOOLEAN:
+            return "true" if value else "false"
+        return "" if value is None else str(value)
 
     @staticmethod
     def _scope_outcome(items: list[Any]) -> str | None:
@@ -553,6 +734,26 @@ class ReviewCaseViewService:
             "evidence": self._evidence(assessment.evidence),
         }
 
+    def _verification_view(self, field_verification: FieldVerification) -> dict[str, Any]:
+        return {
+            "id": field_verification.id,
+            "outcome": (
+                field_verification.outcome.value
+                if field_verification.outcome is not None
+                else None
+            ),
+            "reason": (
+                field_verification.reason_code.value
+                if field_verification.reason_code is not None
+                else None
+            ),
+            "finding": field_verification.finding_summary,
+            "assessments": [
+                self._verification_assessment(assessment)
+                for assessment in field_verification.assessments
+            ],
+        }
+
     @staticmethod
     def _evidence(evidence: Evidence) -> dict[str, Any]:
         document = evidence.source_document
@@ -585,6 +786,7 @@ class ReviewCaseViewService:
             "decided_at": decision.decided_at,
             "original_value": display_value(decision.original_value_snapshot),
             "corrected_value": display_value(decision.corrected_value),
+            "corrected_value_raw": decision.corrected_value,
             "corrected_value_type": (
                 decision.corrected_value_type.value
                 if decision.corrected_value_type is not None

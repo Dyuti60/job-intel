@@ -364,7 +364,7 @@ class ReviewService:
         case_id: uuid.UUID,
         *,
         post_key: str | None,
-        item_decisions: dict[uuid.UUID, ReviewDecisionType],
+        item_decisions: dict[uuid.UUID, ReviewDecisionCreate],
         reviewer_identifier: str,
         decision_note: str,
         approve: bool,
@@ -406,14 +406,27 @@ class ReviewService:
         if set(item_decisions) != pending_ids:
             raise DomainConflictError("Choose Approve or Reject for every pending review item")
         if any(
-            decision not in {ReviewDecisionType.APPROVE_AS_IS, ReviewDecisionType.REJECT}
+            decision.decision
+            not in {
+                ReviewDecisionType.APPROVE_AS_IS,
+                ReviewDecisionType.CORRECT_AND_APPROVE,
+                ReviewDecisionType.REJECT,
+            }
             for decision in item_decisions.values()
         ):
-            raise DomainConflictError("Post review supports only Approve or Reject")
+            raise DomainConflictError("Post review supports only Approve, Correct, or Reject")
+        if any(
+            decision.reviewer_identifier != reviewer_identifier
+            or decision.decision_note != note
+            for decision in item_decisions.values()
+        ):
+            raise DomainConflictError("Post review decisions must share one reviewer comment")
 
         decisions_by_item = {
             item.id: (
-                item.decision.decision if item.decision is not None else item_decisions.get(item.id)
+                item.decision.decision
+                if item.decision is not None
+                else item_decisions[item.id].decision
             )
             for item in relevant_items
         }
@@ -443,14 +456,7 @@ class ReviewService:
 
         worker = ReviewService(self.session, commit=False)
         for item in pending_items:
-            worker.decide_item(
-                item.id,
-                ReviewDecisionCreate(
-                    decision=item_decisions[item.id],
-                    reviewer_identifier=reviewer_identifier,
-                    decision_note=note,
-                ),
-            )
+            worker.decide_item(item.id, item_decisions[item.id])
         self._save()
         return self.get_case(case_id)
 

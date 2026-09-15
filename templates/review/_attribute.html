@@ -1,0 +1,48 @@
+<article class="review-item card attribute"{% if attribute.review_item_id %} id="item-{{ attribute.review_item_id }}"{% endif %}>
+  <header class="item-header">
+    <div>
+      <p class="eyebrow">{{ attribute.scope }} attribute</p>
+      <h3>{{ attribute.label }}</h3>
+      <small class="muted">{{ attribute.field_path }}</small>
+    </div>
+    <div><span class="badge">{{ attribute.status }}</span></div>
+  </header>
+
+  <div class="grid three">
+    <div><span class="label">Extracted value</span><pre class="value">{{ attribute.extracted_value_display }}</pre></div>
+    <div><span class="label">Final / trusted value</span><pre class="value">{{ attribute.final_value_display }}</pre></div>
+    <div><span class="label">Confidence / criticality</span><strong>{{ attribute.confidence_score if attribute.confidence_score is not none else 'N/A' }}{% if attribute.criticality %} / 100 · {{ attribute.criticality }}{% endif %}</strong></div>
+  </div>
+
+  {% if attribute.actionable and status == 'IN_REVIEW' %}
+  <div class="attribute-editor">
+    <label><strong>Final value</strong>
+      {% if attribute.input_type == 'textarea' %}<textarea name="value_{{ attribute.review_item_id }}">{{ attribute.form_value }}</textarea>
+      {% elif attribute.input_type == 'boolean' %}<select name="value_{{ attribute.review_item_id }}"><option value="true"{% if attribute.form_value == 'true' %} selected{% endif %}>True</option><option value="false"{% if attribute.form_value == 'false' %} selected{% endif %}>False</option></select>
+      {% elif attribute.input_type == 'readonly' %}<input type="text" value="null" readonly>
+      {% else %}<input type="{{ 'number' if attribute.input_type in ['number', 'decimal'] else attribute.input_type }}"{% if attribute.input_type == 'decimal' %} step="any"{% elif attribute.input_type == 'number' %} step="1"{% endif %} name="value_{{ attribute.review_item_id }}" value="{{ attribute.form_value }}">{% endif %}
+    </label>
+    <fieldset class="inline-decision"><legend>Decision</legend>
+      <label><input required type="radio" name="item_{{ attribute.review_item_id }}" value="APPROVE"> Approve final value</label>
+      <label><input required type="radio" name="item_{{ attribute.review_item_id }}" value="REJECT"> Reject attribute</label>
+    </fieldset>
+  </div>
+  {% endif %}
+
+  {% if attribute.review_reasons %}<div class="reasons">{% for reason in attribute.review_reasons %}<span class="reason" title="{{ reason.code }}">{{ reason.label }}</span>{% endfor %}</div>{% endif %}
+  {% if attribute.breakdown %}<details class="breakdown"><summary>Confidence component breakdown</summary><table><tbody>{% for row in attribute.breakdown %}<tr><th>{{ row.label }}</th><td>{{ row.value }}</td></tr>{% endfor %}</tbody></table></details>{% endif %}
+
+  <details class="evidence-section">
+    <summary>View source evidence</summary>
+    <h4>Extraction Evidence</h4>
+    {% if attribute.extraction_evidence %}{% for evidence in attribute.extraction_evidence %}
+    <article class="evidence"><div class="evidence-meta"><span>{{ evidence.type }}</span><span>{{ evidence.source_class }}</span><span>{{ evidence.document_type }}</span></div><blockquote>{{ evidence.excerpt }}</blockquote>{% if evidence.context %}<p class="context"><strong>Context:</strong> {{ evidence.context }}</p>{% endif %}{% if evidence.locator %}<p><strong>Locator:</strong> {{ evidence.locator }}</p>{% endif %}<p>{{ evidence.authority_name }} · {{ evidence.endpoint_name }} · <a href="{{ evidence.document_url }}" target="_blank" rel="noopener noreferrer">Open source</a></p></article>
+    {% endfor %}{% else %}<p class="muted">No extraction Evidence is linked to this attribute.</p>{% endif %}
+    <h4>Verification Evidence Assessments</h4>
+    {% if attribute.verification and attribute.verification.assessments %}{% for assessment in attribute.verification.assessments %}
+    <article class="evidence assessment-{{ assessment.assessment | lower }}"><div class="evidence-meta"><strong>{{ assessment.assessment }}</strong><span>{{ assessment.source_class }}</span><span>{{ assessment.evidence.type }}</span></div>{% if assessment.asserted_value_type %}<p><strong>Asserted value:</strong> {{ assessment.asserted_value }} <small>({{ assessment.asserted_value_type }})</small></p>{% endif %}{% if assessment.note %}<p><strong>Assessment note:</strong> {{ assessment.note }}</p>{% endif %}<blockquote>{{ assessment.evidence.excerpt }}</blockquote>{% if assessment.evidence.context %}<p class="context"><strong>Context:</strong> {{ assessment.evidence.context }}</p>{% endif %}{% if assessment.evidence.locator %}<p><strong>Locator:</strong> {{ assessment.evidence.locator }}</p>{% endif %}<p>{{ assessment.evidence.authority_name }} · {{ assessment.evidence.endpoint_name }} · <a href="{{ assessment.evidence.document_url }}" target="_blank" rel="noopener noreferrer">Open source</a></p></article>
+    {% endfor %}{% else %}<p class="muted">No verification Evidence assessments were recorded.</p>{% endif %}
+  </details>
+
+  {% if attribute.decision %}<section class="decision-summary"><h4>Final decision: {{ attribute.decision.decision | replace('_', ' ') }}</h4><dl class="facts"><dt>Decided</dt><dd>{{ attribute.decision.decided_at.strftime('%Y-%m-%d %H:%M:%S') }}</dd><dt>Extracted</dt><dd><pre class="value">{{ attribute.decision.original_value }}</pre></dd>{% if attribute.decision.corrected_value_type %}<dt>Corrected / canonical</dt><dd><pre class="value">{{ attribute.decision.corrected_value }}</pre> ({{ attribute.decision.corrected_value_type }})</dd>{% endif %}{% if attribute.decision.note %}<dt>Decision comment</dt><dd>{{ attribute.decision.note }}</dd>{% endif %}</dl></section>{% endif %}
+</article>

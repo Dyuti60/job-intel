@@ -1,3 +1,5 @@
+import json
+import re
 import uuid
 from pathlib import Path
 from typing import Annotated, Any
@@ -11,10 +13,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
+from app.models.candidates import CandidateValueType
 from app.models.confidence import ReviewPriority
 from app.models.review import ReviewCaseStatus, ReviewDecisionType
 from app.review_web.services import ReviewCaseViewService
 from app.schemas.review import ReviewDecisionCreate
+from app.services.candidate_values import normalize_typed_value
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
 from app.services.review import ReviewService
 
@@ -70,6 +74,28 @@ async def _read_form(request: Request) -> dict[str, str]:
         raise ValueError("Only standard URL-encoded form submissions are accepted")
     values = parse_qs(body.decode("utf-8"), keep_blank_values=True, strict_parsing=False)
     return {key: items[-1] for key, items in values.items()}
+
+
+def _typed_form_value(value_type: CandidateValueType, raw_value: str) -> Any:
+    if value_type == CandidateValueType.INTEGER:
+        if re.fullmatch(r"-?\d+", raw_value.strip()) is None:
+            raise ValueError("INTEGER values require a whole number")
+        value: Any = int(raw_value)
+    elif value_type == CandidateValueType.BOOLEAN:
+        normalized = raw_value.strip().casefold()
+        if normalized not in {"true", "false"}:
+            raise ValueError("BOOLEAN values require true or false")
+        value = normalized == "true"
+    elif value_type == CandidateValueType.JSON:
+        try:
+            value = json.loads(raw_value)
+        except json.JSONDecodeError as error:
+            raise ValueError("JSON values require valid JSON") from error
+    elif value_type == CandidateValueType.NULL:
+        value = None
+    else:
+        value = raw_value
+    return normalize_typed_value(value_type, value)
 
 
 @router.get("", response_class=HTMLResponse, name="review_queue")
@@ -164,12 +190,47 @@ async def submit_review_scope(
         final_action = form.get("final_action")
         if final_action not in {"APPROVE_POST", "REJECT_POST"}:
             raise ValueError("Choose Final Approve Post or Final Reject Post")
-        item_decisions: dict[uuid.UUID, ReviewDecisionType] = {}
+        service = ReviewService(session)
+        item_decisions: dict[uuid.UUID, ReviewDecisionCreate] = {}
         for name, value in form.items():
             if not name.startswith("item_"):
                 continue
-            item_decisions[uuid.UUID(name.removeprefix("item_"))] = ReviewDecisionType(value)
-        ReviewService(session).submit_review_scope(
+            item_id = uuid.UUID(name.removeprefix("item_"))
+            item = service.get_item(item_id)
+            if item.review_case_id != case_id:
+                raise ValueError("Review item does not belong to this case")
+            if value == ReviewDecisionType.REJECT.value:
+                decision = ReviewDecisionType.REJECT
+                corrected_value = None
+            elif value in {"APPROVE", ReviewDecisionType.APPROVE_AS_IS.value}:
+                corrected_value = item.candidate_value_snapshot
+                corrected_value_type = item.candidate_value_type_snapshot
+                form_value = form.get(f"value_{item_id}")
+                if form_value is not None and corrected_value_type is not None:
+                    corrected_value = _typed_form_value(corrected_value_type, form_value)
+                decision = (
+                    ReviewDecisionType.APPROVE_AS_IS
+                    if corrected_value == item.candidate_value_snapshot
+                    else ReviewDecisionType.CORRECT_AND_APPROVE
+                )
+            else:
+                raise ValueError("Choose Approve or Reject for every review item")
+            item_decisions[item_id] = ReviewDecisionCreate(
+                decision=decision,
+                reviewer_identifier=settings.review_web_reviewer_identifier,
+                decision_note=comment,
+                corrected_value_type=(
+                    item.candidate_value_type_snapshot
+                    if decision == ReviewDecisionType.CORRECT_AND_APPROVE
+                    else None
+                ),
+                corrected_value=(
+                    corrected_value
+                    if decision == ReviewDecisionType.CORRECT_AND_APPROVE
+                    else None
+                ),
+            )
+        service.submit_review_scope(
             case_id,
             post_key=post,
             item_decisions=item_decisions,

@@ -444,6 +444,16 @@ remain independently actionable, and legacy-unsplit or ambiguous reviews use the
 workflow at Advertisement scope. Existing item-level review APIs remain available for compatible
 integrations.
 
+The screen composes attributes dynamically from the CandidateRevision field graph rather than from
+a fixed list of review fields. An explicit Post shows only its own `posts.<post_key>.*` facts and a
+separate shared Advertisement section; legacy-unsplit and ambiguous revisions show Advertisement
+attributes only. All supported fields remain visible with their field-level Confidence and retained
+Evidence, while only routed pending ReviewItems expose controls. A field approval whose submitted
+typed value differs from its extraction becomes `CORRECT_AND_APPROVE`; the server validates it with
+the same deterministic Candidate value normalizer used by ingestion. The immutable CandidateField
+remains unchanged, and the one shared Advertisement ReviewItem/ReviewDecision is reused by every
+sibling Post.
+
 This interface is a localhost development tool. T-009 deliberately provides no authentication,
 authorization, CSRF protection, hardened sessions, assignment workflow, or production deployment
 controls. Those protections are mandatory before deployment to a shared or untrusted network.
@@ -801,6 +811,14 @@ into semantic sections and improves labels, whitespace, dates, booleans, and str
 without mutating canonical Master values. Registered source provenance remains visible; external
 document links open explicitly with `noopener noreferrer`, and remote pages are never embedded or
 interpreted.
+
+Effective Post data is composed only from approved Master fields: applicable Advertisement fields
+are inherited once, while the exact MasterPost facts remain Post-specific. If both scopes contain
+the same supported path, the Post fact is the effective value and the shared value remains available
+under an `advertisement.`-qualified public path. This preserves aggregate Advertisement vacancies
+without confusing them with Post vacancies. Human-corrected values arrive through MasterField with
+`HUMAN_CORRECTED` origin and immutable ReviewDecision provenance; public services never fall back
+to Candidate extraction.
 
 The pages use semantic headings, labels, landmarks, skip navigation, visible focus styles,
 responsive layouts, escaped Jinja output, a local stylesheet, descriptive metadata, and canonical

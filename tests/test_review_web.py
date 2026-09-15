@@ -1,9 +1,11 @@
 from uuid import UUID, uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.candidates import CandidateField
 from app.models.review import ReviewCase, ReviewDecision, ReviewItem
 from tests.factories import (
     add_verification_assessment,
@@ -69,9 +71,30 @@ def _three_post_review_graph(client: TestClient) -> dict:
                 "value": "SLPRB Grade IV Advertisement",
             },
             {
+                "field_path": "application.start_date",
+                "value_type": "DATE",
+                "value": "2026-09-20",
+            },
+            {
                 "field_path": "application.end_date",
                 "value_type": "DATE",
                 "value": "2026-10-20",
+            },
+            {"field_path": "vacancies.total", "value_type": "INTEGER", "value": 256},
+            {
+                "field_path": "application.fee",
+                "value_type": "STRING",
+                "value": "Rs. 250",
+            },
+            {
+                "field_path": "selection.process",
+                "value_type": "STRING",
+                "value": "Written Test and Physical Test",
+            },
+            {
+                "field_path": "qualification.minimum",
+                "value_type": "STRING",
+                "value": "General Class VIII requirement",
             },
         ],
         posts=[
@@ -85,6 +108,17 @@ def _three_post_review_graph(client: TestClient) -> dict:
                         "field_path": "vacancies.total",
                         "value_type": "INTEGER",
                         "value": vacancies,
+                    },
+                    {
+                        "field_path": "qualification.minimum",
+                        "value_type": "STRING",
+                        "value": "Class VIII passed",
+                    },
+                    {"field_path": "age.maximum", "value_type": "INTEGER", "value": 25},
+                    {
+                        "field_path": "pay.scale",
+                        "value_type": "STRING",
+                        "value": "Rs. 12,000 - 52,000",
                     },
                 ],
             }
@@ -130,7 +164,14 @@ def _three_post_review_graph(client: TestClient) -> dict:
         "/api/v1/review-cases",
         json={"revision_confidence_assessment_id": confidence["id"]},
     ).json()
-    return {"candidate": candidate, "case": case, "posts": posts}
+    return {
+        "candidate": candidate,
+        "case": case,
+        "confidence": confidence,
+        "document": document,
+        "posts": posts,
+        "revision": revision,
+    }
 
 
 def _start_web_case(client: TestClient, case_id: str) -> None:
@@ -308,7 +349,7 @@ def test_explicit_three_post_review_is_post_first_when_active_and_resolved(
         f"/review/cases/{case['id']}", params={"post": "assam_police"}
     )
     assert "<h1>Grade IV Staff - Assam Police</h1>" in police.text
-    assert "Shared Advertisement review items" in police.text
+    assert "Shared Advertisement attributes" in police.text
     assert "application.end_date" in police.text
     assert "posts.assam_police.vacancies.total" in police.text
     assert "posts.assam_commando_battalions.vacancies.total" not in police.text
@@ -348,6 +389,193 @@ def test_explicit_three_post_review_is_post_first_when_active_and_resolved(
     assert "posts.assam_police.vacancies.total" in resolved_police.text
     assert "posts.assam_commando_battalions.vacancies.total" not in resolved_police.text
     assert "posts.dgcd_cghg.vacancies.total" not in resolved_police.text
+
+
+def test_post_review_composes_all_supported_attributes_by_scope(
+    client: TestClient,
+) -> None:
+    graph = _three_post_review_graph(client)
+    case_id = graph["case"]["id"]
+    _start_web_case(client, case_id)
+
+    police = client.get(f"/review/cases/{case_id}", params={"post": "assam_police"})
+    commando = client.get(
+        f"/review/cases/{case_id}",
+        params={"post": "assam_commando_battalions"},
+    )
+
+    for page in (police, commando):
+        assert "Post-specific attributes" in page.text
+        assert "Shared Advertisement attributes" in page.text
+        assert "Application Start Date" in page.text and "2026-09-20" in page.text
+        assert "Application End Date" in page.text and "2026-10-20" in page.text
+        assert "Advertisement Total Vacancies" in page.text and "256" in page.text
+        assert "Application Fee" in page.text and "Rs. 250" in page.text
+        assert "Selection Process" in page.text
+        assert "Qualification" in page.text
+        assert "Maximum Age" in page.text
+        assert "Pay Scale" in page.text
+
+    assert "Post Vacancies" in police.text and "181" in police.text
+    assert "Post Vacancies" in commando.text and ">6<" in commando.text
+    assert "posts.assam_commando_battalions.vacancies.total" not in police.text
+    assert "posts.assam_police.vacancies.total" not in commando.text
+
+    trusted_start_date = police.text.split("application.start_date", 1)[1].split(
+        "</article>", 1
+    )[0]
+    assert "TRUSTED / AUTO-ACCEPTED" in trusted_start_date
+    assert 'type="radio"' not in trusted_start_date
+    assert "View source evidence" in trusted_start_date
+
+
+def test_grouped_review_corrections_preserve_extraction_and_reach_public_master(
+    client: TestClient, db_session: Session
+) -> None:
+    graph = _three_post_review_graph(client)
+    case_id = graph["case"]["id"]
+    _start_web_case(client, case_id)
+    case = client.get(f"/api/v1/review-cases/{case_id}").json()
+    by_path = {item["field_path_snapshot"]: item for item in case["items"]}
+    shared_item = by_path["application.end_date"]
+    police_item = by_path["posts.assam_police.vacancies.total"]
+    correction_comment = "Corrected against the retained official evidence."
+    corrected = client.post(
+        f"/review/cases/{case_id}/submit",
+        data={
+            "post": "assam_police",
+            f"item_{shared_item['id']}": "APPROVE",
+            f"value_{shared_item['id']}": "2026-10-22",
+            f"item_{police_item['id']}": "APPROVE",
+            f"value_{police_item['id']}": "186",
+            "comment": correction_comment,
+            "final_action": "APPROVE_POST",
+        },
+        follow_redirects=False,
+    )
+    assert corrected.status_code == 303
+
+    after_police = client.get(f"/api/v1/review-cases/{case_id}").json()
+    resolved_by_path = {
+        item["field_path_snapshot"]: item for item in after_police["items"]
+    }
+    assert resolved_by_path["application.end_date"]["decision"]["decision"] == (
+        "CORRECT_AND_APPROVE"
+    )
+    assert resolved_by_path["application.end_date"]["decision"]["corrected_value"] == (
+        "2026-10-22"
+    )
+    assert resolved_by_path["posts.assam_police.vacancies.total"]["decision"][
+        "corrected_value"
+    ] == 186
+    assert resolved_by_path["application.end_date"]["decision"]["decision_note"] == (
+        correction_comment
+    )
+
+    original_fields = {
+        field["field_path"]: db_session.get(CandidateField, UUID(field["id"]))
+        for field in graph["revision"]["fields"]
+    }
+    assert original_fields["application.end_date"].value == "2026-10-20"
+    assert original_fields["posts.assam_police.vacancies.total"].value == 181
+
+    sibling = client.get(
+        f"/review/cases/{case_id}",
+        params={"post": "assam_commando_battalions"},
+    )
+    shared_section = sibling.text.split("application.end_date", 1)[1].split(
+        "</article>", 1
+    )[0]
+    assert "2026-10-20" in shared_section
+    assert "2026-10-22" in shared_section
+    assert "CORRECT AND APPROVE" in shared_section
+    assert 'type="radio"' not in shared_section
+    assert db_session.scalar(select(func.count(ReviewDecision.id))) == 2
+
+    _submit_post(
+        client,
+        after_police,
+        "assam_commando_battalions",
+        final_action="APPROVE_POST",
+    )
+    after_commando = client.get(f"/api/v1/review-cases/{case_id}").json()
+    _submit_post(client, after_commando, "dgcd_cghg", final_action="APPROVE_POST")
+
+    publication = client.post(
+        "/api/v1/recruitment-master/publish",
+        json={"revision_confidence_assessment_id": graph["confidence"]["id"]},
+    )
+    assert publication.status_code == 201, publication.text
+    master = publication.json()["master_revision"]
+    master_fields = {field["field_path"]: field for field in master["fields"]}
+    assert master_fields["application.end_date"]["value"] == "2026-10-22"
+    assert master_fields["application.end_date"]["value_origin"] == "HUMAN_CORRECTED"
+    assert master_fields["posts.assam_police.vacancies.total"]["value"] == 186
+    assert master_fields["posts.assam_police.vacancies.total"]["value_origin"] == (
+        "HUMAN_CORRECTED"
+    )
+
+    listing = client.get("/api/public/v1/recruitments", params={"page_size": 10}).json()
+    assert listing["total"] == 3
+    public_by_name = {item["display_name"]: item for item in listing["items"]}
+    assert public_by_name["Grade IV Staff - Assam Police"]["vacancies_total"] == 186
+    assert public_by_name["Grade IV Staff - Assam Commando Battalions"][
+        "vacancies_total"
+    ] == 6
+    for public_post in public_by_name.values():
+        detail = client.get(
+            f"/api/public/v1/recruitments/{public_post['id']}"
+        ).json()
+        effective = {field["field_path"]: field["value"] for field in detail["fields"]}
+        assert effective["application.end_date"] == "2026-10-22"
+        assert effective["advertisement.vacancies.total"] == 256
+        assert effective["advertisement.qualification.minimum"] == (
+            "General Class VIII requirement"
+        )
+        assert effective["qualification.minimum"] == "Class VIII passed"
+
+
+@pytest.mark.parametrize(
+    ("field_path", "invalid_value"),
+    [
+        ("posts.assam_police.vacancies.total", "not-a-number"),
+        ("application.end_date", "2026-99-99"),
+    ],
+)
+def test_grouped_review_rejects_invalid_typed_corrections_atomically(
+    client: TestClient, field_path: str, invalid_value: str
+) -> None:
+    graph = _three_post_review_graph(client)
+    case_id = graph["case"]["id"]
+    _start_web_case(client, case_id)
+    case = client.get(f"/api/v1/review-cases/{case_id}").json()
+    relevant = [
+        item
+        for item in case["items"]
+        if not item["field_path_snapshot"].startswith("posts.")
+        or item["field_path_snapshot"].startswith("posts.assam_police.")
+    ]
+    data = {
+        "post": "assam_police",
+        "comment": "Validate all corrected values atomically.",
+        "final_action": "APPROVE_POST",
+    }
+    for item in relevant:
+        data[f"item_{item['id']}"] = "APPROVE"
+        if item["field_path_snapshot"] == field_path:
+            data[f"value_{item['id']}"] = invalid_value
+
+    response = client.post(
+        f"/review/cases/{case_id}/submit",
+        data=data,
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "post=assam_police" in response.headers["location"]
+    assert "error=" in response.headers["location"]
+    persisted = client.get(f"/api/v1/review-cases/{case_id}").json()
+    assert all(item["status"] == "PENDING" for item in persisted["items"])
 
 
 def test_legacy_unsplit_review_retains_one_advertisement_entry(client: TestClient) -> None:
@@ -505,7 +733,7 @@ def test_grouped_post_submission_approves_and_rejects_posts_independently(
     commando_page = client.get(
         f"/review/cases/{case['id']}", params={"post": "assam_commando_battalions"}
     )
-    shared = commando_page.text.split("Shared Advertisement review items", 1)[1].split(
+    shared = commando_page.text.split("Shared Advertisement attributes", 1)[1].split(
         "Grade IV Staff - Assam Commando Battalions", 1
     )[0]
     assert "Final decision: APPROVE AS IS" in shared
