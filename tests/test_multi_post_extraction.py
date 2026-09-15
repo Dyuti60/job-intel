@@ -25,6 +25,7 @@ from sources.adapters.official_recruitment_archive import (
     ArchiveNotice,
     ArchiveNoticeMetadata,
     archive_candidate_key,
+    extraction_diagnostic_summary,
     parse_narrative_vacancies,
     parse_official_advertisement_text,
 )
@@ -136,6 +137,99 @@ def test_rich_recruitment_sections_and_post_details_are_deterministic() -> None:
     assert "colour blindness" in post_facts[0]["medical.criteria"]
     assert post_facts[1]["qualification.desirable"] == "Fire-service driving experience"
     assert "vacancies.total" not in shared
+
+
+def test_pypdf_whitespace_and_multiline_sections_are_post_isolated() -> None:
+    metadata = ArchiveNoticeMetadata(
+        title=(
+            "Advertisement for 127 posts of Driver Constable in Assam Police and "
+            "4 posts of Driver Operator in Fire & Emergency Services"
+        ),
+        document_url="https://slprbassam.in/pdf/pypdf-driver-advertisement.pdf",
+        notification_number="SLPRB/REC/2026/99",
+        notification_date=date(2026, 9, 14),
+    )
+    raw_text = _text("pypdf_driver_excerpt.txt")
+    assert "|" not in raw_text
+
+    extraction = parse_official_advertisement_text(
+        raw_text, metadata, "State Level Police Recruitment Board, Assam"
+    )
+
+    assert extraction.split_status == AdvertisementSplitStatus.EXPLICIT
+    assert extraction.warnings == ()
+    assert [post.name for post in extraction.posts] == [
+        "Driver Constable",
+        "Driver Operator",
+    ]
+    shared = {field.field_path: field.value for field in extraction.fields}
+    assert shared["qualification.minimum"].startswith("HSLC or equivalent")
+    assert shared["age.relaxations"] == [
+        {"category": "SC / ST(P) / ST(H)", "relaxation": "5 years"},
+        {"category": "OBC / MOBC", "relaxation": "3 years"},
+    ]
+    assert shared["domicile.requirement"].endswith("Permanent Resident of Assam")
+    assert "162.5 cm" in str(shared["physical.criteria"])
+    assert "colour blindness" in str(shared["medical.criteria"])
+    assert len(shared["application.documents_required"]) == 2
+    assert len(shared["selection.phases"]) == 5
+    assert shared["selection.exam_pattern"][0]["questions"] == 100
+    assert shared["selection.exam_pattern"][0]["marks"] == 50
+    assert shared["syllabus.phases"][0]["subjects"][-1] == "Logical reasoning"
+
+    facts = [{fact.field_path: fact.value for fact in post.facts} for post in extraction.posts]
+    assert facts[0]["vacancies.total"] == 127
+    assert facts[0]["vacancies.tea_tribes_adivasi"] == 4
+    assert facts[0]["age.maximum"] == 25
+    assert facts[0]["pay.grade_pay"] == "Rs. 5600/-"
+    assert facts[0]["qualification.registration_or_licence"].endswith("LMV or MMV or HMV")
+    assert facts[1]["vacancies.total"] == 4
+    assert facts[1]["age.minimum"] == 20
+    assert facts[1]["age.maximum"] == 30
+    assert facts[1]["qualification.registration_or_licence"].endswith("for HMV")
+    assert "LMV" not in str(facts[1])
+
+    diagnostic = extraction_diagnostic_summary(
+        document_url=metadata.document_url,
+        page_texts=raw_text.split("Page 2 of 4"),
+        extraction=extraction,
+    )
+    assert diagnostic["pages_scanned"] == 2
+    assert diagnostic["advertisement_field_paths"] == sorted(shared)
+    assert [post["post_key"] for post in diagnostic["posts"]] == [
+        "driver_constable_assam_police",
+        "driver_operator_fire_emergency_services",
+    ]
+    assert diagnostic["ambiguities"] == []
+
+
+def test_pypdf_post_fact_without_exact_organisation_is_left_ambiguous() -> None:
+    extraction = parse_official_advertisement_text(
+        """
+        Advertisement for 7 posts of Driver in Assam Police and
+        9 posts of Driver in Forest Department.
+        5.6 EDUCATIONAL QUALIFICATION
+        5.6.A For the post of Driver, Applicant must possess valid driving license for HMV.
+        """,
+        ArchiveNoticeMetadata(
+            title=(
+                "Advertisement for 7 posts of Driver in Assam Police and "
+                "9 posts of Driver in Forest Department"
+            ),
+            document_url="https://slprbassam.in/pdf/ambiguous-driver-license.pdf",
+            notification_number=None,
+            notification_date=None,
+        ),
+        "State Level Police Recruitment Board, Assam",
+    )
+
+    assert extraction.split_status == AdvertisementSplitStatus.EXPLICIT
+    assert any("licence clause" in warning for warning in extraction.warnings)
+    assert all(
+        "qualification.registration_or_licence"
+        not in {fact.field_path for fact in post.facts}
+        for post in extraction.posts
+    )
 
 
 def test_unheaded_optional_rules_are_not_fabricated() -> None:
@@ -532,6 +626,78 @@ def test_rich_multi_post_facts_reach_master_and_public_views(client, db_session,
     assert metadata.document_url in web_detail.text
     assert summary.text.count("View Job Details") == 2
     assert "Driver Constable" in summary.text and "Driver Operator" in summary.text
+
+
+def test_pypdf_like_extraction_reaches_candidate_master_and_public_detail(
+    client, db_session, tmp_path
+) -> None:
+    metadata = ArchiveNoticeMetadata(
+        title=(
+            "Advertisement for 127 posts of Driver Constable in Assam Police and "
+            "4 posts of Driver Operator in Fire & Emergency Services"
+        ),
+        document_url="https://slprbassam.in/pdf/pypdf-driver-advertisement.pdf",
+        notification_number="SLPRB/REC/2026/99",
+        notification_date=date(2026, 9, 14),
+    )
+    content = _text("pypdf_driver_excerpt.txt").encode()
+    extraction = parse_official_advertisement_text(
+        content.decode(), metadata, "State Level Police Recruitment Board, Assam"
+    )
+    result = ArchiveAdapterResult(
+        listing_document=AdapterDocument(
+            _resource("https://slprbassam.in/", b"<html>official</html>", "text/html"),
+            DocumentType.HTML,
+            "html",
+        ),
+        notices=(
+            ArchiveNotice(
+                metadata=metadata,
+                document=AdapterDocument(
+                    _resource(metadata.document_url, content, "application/pdf"),
+                    DocumentType.PDF,
+                    "pdf",
+                ),
+                candidate_key=archive_candidate_key("SLPRB_ASSAM", metadata),
+                fields=extraction.fields,
+                posts=extraction.posts,
+                split_status=extraction.split_status,
+                split_note=extraction.split_note,
+            ),
+        ),
+        warnings=(),
+    )
+    OfficialArchiveDiscoveryWorkerService(
+        db_session,
+        Settings(raw_storage_root=str(tmp_path)),
+        logging.getLogger(__name__),
+        OFFICIAL_ARCHIVE_SOURCES["SLPRB_ASSAM"],
+    ).run(adapter=_FakeAdapter(result))
+
+    revision_row = db_session.scalar(select(RecruitmentCandidateRevision))
+    assert revision_row is not None
+    revision = client.get(f"/api/v1/candidate-revisions/{revision_row.id}").json()
+    assert db_session.scalar(select(func.count()).select_from(RecruitmentPost)) == 2
+    document = client.get(f"/api/v1/source-documents/{revision_row.source_document_id}").json()
+    assert client.patch(
+        f"/api/v1/recruitment-candidates/{revision_row.recruitment_candidate_id}",
+        json={"status": "READY_FOR_VERIFICATION"},
+    ).status_code == 200
+    confidence = _verify_revision(client, document, revision)["confidence"]
+    assert _publish(client, confidence["id"]).status_code == 201
+
+    public = client.get("/api/public/v1/recruitments", params={"as_of": "2026-01-01"}).json()
+    assert public["total"] == 2
+    driver = next(item for item in public["items"] if item["display_name"] == "Driver Constable")
+    detail = client.get(f"/api/public/v1/recruitments/{driver['id']}").json()
+    values = {field["field_path"]: field["value"] for field in detail["fields"]}
+    assert values["vacancies.total"] == 127
+    assert values["vacancies.tea_tribes_adivasi"] == 4
+    assert values["age.maximum"] == 25
+    assert values["qualification.registration_or_licence"].endswith("LMV or MMV or HMV")
+    assert values["application.documents_required"][1].endswith("valid driving licence.")
+    assert values["selection.exam_pattern"][0]["questions"] == 100
+    assert values["syllabus.phases"][0]["subjects"][0] == "Elementary Arithmetic"
 
 
 def test_slprb_narrative_publishes_three_isolated_master_posts_and_public_jobs(

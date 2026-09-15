@@ -634,13 +634,19 @@ candidate identities. Each selected PDF URL produces an authority-scoped stable 
 the explicit year and a SHA-256 URL digest. Different authorities and different document URLs do
 not merge merely because their titles or bytes match.
 
-PDF extraction is deliberately conservative and also recognizes explicitly bounded official
-headings and pipe tables for common qualification, age relaxation, residency/nationality,
-reservation, physical/medical standards, fee, official application steps and documents, ordered
-selection phases, exam pattern, syllabus, other eligibility, and instructions. Structured lists and
-tables remain JSON in Candidate/Master facts; presentation normalizes them without rewriting their
-meaning. Optional sections that are absent are not fabricated, and an unheaded incidental mention
-does not become a canonical fact. Text-less/image-only PDFs are still stored as immutable
+PDF extraction is deliberately conservative and recognizes numbered or inline official headings,
+wrapped lists, pipe tables, and bounded whitespace/multiline roster structures for common
+qualification, age and relaxation, residency/nationality, category vacancies, pay,
+physical/medical standards, fee, official application steps and documents, ordered selection
+phases, exam pattern, syllabus, other eligibility, and instructions. A trailing Post ownership
+clause attaches age, licence, grade pay, and reconciled roster facts only to exactly matching Posts;
+uncertain ownership remains an extraction ambiguity. Repeated page furniture is ignored.
+Structured lists and tables remain JSON in Candidate/Master facts; presentation normalizes them
+without rewriting their meaning. Optional sections that are absent are not fabricated, and an
+unheaded incidental mention does not become a canonical fact. For development diagnosis,
+`python -m workers.extraction_diagnostic --source-document <UUID>` reports recognized pages,
+field/Post paths, ambiguity warnings, and unsupported heading candidates without changing state or
+printing raw source text. Text-less/image-only PDFs are still stored as immutable
 SourceDocuments and surface
 as a PARTIAL warning, but do not create an unsupported candidate revision; OCR is not silently
 introduced. Every extracted field retains exact-document Evidence and flows through the existing
