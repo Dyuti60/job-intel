@@ -86,6 +86,91 @@ def test_multi_post_vacancy_table_is_explicit_and_preserves_shared_facts() -> No
     assert "vacancies.total" not in shared
 
 
+def test_rich_recruitment_sections_and_post_details_are_deterministic() -> None:
+    metadata = ArchiveNoticeMetadata(
+        title="Advertisement for Driver Constable and Driver Operator",
+        document_url="https://slprbassam.in/pdf/rich-driver-advertisement.pdf",
+        notification_number="SLPRB/REC/2026/88",
+        notification_date=date(2026, 9, 14),
+    )
+    extraction = parse_official_advertisement_text(
+        _text("rich_multi_post_advertisement.txt"),
+        metadata,
+        "State Level Police Recruitment Board, Assam",
+    )
+
+    assert extraction.split_status == AdvertisementSplitStatus.EXPLICIT
+    assert [post.name for post in extraction.posts] == [
+        "Driver Constable",
+        "Driver Operator",
+    ]
+    shared = {field.field_path: field.value for field in extraction.fields}
+    assert shared["application.url"] == "https://slprbassam.in/apply"
+    assert shared["domicile.requirement"].startswith(
+        "Candidates must be permanent residents of Assam"
+    )
+    assert shared["nationality.requirement"] == "Candidate must be an Indian citizen."
+    assert shared["age.relaxations"] == [
+        {"Category": "SC / ST", "Relaxation": "5 years"},
+        {"Category": "OBC / MOBC", "Relaxation": "3 years"},
+    ]
+    assert shared["application.fee"] == "No application fee"
+    assert shared["application.fee_exemptions"] == "All applicants"
+    assert shared["application.payment_mode"] == "Not applicable"
+    assert shared["application.steps"][0] == "Open https://slprbassam.in/apply."
+    assert shared["application.steps"][-1].endswith("before 20/10/2026.")
+    assert shared["application.documents_required"][-1] == "Valid driving licence"
+    assert [phase["sequence"] for phase in shared["selection.phases"]] == [1, 2, 3, 4, 5]
+    assert shared["selection.phases"][0]["name"].startswith("Physical Standard Test")
+    assert shared["selection.exam_pattern"][0]["Phase"] == "Written examination"
+    assert shared["syllabus.phases"][0]["Subject"] == "General Knowledge and Aptitude"
+
+    post_facts = [{fact.field_path: fact.value for fact in post.facts} for post in extraction.posts]
+    assert [facts["vacancies.total"] for facts in post_facts] == [127, 4]
+    assert post_facts[0]["qualification.essential"].startswith("HSLC passed")
+    assert post_facts[0]["qualification.desirable"] == "Experience driving heavy vehicles"
+    assert post_facts[0]["age.minimum"] == 18
+    assert post_facts[0]["age.maximum"] == 25
+    assert post_facts[0]["age.reference_date"] == "2026-01-01"
+    assert "162.5 cm" in post_facts[0]["physical.criteria"]
+    assert "colour blindness" in post_facts[0]["medical.criteria"]
+    assert post_facts[1]["qualification.desirable"] == "Fire-service driving experience"
+    assert "vacancies.total" not in shared
+
+
+def test_unheaded_optional_rules_are_not_fabricated() -> None:
+    extraction = parse_official_advertisement_text(
+        "Online applications from 20/09/2026 to 20/10/2026. No syllabus is supplied.",
+        _metadata(),
+        "State Level Police Recruitment Board, Assam",
+    )
+
+    values = {field.field_path: field.value for field in extraction.fields}
+    assert "syllabus.phases" not in values
+    assert "domicile.requirement" not in values
+    assert "physical.criteria" not in values
+
+
+def test_conflicting_repeated_sections_are_not_resolved_by_last_value() -> None:
+    extraction = parse_official_advertisement_text(
+        """
+        AGE
+        Minimum: 18 years
+        Maximum: 25 years
+        GENERAL CONDITIONS
+        AGE
+        Minimum: 20 years
+        Maximum: 30 years
+        """,
+        _metadata(),
+        "State Level Police Recruitment Board, Assam",
+    )
+
+    values = {field.field_path: field.value for field in extraction.fields}
+    assert "age.minimum" not in values
+    assert "age.maximum" not in values
+
+
 def test_realistic_slprb_narrative_extracts_three_qualified_posts() -> None:
     metadata = ArchiveNoticeMetadata(
         title=(
@@ -176,16 +261,8 @@ def test_narrative_trailing_organisation_qualifiers_are_group_bounded() -> None:
         actual = [
             (
                 post.name,
-                next(
-                    fact.value
-                    for fact in post.facts
-                    if fact.field_path == "organisation.name"
-                ),
-                next(
-                    fact.value
-                    for fact in post.facts
-                    if fact.field_path == "vacancies.total"
-                ),
+                next(fact.value for fact in post.facts if fact.field_path == "organisation.name"),
+                next(fact.value for fact in post.facts if fact.field_path == "vacancies.total"),
             )
             for post in posts
         ]
@@ -237,8 +314,7 @@ def test_complete_grouped_narrative_extracts_eight_posts_and_aggregate() -> None
     assert len({post.post_key for post in extraction.posts}) == 8
     assert shared["vacancies.total"] == 371
     assert all(
-        next(fact.value for fact in post.facts if fact.field_path == "vacancies.total")
-        != 371
+        next(fact.value for fact in post.facts if fact.field_path == "vacancies.total") != 371
         for post in extraction.posts
     )
 
@@ -246,8 +322,7 @@ def test_complete_grouped_narrative_extracts_eight_posts_and_aggregate() -> None
 def test_narrative_organisation_does_not_cross_sentence_or_unrelated_clause() -> None:
     unsafe = (
         "10 posts of Constable (A). 5 posts of Constable (B) in Unit B",
-        "10 posts of Constable (A), unrelated work and "
-        "5 posts of Constable (B) in Unit B",
+        "10 posts of Constable (A), unrelated work and 5 posts of Constable (B) in Unit B",
     )
     for text in unsafe:
         posts, status, _note, _warnings = parse_narrative_vacancies(text, text)
@@ -317,9 +392,7 @@ def _resource(url: str, content: bytes, content_type: str) -> FetchedResource:
     )
 
 
-def test_archive_worker_persists_post_facts_and_evidence_idempotently(
-    db_session, tmp_path
-) -> None:
+def test_archive_worker_persists_post_facts_and_evidence_idempotently(db_session, tmp_path) -> None:
     metadata = _metadata()
     content = _text("multi_post_advertisement.txt").encode()
     extraction = parse_official_advertisement_text(
@@ -367,6 +440,98 @@ def test_archive_worker_persists_post_facts_and_evidence_idempotently(
     assert db_session.scalar(select(func.count()).select_from(CandidateFieldEvidence)) == 43
     assert first.revisions_created == 1
     assert second.revisions_reused == 1
+
+
+def test_rich_multi_post_facts_reach_master_and_public_views(client, db_session, tmp_path) -> None:
+    metadata = ArchiveNoticeMetadata(
+        title="Advertisement for Driver Constable and Driver Operator",
+        document_url="https://slprbassam.in/pdf/rich-driver-advertisement.pdf",
+        notification_number="SLPRB/REC/2026/88",
+        notification_date=date(2026, 9, 14),
+    )
+    content = _text("rich_multi_post_advertisement.txt").encode()
+    extraction = parse_official_advertisement_text(
+        content.decode(), metadata, "State Level Police Recruitment Board, Assam"
+    )
+    result = ArchiveAdapterResult(
+        listing_document=AdapterDocument(
+            _resource("https://slprbassam.in/", b"<html>official</html>", "text/html"),
+            DocumentType.HTML,
+            "html",
+        ),
+        notices=(
+            ArchiveNotice(
+                metadata=metadata,
+                document=AdapterDocument(
+                    _resource(metadata.document_url, content, "application/pdf"),
+                    DocumentType.PDF,
+                    "pdf",
+                ),
+                candidate_key=archive_candidate_key("SLPRB_ASSAM", metadata),
+                fields=extraction.fields,
+                posts=extraction.posts,
+                split_status=extraction.split_status,
+                split_note=extraction.split_note,
+            ),
+        ),
+        warnings=(),
+    )
+    worker = OfficialArchiveDiscoveryWorkerService(
+        db_session,
+        Settings(raw_storage_root=str(tmp_path)),
+        logging.getLogger(__name__),
+        OFFICIAL_ARCHIVE_SOURCES["SLPRB_ASSAM"],
+    )
+    worker.run(adapter=_FakeAdapter(result))
+
+    revision_row = db_session.scalar(select(RecruitmentCandidateRevision))
+    assert revision_row is not None
+    revision = client.get(f"/api/v1/candidate-revisions/{revision_row.id}").json()
+    document = client.get(f"/api/v1/source-documents/{revision_row.source_document_id}").json()
+    ready = client.patch(
+        f"/api/v1/recruitment-candidates/{revision_row.recruitment_candidate_id}",
+        json={"status": "READY_FOR_VERIFICATION"},
+    )
+    assert ready.status_code == 200
+    confidence = _verify_revision(client, document, revision)["confidence"]
+    publication = _publish(client, confidence["id"])
+    assert publication.status_code == 201, publication.text
+
+    public = client.get("/api/public/v1/recruitments", params={"as_of": "2026-09-20"}).json()
+    assert public["total"] == 2
+    driver = next(item for item in public["items"] if item["display_name"] == "Driver Constable")
+    operator = next(item for item in public["items"] if item["display_name"] == "Driver Operator")
+    assert driver["vacancies_total"] == 127
+    assert operator["vacancies_total"] == 4
+    assert driver["organisation"] == "Assam Police"
+    assert driver["qualification_summary"].startswith("HSLC passed")
+
+    detail = client.get(f"/api/public/v1/recruitments/{driver['id']}").json()
+    values = {field["field_path"]: field["value"] for field in detail["fields"]}
+    assert values["qualification.essential"].startswith("HSLC passed")
+    assert values["qualification.desirable"] == "Experience driving heavy vehicles"
+    assert values["age.minimum"] == 18
+    assert values["age.maximum"] == 25
+    assert values["domicile.requirement"].startswith("Candidates must be permanent residents")
+    assert values["application.documents_required"][-1] == "Valid driving licence"
+    assert values["selection.phases"][2]["name"] == "Driving skill test"
+    assert values["selection.exam_pattern"][0]["Phase"] == "Written examination"
+    assert values["syllabus.phases"][0]["Subject"] == "General Knowledge and Aptitude"
+    assert detail["sources"][0]["document_url"] == metadata.document_url
+
+    operator_detail = client.get(f"/api/public/v1/recruitments/{operator['id']}").json()
+    operator_values = {field["field_path"]: field["value"] for field in operator_detail["fields"]}
+    assert operator_values["qualification.desirable"] == "Fire-service driving experience"
+    assert "Experience driving heavy vehicles" not in str(operator_values)
+
+    master_id = publication.json()["master"]["id"]
+    web_detail = client.get(f"/jobs/{driver['id']}")
+    summary = client.get(f"/jobs/advertisements/{master_id}")
+    assert web_detail.status_code == summary.status_code == 200
+    assert "Complete Official Advertisement" in web_detail.text
+    assert metadata.document_url in web_detail.text
+    assert summary.text.count("View Job Details") == 2
+    assert "Driver Constable" in summary.text and "Driver Operator" in summary.text
 
 
 def test_slprb_narrative_publishes_three_isolated_master_posts_and_public_jobs(
@@ -431,9 +596,7 @@ def test_slprb_narrative_publishes_three_isolated_master_posts_and_public_jobs(
     assert publication.status_code == 201, publication.text
 
     master_posts = publication.json()["master_revision"]["posts"]
-    public = client.get(
-        "/api/public/v1/recruitments", params={"as_of": "2026-09-20"}
-    ).json()
+    public = client.get("/api/public/v1/recruitments", params={"as_of": "2026-09-20"}).json()
     assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 3
     assert len(master_posts) == public["total"] == 3
     assert len({post["public_id"] for post in master_posts}) == 3
@@ -457,6 +620,17 @@ def test_slprb_narrative_publishes_three_isolated_master_posts_and_public_jobs(
         assert values["application.end_date"] == "2026-10-20"
         assert detail["sources"][0]["document_url"] == metadata.document_url
         assert sum(field["field_path"] == "vacancies.total" for field in detail["fields"]) == 1
+
+    advertisement_id = publication.json()["master"]["id"]
+    summary = client.get(f"/jobs/advertisements/{advertisement_id}")
+    assert summary.status_code == 200
+    assert summary.text.count("View Job Details") == 3
+    assert "Grade IV Staff - Assam Police" in summary.text
+    assert "Grade IV Staff - Assam Commando Battalions" in summary.text
+    assert "Grade IV Staff - DGCD &amp; CGHG" in summary.text
+    assert metadata.document_url in summary.text
+    for item in public["items"]:
+        assert f"/jobs/{item['id']}" in summary.text
 
 
 def test_explicit_revision_supersedes_unsplit_public_view_without_deleting_history(
@@ -539,12 +713,8 @@ def test_explicit_revision_supersedes_unsplit_public_view_without_deleting_histo
     verified = _verify_revision(client, updated_document, explicit_revision)
     second = _publish(client, verified["confidence"]["id"]).json()
 
-    public = client.get(
-        "/api/public/v1/recruitments", params={"as_of": "2026-09-20"}
-    ).json()
-    history = client.get(
-        f"/api/v1/recruitment-master/{first['master']['id']}/revisions"
-    ).json()
+    public = client.get("/api/public/v1/recruitments", params={"as_of": "2026-09-20"}).json()
+    history = client.get(f"/api/v1/recruitment-master/{first['master']['id']}/revisions").json()
     assert second["master"]["id"] == first["master"]["id"]
     assert second["master_revision"]["revision_number"] == 2
     assert len(history) == 2

@@ -3,6 +3,7 @@ from datetime import date
 from typing import Any
 
 from app.schemas.public_recruitments import (
+    PublicAdvertisementSummary,
     PublicRecruitmentDetail,
     PublicRecruitmentFieldRead,
 )
@@ -29,6 +30,14 @@ class PublicRecruitmentDetailView:
     recruitment: PublicRecruitmentDetail
     fields: tuple[PublicFieldView, ...]
     sections: tuple[PublicFieldSectionView, ...]
+    official_document_url: str | None
+
+
+@dataclass(frozen=True)
+class PublicAdvertisementSummaryView:
+    advertisement: PublicAdvertisementSummary
+    sections: tuple[PublicFieldSectionView, ...]
+    official_document_url: str | None
 
 
 class PublicRecruitmentViewService:
@@ -45,16 +54,43 @@ class PublicRecruitmentViewService:
         "application.end_date": "Closing Date",
         "application.mode": "Application Mode",
         "application.url": "Application Link",
+        "application.where_to_apply": "Where to Apply",
+        "application.fee": "Application Fee",
+        "application.fee_exemptions": "Fee Exemptions",
+        "application.payment_mode": "Payment Mode",
+        "application.steps": "Official Application Steps",
+        "application.documents_required": "Documents Required",
         "qualification.minimum": "Minimum Qualification",
+        "qualification.essential": "Essential Qualification",
+        "qualification.desirable": "Desirable Qualification",
+        "qualification.subject": "Required Subject",
+        "qualification.specialisation": "Required Specialisation",
+        "qualification.technical": "Technical Qualification",
+        "qualification.minimum_percentage": "Minimum Percentage",
+        "qualification.minimum_grade": "Minimum Grade",
+        "qualification.recognised_institution_requirement": "Recognised Institution Requirement",
+        "qualification.registration_or_licence": "Registration / Licence Requirement",
         "experience.minimum_months": "Minimum Experience (Months)",
+        "experience.minimum": "Minimum Experience",
+        "experience.desirable": "Desirable Experience",
         "age.minimum": "Minimum Age",
         "age.maximum": "Maximum Age",
         "age.reference_date": "Age Reference Date",
         "pay.scale": "Pay Scale",
         "salary.minimum": "Minimum Salary",
         "salary.maximum": "Maximum Salary",
-        "domicile.requirement": "Domicile Requirement",
+        "domicile.requirement": "Domicile / Residency Requirement",
+        "nationality.requirement": "Nationality Requirement",
+        "language.requirement": "Language Requirement",
         "selection.process": "Selection Process",
+        "selection.phases": "Recruitment Phases",
+        "selection.exam_pattern": "Exam Pattern",
+        "syllabus.phases": "Official Syllabus",
+        "physical.criteria": "Physical Standards",
+        "medical.criteria": "Medical Standards",
+        "reservation.details": "Reservation Details",
+        "eligibility.other": "Other Eligibility Conditions",
+        "instructions.important": "Important Instructions",
     }
     _SECTIONS = (
         ("vacancies", "Vacancies", ("vacancies.", "category_vacancies.")),
@@ -81,7 +117,16 @@ class PublicRecruitmentViewService:
             "Application Details",
             ("application.", "application_fee.", "fee.", "how_to_apply"),
         ),
-        ("selection", "Selection Process", ("selection.", "selection_process")),
+        (
+            "selection",
+            "Selection Process",
+            ("selection.phases", "selection.process", "selection_process"),
+        ),
+        (
+            "exam-syllabus",
+            "Exam Pattern / Syllabus",
+            ("selection.exam_pattern", "syllabus."),
+        ),
         (
             "reservation",
             "Reservation / Category",
@@ -102,6 +147,33 @@ class PublicRecruitmentViewService:
     @classmethod
     def detail(cls, recruitment: PublicRecruitmentDetail) -> PublicRecruitmentDetailView:
         fields = tuple(cls._field(field) for field in recruitment.fields)
+        return PublicRecruitmentDetailView(
+            recruitment=recruitment,
+            fields=fields,
+            sections=cls._sections(fields),
+            official_document_url=cls._official_document_url(fields),
+        )
+
+    @classmethod
+    def advertisement(
+        cls, advertisement: PublicAdvertisementSummary
+    ) -> PublicAdvertisementSummaryView:
+        fields = tuple(cls._field(field) for field in advertisement.fields)
+        return PublicAdvertisementSummaryView(
+            advertisement=advertisement,
+            sections=cls._sections(fields),
+            official_document_url=cls._official_document_url(fields),
+        )
+
+    @staticmethod
+    def _official_document_url(fields: tuple[PublicFieldView, ...]) -> str | None:
+        identity = next((field for field in fields if field.field_path == "recruitment_name"), None)
+        if identity is not None:
+            return identity.source_url
+        return fields[0].source_url if fields else None
+
+    @classmethod
+    def _sections(cls, fields: tuple[PublicFieldView, ...]) -> tuple[PublicFieldSectionView, ...]:
         remaining = list(fields)
         sections: list[PublicFieldSectionView] = []
         for key, title, prefixes in cls._SECTIONS:
@@ -120,15 +192,9 @@ class PublicRecruitmentViewService:
         if remaining:
             sections.insert(
                 0,
-                PublicFieldSectionView(
-                    key="overview", title="Overview", fields=tuple(remaining)
-                ),
+                PublicFieldSectionView(key="overview", title="Overview", fields=tuple(remaining)),
             )
-        return PublicRecruitmentDetailView(
-            recruitment=recruitment,
-            fields=fields,
-            sections=tuple(sections),
-        )
+        return tuple(sections)
 
     @classmethod
     def _field(cls, field: PublicRecruitmentFieldRead) -> PublicFieldView:

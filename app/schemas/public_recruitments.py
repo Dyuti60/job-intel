@@ -39,6 +39,7 @@ class PublicAuthorityRead(PublicSchema):
 class PublicSourceRead(PublicSchema):
     document_url: str
     document_type: DocumentType
+    label: str
     endpoint_name: str
     source_class: SourceClass
     authority_code: str
@@ -53,6 +54,7 @@ class PublicApplicationWindowRead(PublicSchema):
 
 class PublicRecruitmentSummary(PublicSchema):
     id: uuid.UUID
+    advertisement_id: uuid.UUID
     candidate_key: str
     display_name: str
     advertisement_title: str
@@ -64,6 +66,8 @@ class PublicRecruitmentSummary(PublicSchema):
     application: PublicApplicationWindowRead
     vacancies_total: int | None
     post_name: str | None
+    organisation: str | None
+    qualification_summary: str | None
 
 
 class PublicRecruitmentFieldRead(PublicSchema):
@@ -75,6 +79,16 @@ class PublicRecruitmentFieldRead(PublicSchema):
 
 class PublicRecruitmentDetail(PublicRecruitmentSummary):
     fields: list[PublicRecruitmentFieldRead]
+    sources: list[PublicSourceRead]
+
+
+class PublicAdvertisementSummary(PublicSchema):
+    id: uuid.UUID
+    title: str
+    authority: PublicAuthorityRead
+    current_revision_number: int
+    fields: list[PublicRecruitmentFieldRead]
+    posts: list[PublicRecruitmentSummary]
     sources: list[PublicSourceRead]
 
 

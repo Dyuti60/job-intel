@@ -66,11 +66,13 @@
     </div>
     <h3><a href="/jobs/{{ job.id }}{% if filters.as_of %}?as_of={{ filters.as_of }}{% endif %}">{{ job.display_name }}</a></h3>
     <p class="authority">{{ job.authority.name }}</p>
+    {% if job.organisation %}<p>Organisation: {{ job.organisation }}</p>{% endif %}
     {% if job.post_key %}<p>Advertisement: {{ job.advertisement_title }}</p>{% endif %}
     <dl class="job-facts">
       <div><dt>Opens</dt><dd>{{ job.application.start_date or 'Not specified' }}</dd></div>
       <div><dt>Closes</dt><dd>{{ job.application.end_date or 'Not specified' }}</dd></div>
       <div><dt>Vacancies</dt><dd>{{ job.vacancies_total if job.vacancies_total is not none else 'Not specified' }}</dd></div>
+      {% if job.qualification_summary %}<div><dt>Qualification</dt><dd>{{ job.qualification_summary }}</dd></div>{% endif %}
     </dl>
     <a class="card-link" href="/jobs/{{ job.id }}{% if filters.as_of %}?as_of={{ filters.as_of }}{% endif %}">View approved details <span aria-hidden="true">→</span></a>
   </article>

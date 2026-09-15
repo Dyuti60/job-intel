@@ -608,8 +608,10 @@ positive, uniquely keyed entries are required. Repeated base Post names and trai
 group members are displayed with their supported organisation, while stable identity always uses
 the base Post plus organisation so same-named Posts in different units remain distinct.
 
-Post-wise tables may add minimum/desirable qualification, subject/specialisation, minimum/maximum
-age, pay scale, grade pay, and experience only when the row maps to exactly one detected Post.
+Post-wise tables may add essential/minimum/desirable and technical qualification,
+subject/specialisation, recognised-institution or licence requirements, minimum/maximum age and
+reference date, pay, experience, domicile/nationality/language, physical/medical criteria,
+selection, and other eligibility only when the row maps to exactly one detected Post.
 Uncertain ownership becomes an `extraction.ambiguities` advertisement fact with a source locator;
 the value is not attached to any Post. A damaged vacancy table marks the interpretation
 `AMBIGUOUS` and creates no Posts. All emitted advertisement and post fields receive extraction
@@ -632,9 +634,14 @@ candidate identities. Each selected PDF URL produces an authority-scoped stable 
 the explicit year and a SHA-256 URL digest. Different authorities and different document URLs do
 not merge merely because their titles or bytes match.
 
-PDF extraction is deliberately conservative and currently covers identity, organization,
-notification metadata, explicit total vacancies, labeled application dates, and online mode when
-deterministic. Text-less/image-only PDFs are still stored as immutable SourceDocuments and surface
+PDF extraction is deliberately conservative and also recognizes explicitly bounded official
+headings and pipe tables for common qualification, age relaxation, residency/nationality,
+reservation, physical/medical standards, fee, official application steps and documents, ordered
+selection phases, exam pattern, syllabus, other eligibility, and instructions. Structured lists and
+tables remain JSON in Candidate/Master facts; presentation normalizes them without rewriting their
+meaning. Optional sections that are absent are not fabricated, and an unheaded incidental mention
+does not become a canonical fact. Text-less/image-only PDFs are still stored as immutable
+SourceDocuments and surface
 as a PARTIAL warning, but do not create an unsupported candidate revision; OCR is not silently
 introduced. Every extracted field retains exact-document Evidence and flows through the existing
 independent Verification, Confidence, and Human Review boundaries.
@@ -827,6 +834,13 @@ into semantic sections and improves labels, whitespace, dates, booleans, and str
 without mutating canonical Master values. Registered source provenance remains visible; external
 document links open explicitly with `noopener noreferrer`, and remote pages are never embedded or
 interpreted.
+
+`GET /jobs/advertisements/{advertisement_id}` is a read-only Master-backed parent summary. It shows
+shared Advertisement facts separately from the current published Posts and links to each stable
+Post detail. Job detail and summary pages expose the original trusted SourceDocument as the
+Complete Official Advertisement; all distinct official SourceDocuments that underpin approved
+facts are listed without copying or fetching them at public request time. Human-readable
+eligibility facts precede the optional deterministic evaluator, and empty fact sections are omitted.
 
 Effective Post data is composed only from approved Master fields: applicable Advertisement fields
 are inherited once, while the exact MasterPost facts remain Post-specific. If both scopes contain

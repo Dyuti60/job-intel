@@ -177,6 +177,45 @@ def public_jobs(
     )
 
 
+@router.get(
+    "/advertisements/{advertisement_id}",
+    response_class=HTMLResponse,
+    name="public_advertisement_summary",
+)
+def public_advertisement_summary(
+    advertisement_id: uuid.UUID,
+    request: Request,
+    session: DatabaseSession,
+    as_of: date | None = None,
+) -> HTMLResponse:
+    try:
+        advertisement = PublicRecruitmentService(session).get_advertisement(
+            advertisement_id, as_of=as_of
+        )
+    except ResourceNotFoundError:
+        return templates.TemplateResponse(
+            request=request,
+            name="public/error.html",
+            context={
+                "request": request,
+                "title": "Advertisement not found",
+                "message": "This approved advertisement is not available.",
+            },
+            status_code=404,
+        )
+    return templates.TemplateResponse(
+        request=request,
+        name="public/advertisement_summary.html",
+        context={
+            "request": request,
+            "title": advertisement.title,
+            "description": f"Approved advertisement summary for {advertisement.title}.",
+            "canonical_url": str(request.url.replace(query="")),
+            "view": PublicRecruitmentViewService.advertisement(advertisement),
+        },
+    )
+
+
 @router.get("/{job_id}", response_class=HTMLResponse, name="public_job_detail")
 def public_job_detail(
     job_id: uuid.UUID,

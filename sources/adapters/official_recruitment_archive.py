@@ -249,9 +249,7 @@ def parse_archive_listing(
     return [selected[url] for url in sorted(selected)]
 
 
-def _metadata_from_row(
-    row: _Row, source: OfficialArchiveSource
-) -> ArchiveNoticeMetadata | None:
+def _metadata_from_row(row: _Row, source: OfficialArchiveSource) -> ArchiveNoticeMetadata | None:
     pdf_links = [
         link
         for link in row.links
@@ -300,9 +298,7 @@ def _metadata_from_row(
     if not title:
         return None
     lowered = title.casefold()
-    is_advertisement = any(
-        word in lowered for word in ("advertisement", "recruitment", "vacancy")
-    )
+    is_advertisement = any(word in lowered for word in ("advertisement", "recruitment", "vacancy"))
     excluded = any(
         word in lowered
         for word in (
@@ -353,9 +349,7 @@ def parse_official_advertisement_pdf(
             break
         text_parts.append(page_text[:remaining])
         size += len(page_text[:remaining])
-    return parse_official_advertisement_text(
-        "\n".join(text_parts), metadata, organization_name
-    )
+    return parse_official_advertisement_text("\n".join(text_parts), metadata, organization_name)
 
 
 def parse_official_advertisement_text(
@@ -435,17 +429,25 @@ def parse_official_advertisement_text(
                 excerpt,
             )
         )
-    if re.search(r"online applications?", text, re.I):
+    application_mode = (
+        "ONLINE"
+        if re.search(r"online applications?", text, re.I)
+        else "OFFLINE"
+        if re.search(r"offline applications?", text, re.I)
+        else None
+    )
+    if application_mode:
         fields.append(
             ParsedField(
                 "application.mode",
                 CandidateValueType.STRING,
-                "ONLINE",
-                "online",
+                application_mode,
+                application_mode.casefold(),
                 locator,
                 excerpt,
             )
         )
+    fields.extend(_parse_recruitment_sections(raw_text))
     unique = {field.field_path: field for field in fields}
     posts, split_status, split_note, warnings = parse_vacancy_table(raw_text)
     if split_status == AdvertisementSplitStatus.LEGACY_UNSPLIT:
@@ -511,21 +513,40 @@ _POST_DETAIL_HEADERS = {
     "organization": "organisation",
     "department": "department",
     "minimumqualification": "qualification.minimum",
-    "essentialqualification": "qualification.minimum",
+    "essentialqualification": "qualification.essential",
     "qualification": "qualification.minimum",
     "desirablequalification": "qualification.desirable",
     "subject": "qualification.subject",
     "specialisation": "qualification.specialisation",
     "specialization": "qualification.specialisation",
+    "recognizedboarduniversity": "qualification.recognised_institution_requirement",
+    "recognisedboarduniversity": "qualification.recognised_institution_requirement",
+    "technicalqualification": "qualification.technical",
+    "registrationlicence": "qualification.registration_or_licence",
+    "minimumpercentage": "qualification.minimum_percentage",
+    "minimumgrade": "qualification.minimum_grade",
     "minimumage": "age.minimum",
     "maximumage": "age.maximum",
+    "agereferencedate": "age.reference_date",
+    "agecutoffdate": "age.reference_date",
+    "agerelaxation": "age.relaxations",
     "payscale": "pay.scale",
     "gradepay": "pay.grade_pay",
+    "paylevel": "pay.level",
+    "fixedremuneration": "salary.fixed",
     "minimumexperience": "experience.minimum",
     "desirableexperience": "experience.desirable",
+    "domicile": "domicile.requirement",
+    "nationality": "nationality.requirement",
+    "language": "language.requirement",
+    "physicalstandards": "physical.criteria",
+    "medicalstandards": "medical.criteria",
+    "selectionprocess": "selection.process",
+    "othereligibility": "eligibility.other",
 }
 
 _INTEGER_POST_FACTS = {"age.minimum", "age.maximum"}
+_DATE_POST_FACTS = {"age.reference_date"}
 
 
 def parse_vacancy_table(
@@ -692,12 +713,435 @@ def parse_vacancy_table(
     )
 
 
-_NARRATIVE_MARKER = re.compile(
-    r"\b(?P<total>[0-9][0-9,]*)\s+posts?\s+of\s+", re.I
-)
-_NARRATIVE_ORGANISATION = re.compile(
-    r"^(?P<name>.+)\s+(?:in|under)\s+(?P<organisation>.+)$", re.I
-)
+_SECTION_HEADINGS = {
+    "educational qualification": "qualification",
+    "education qualification": "qualification",
+    "qualification": "qualification",
+    "age": "age",
+    "age limit": "age",
+    "age relaxation": "age_relaxation",
+    "domicile residency": "domicile",
+    "domicile": "domicile",
+    "residency": "domicile",
+    "nationality": "nationality",
+    "experience": "experience",
+    "pay scale": "pay",
+    "salary pay scale": "pay",
+    "remuneration": "pay",
+    "physical standards": "physical",
+    "physical standard": "physical",
+    "physical standard test": "physical",
+    "physical efficiency test": "physical",
+    "pst pet": "physical",
+    "medical standards": "medical",
+    "medical standard": "medical",
+    "medical fitness": "medical",
+    "reservation": "reservation",
+    "application fee": "application_fee",
+    "how to apply": "application_steps",
+    "application procedure": "application_steps",
+    "application process": "application_steps",
+    "where to apply": "application_location",
+    "application portal": "application_location",
+    "documents required": "documents",
+    "documents to be uploaded": "documents",
+    "selection process": "selection",
+    "recruitment process": "selection",
+    "mode of selection": "selection",
+    "scheme of examination": "exam_pattern",
+    "exam pattern": "exam_pattern",
+    "syllabus": "syllabus",
+    "other eligibility conditions": "other_eligibility",
+    "eligibility conditions": "other_eligibility",
+    "general instructions": "instructions",
+    "important instructions": "instructions",
+}
+
+
+def _parse_recruitment_sections(raw_text: str) -> list[ParsedField]:
+    """Extract only explicitly headed, structurally bounded recruitment facts."""
+    sections = _bounded_sections(raw_text)
+    parsed: list[ParsedField] = []
+    for section_number, (kind, heading, lines) in enumerate(sections, start=1):
+        excerpt = "\n".join((heading, *lines))[:8000]
+        locator = f"pdf:section={kind};occurrence={section_number}"
+        if kind == "qualification":
+            parsed.extend(_qualification_fields(lines, locator, excerpt))
+        elif kind == "age":
+            parsed.extend(_age_fields(lines, locator, excerpt))
+        elif kind == "age_relaxation":
+            parsed.extend(
+                _structured_section_field(
+                    "age.relaxations", lines, locator, excerpt, prefer_table=True
+                )
+            )
+        elif kind == "domicile":
+            parsed.extend(_text_section_field("domicile.requirement", lines, locator, excerpt))
+        elif kind == "nationality":
+            parsed.extend(_text_section_field("nationality.requirement", lines, locator, excerpt))
+        elif kind == "experience":
+            parsed.extend(_labeled_or_text_fields("experience", lines, locator, excerpt))
+        elif kind == "pay":
+            parsed.extend(_labeled_or_text_fields("pay", lines, locator, excerpt))
+        elif kind == "physical":
+            parsed.extend(
+                _structured_section_field(
+                    "physical.criteria", lines, locator, excerpt, prefer_table=True
+                )
+            )
+        elif kind == "medical":
+            parsed.extend(_structured_section_field("medical.criteria", lines, locator, excerpt))
+        elif kind == "reservation":
+            parsed.extend(
+                _structured_section_field(
+                    "reservation.details", lines, locator, excerpt, prefer_table=True
+                )
+            )
+        elif kind == "application_fee":
+            parsed.extend(_application_fee_fields(lines, locator, excerpt))
+        elif kind == "application_steps":
+            parsed.extend(_list_section_field("application.steps", lines, locator, excerpt))
+        elif kind == "application_location":
+            parsed.extend(
+                _text_section_field("application.where_to_apply", lines, locator, excerpt)
+            )
+        elif kind == "documents":
+            parsed.extend(
+                _list_section_field("application.documents_required", lines, locator, excerpt)
+            )
+        elif kind == "selection":
+            parsed.extend(_ordered_structured_field("selection.phases", lines, locator, excerpt))
+        elif kind == "exam_pattern":
+            parsed.extend(
+                _structured_section_field(
+                    "selection.exam_pattern", lines, locator, excerpt, prefer_table=True
+                )
+            )
+        elif kind == "syllabus":
+            parsed.extend(
+                _structured_section_field(
+                    "syllabus.phases", lines, locator, excerpt, prefer_table=True
+                )
+            )
+        elif kind == "other_eligibility":
+            parsed.extend(_list_section_field("eligibility.other", lines, locator, excerpt))
+        elif kind == "instructions":
+            parsed.extend(_list_section_field("instructions.important", lines, locator, excerpt))
+
+    application_url = re.search(
+        r"(?:application\s+(?:url|portal|website)|apply\s+(?:online\s+)?at|where\s+to\s+apply)"
+        r"\s*[:.-]?\s*(https?://[^\s<>]+)",
+        raw_text,
+        re.I,
+    )
+    if application_url:
+        url = application_url.group(1).rstrip(".,);]")
+        parsed.append(
+            ParsedField(
+                "application.url",
+                CandidateValueType.STRING,
+                url,
+                url,
+                "pdf:label=application-url",
+                application_url.group(0)[:8000],
+            )
+        )
+    unique: dict[str, ParsedField] = {}
+    conflicts: set[str] = set()
+    for field in parsed:
+        existing = unique.get(field.field_path)
+        if existing is not None and (
+            existing.value_type != field.value_type or existing.value != field.value
+        ):
+            conflicts.add(field.field_path)
+            unique.pop(field.field_path, None)
+        elif field.field_path not in conflicts:
+            unique[field.field_path] = field
+    return [unique[path] for path in sorted(unique)]
+
+
+def _bounded_sections(raw_text: str) -> list[tuple[str, str, list[str]]]:
+    sections: list[tuple[str, str, list[str]]] = []
+    current: tuple[str, str, list[str]] | None = None
+    for raw_line in raw_text.replace("\r\n", "\n").split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        heading_key = re.sub(r"[^a-z0-9]+", " ", line.casefold()).strip()
+        numbered_item = re.match(r"^\s*\d+[.)]\s+", line) is not None
+        heading_key = re.sub(r"^\d+\s+", "", heading_key)
+        kind = _SECTION_HEADINGS.get(heading_key)
+        if numbered_item and not line.rstrip(":").isupper():
+            kind = None
+        if kind is not None:
+            if current is not None:
+                sections.append(current)
+            current = (kind, line.rstrip(":"), [])
+        elif current is not None and _looks_like_heading(line):
+            sections.append(current)
+            current = None
+        elif current is not None:
+            current[2].append(line)
+    if current is not None:
+        sections.append(current)
+    return sections
+
+
+def _looks_like_heading(line: str) -> bool:
+    if "|" in line or len(line) > 80 or not re.search(r"[A-Za-z]", line):
+        return False
+    words = re.findall(r"[A-Za-z]+", line)
+    return bool(words) and (line.rstrip(":").isupper() or line.endswith(":"))
+
+
+def _qualification_fields(lines: list[str], locator: str, excerpt: str) -> list[ParsedField]:
+    labels = {
+        "minimum": "qualification.minimum",
+        "essential": "qualification.essential",
+        "desirable": "qualification.desirable",
+        "subject": "qualification.subject",
+        "specialisation": "qualification.specialisation",
+        "specialization": "qualification.specialisation",
+        "technical": "qualification.technical",
+        "recognised institution": "qualification.recognised_institution_requirement",
+        "recognized institution": "qualification.recognised_institution_requirement",
+        "registration licence": "qualification.registration_or_licence",
+        "registration license": "qualification.registration_or_licence",
+    }
+    result: list[ParsedField] = []
+    unlabeled: list[str] = []
+    for line in lines:
+        match = re.match(r"([^:]{2,50}):\s*(.+)$", line)
+        key = re.sub(r"[^a-z]+", " ", match.group(1).casefold()).strip() if match else ""
+        path = labels.get(key)
+        if match and path:
+            result.extend(_string_field(path, match.group(2), locator, excerpt))
+        elif not line.startswith("|"):
+            unlabeled.append(line)
+    if not result and unlabeled:
+        result.extend(_text_section_field("qualification.minimum", unlabeled, locator, excerpt))
+    return result
+
+
+def _age_fields(lines: list[str], locator: str, excerpt: str) -> list[ParsedField]:
+    text = " ".join(lines)
+    result: list[ParsedField] = []
+    for label, path in (("minimum", "age.minimum"), ("maximum", "age.maximum")):
+        match = re.search(rf"\b{label}(?:\s+age)?\s*:\s*(\d{{1,3}})(?:\s*years?)?\b", text, re.I)
+        if match:
+            result.append(
+                ParsedField(
+                    path,
+                    CandidateValueType.INTEGER,
+                    int(match.group(1)),
+                    match.group(0),
+                    locator,
+                    excerpt,
+                )
+            )
+    if not result:
+        range_match = re.search(
+            r"\b(?:between\s+)?(\d{1,3})\s*(?:to|-|and)\s*(\d{1,3})\s+years?\b",
+            text,
+            re.I,
+        ) or re.search(
+            r"\bnot\s+(?:be\s+)?less\s+than\s+(\d{1,3})\s+years?.{0,80}?"
+            r"(?:not\s+)?more\s+than\s+(\d{1,3})\s+years?\b",
+            text,
+            re.I,
+        )
+        if range_match:
+            result.extend(
+                (
+                    ParsedField(
+                        "age.minimum",
+                        CandidateValueType.INTEGER,
+                        int(range_match.group(1)),
+                        range_match.group(1),
+                        locator,
+                        excerpt,
+                    ),
+                    ParsedField(
+                        "age.maximum",
+                        CandidateValueType.INTEGER,
+                        int(range_match.group(2)),
+                        range_match.group(2),
+                        locator,
+                        excerpt,
+                    ),
+                )
+            )
+    reference = re.search(
+        r"(?:(?:reference|cut[ -]?off)\s+date\s*:\s*|as\s+on\s+)"
+        r"(\d{1,2}[./-]\d{1,2}[./-]\d{4})",
+        text,
+        re.I,
+    )
+    if reference and (parsed_date := _parse_numeric_date(reference.group(1))):
+        result.append(
+            ParsedField(
+                "age.reference_date",
+                CandidateValueType.DATE,
+                parsed_date.isoformat(),
+                reference.group(1),
+                locator,
+                excerpt,
+            )
+        )
+    return result
+
+
+def _application_fee_fields(lines: list[str], locator: str, excerpt: str) -> list[ParsedField]:
+    labels = {
+        "fee": "application.fee",
+        "application fee": "application.fee",
+        "exemption": "application.fee_exemptions",
+        "exemptions": "application.fee_exemptions",
+        "payment mode": "application.payment_mode",
+    }
+    result: list[ParsedField] = []
+    for line in lines:
+        match = re.match(r"([^:]{2,40}):\s*(.+)$", line)
+        key = re.sub(r"[^a-z]+", " ", match.group(1).casefold()).strip() if match else ""
+        if match and key in labels:
+            result.extend(_string_field(labels[key], match.group(2), locator, excerpt))
+    if not result:
+        result.extend(_text_section_field("application.fee", lines, locator, excerpt))
+    return result
+
+
+def _labeled_or_text_fields(
+    kind: str, lines: list[str], locator: str, excerpt: str
+) -> list[ParsedField]:
+    labels = (
+        {
+            "minimum": "experience.minimum",
+            "desirable": "experience.desirable",
+            "details": "experience.details",
+        }
+        if kind == "experience"
+        else {
+            "pay scale": "pay.scale",
+            "grade pay": "pay.grade_pay",
+            "pay level": "pay.level",
+            "fixed remuneration": "salary.fixed",
+            "salary": "salary.details",
+        }
+    )
+    result: list[ParsedField] = []
+    for line in lines:
+        match = re.match(r"([^:]{2,40}):\s*(.+)$", line)
+        key = re.sub(r"[^a-z]+", " ", match.group(1).casefold()).strip() if match else ""
+        if match and key in labels:
+            result.extend(_string_field(labels[key], match.group(2), locator, excerpt))
+    if not result:
+        fallback = "experience.minimum" if kind == "experience" else "pay.scale"
+        result.extend(_text_section_field(fallback, lines, locator, excerpt))
+    return result
+
+
+def _string_field(path: str, value: str, locator: str, excerpt: str) -> list[ParsedField]:
+    cleaned = _clean_text(value)
+    return (
+        [ParsedField(path, CandidateValueType.STRING, cleaned, value, locator, excerpt)]
+        if cleaned
+        else []
+    )
+
+
+def _text_section_field(
+    path: str, lines: list[str], locator: str, excerpt: str
+) -> list[ParsedField]:
+    values = _clean_list(lines)
+    return _string_field(path, " ".join(values), locator, excerpt) if values else []
+
+
+def _list_section_field(
+    path: str, lines: list[str], locator: str, excerpt: str
+) -> list[ParsedField]:
+    values = _clean_list(lines)
+    return (
+        [ParsedField(path, CandidateValueType.JSON, values, "\n".join(lines), locator, excerpt)]
+        if values
+        else []
+    )
+
+
+def _ordered_structured_field(
+    path: str, lines: list[str], locator: str, excerpt: str
+) -> list[ParsedField]:
+    table = _section_table(lines)
+    if table:
+        value: object = table
+    else:
+        value = [
+            {"sequence": index, "name": item}
+            for index, item in enumerate(_clean_list(lines), start=1)
+        ]
+    return (
+        [ParsedField(path, CandidateValueType.JSON, value, "\n".join(lines), locator, excerpt)]
+        if value
+        else []
+    )
+
+
+def _structured_section_field(
+    path: str,
+    lines: list[str],
+    locator: str,
+    excerpt: str,
+    *,
+    prefer_table: bool = False,
+) -> list[ParsedField]:
+    table = _section_table(lines) if prefer_table or any("|" in line for line in lines) else []
+    if table:
+        value: object = table
+    else:
+        values = _clean_list(lines)
+        value = values if len(values) > 1 else (values[0] if values else None)
+    if value is None:
+        return []
+    value_type = CandidateValueType.JSON if isinstance(value, list) else CandidateValueType.STRING
+    return [ParsedField(path, value_type, value, "\n".join(lines), locator, excerpt)]
+
+
+def _section_table(lines: list[str]) -> list[dict[str, str]]:
+    table_lines = [line for line in lines if "|" in line]
+    if len(table_lines) < 2:
+        return []
+    headers = _table_cells(table_lines[0])
+    if not headers or len(set(_header_key(header) for header in headers)) != len(headers):
+        return []
+    rows: list[dict[str, str]] = []
+    for line in table_lines[1:]:
+        cells = _table_cells(line)
+        if _separator_row(cells):
+            continue
+        if len(cells) != len(headers) or not any(cells):
+            return []
+        rows.append(
+            {
+                _clean_text(header): _clean_text(cell)
+                for header, cell in zip(headers, cells, strict=True)
+            }
+        )
+    return rows
+
+
+def _clean_list(lines: list[str]) -> list[str]:
+    values: list[str] = []
+    for line in lines:
+        if "|" in line or _separator_row([line]):
+            continue
+        cleaned = re.sub(r"^\s*(?:[-*\u2022]|\(?\d+[.)]|[a-z][.)])\s*", "", line, flags=re.I)
+        cleaned = _clean_text(cleaned)
+        if cleaned and cleaned not in values:
+            values.append(cleaned)
+    return values
+
+
+_NARRATIVE_MARKER = re.compile(r"\b(?P<total>[0-9][0-9,]*)\s+posts?\s+of\s+", re.I)
+_NARRATIVE_ORGANISATION = re.compile(r"^(?P<name>.+)\s+(?:in|under)\s+(?P<organisation>.+)$", re.I)
 _NARRATIVE_SEPARATOR = re.compile(r"(?P<separator>,|&|\band\b)\s*$", re.I)
 
 
@@ -749,7 +1193,7 @@ def parse_narrative_vacancies(
         if not name or not organisation or re.search(r"[,;]", organisation):
             return _ambiguous_narrative()
         pending.append((marker, name))
-        group_excerpt = candidate[group_start : body_end].strip(" ,&")[:8000]
+        group_excerpt = candidate[group_start:body_end].strip(" ,&")[:8000]
         grouped_qualifier = len(pending) > 1
         grouped.extend(
             (
@@ -875,9 +1319,7 @@ def _qualify_duplicate_post_names(posts: tuple[ParsedPost, ...]) -> tuple[Parsed
         )
         display_name = f"{base_name} - {organisation}"
         facts = tuple(
-            replace(fact, value=display_name)
-            if fact.field_path == "name"
-            else fact
+            replace(fact, value=display_name) if fact.field_path == "name" else fact
             for fact in post.facts
         )
         qualified.append(replace(post, name=display_name, facts=facts))
@@ -935,6 +1377,15 @@ def apply_post_detail_tables(
                         continue
                     value_type = CandidateValueType.INTEGER
                     value: object = int(match.group(1))
+                elif fact_key in _DATE_POST_FACTS:
+                    parsed_date = _parse_numeric_date(raw_value)
+                    if parsed_date is None:
+                        ambiguities.append(
+                            f"Post detail {fact_key} at {locator} is not an exact date"
+                        )
+                        continue
+                    value_type = CandidateValueType.DATE
+                    value = parsed_date.isoformat()
                 else:
                     value_type = CandidateValueType.STRING
                     value = _clean_text(raw_value)
@@ -1024,8 +1475,10 @@ def _stable_post_key(name: str, qualifier: str) -> str:
 
 def archive_candidate_key(authority_code: str, metadata: ArchiveNoticeMetadata) -> str:
     digest = hashlib.sha256(metadata.document_url.encode("utf-8")).hexdigest()[:12].upper()
-    year = metadata.notification_date.year if metadata.notification_date else _explicit_year(
-        metadata.title
+    year = (
+        metadata.notification_date.year
+        if metadata.notification_date
+        else _explicit_year(metadata.title)
     )
     return f"{authority_code}_ADVT_{year or 'UNKNOWN'}_{digest}"
 

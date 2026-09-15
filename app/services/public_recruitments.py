@@ -14,6 +14,7 @@ from app.repositories.public_recruitments import (
     PublicRecruitmentRepository,
 )
 from app.schemas.public_recruitments import (
+    PublicAdvertisementSummary,
     PublicApplicationStatus,
     PublicApplicationWindowRead,
     PublicAuthorityRead,
@@ -88,8 +89,7 @@ class PublicRecruitmentService:
         filtered = [
             item
             for item in derived
-            if self._within_default_history(item, evaluated_on)
-            and self._matches(item, filters)
+            if self._within_default_history(item, evaluated_on) and self._matches(item, filters)
         ]
         ordered = sorted(filtered, key=lambda item: self._sort_key(item, sort))
         total = len(ordered)
@@ -168,6 +168,52 @@ class PublicRecruitmentService:
             sources=[unique_sources[key] for key in sorted(unique_sources)],
         )
 
+    def get_advertisement(
+        self, master_id: uuid.UUID, *, as_of: date | None = None
+    ) -> PublicAdvertisementSummary:
+        records = self.repository.list_current_active_for_master(master_id)
+        if not records:
+            raise ResourceNotFoundError("Public advertisement not found")
+        first = records[0]
+        shared_fields = [
+            field for field in first.revision.fields if not field.field_path.startswith("posts.")
+        ]
+        source_fields = {
+            field.id: field for record in records for field in self._visible_fields(record)
+        }
+        sources = self.repository.field_sources(list(source_fields.values()))
+        if len(sources) != len(source_fields) or any(
+            source.authority.id != first.authority.id for source in sources.values()
+        ):
+            raise ResourceNotFoundError("Public advertisement provenance is unavailable")
+        public_fields = [
+            PublicRecruitmentFieldRead(
+                field_path=field.field_path,
+                value_type=field.value_type,
+                value=field.value,
+                source=self._source(sources[field.source_candidate_field_id]),
+            )
+            for field in sorted(shared_fields, key=lambda item: item.field_path)
+        ]
+        unique_sources = {
+            (source.document.document_url, source.endpoint.name): self._source(source)
+            for source in sources.values()
+        }
+        evaluated_on = as_of or datetime.now(UTC).date()
+        return PublicAdvertisementSummary(
+            id=first.master.id,
+            title=first.revision.display_name,
+            authority=PublicAuthorityRead(
+                code=first.authority.code,
+                name=first.authority.name,
+                official_website_url=first.authority.official_website_url,
+            ),
+            current_revision_number=first.revision.revision_number,
+            fields=public_fields,
+            posts=[self._summary(self._derive(record, evaluated_on)) for record in records],
+            sources=[unique_sources[key] for key in sorted(unique_sources)],
+        )
+
     @staticmethod
     def _normalize_identifier(value: str | None, name: str, pattern: re.Pattern[str]) -> str | None:
         if value is None:
@@ -207,12 +253,15 @@ class PublicRecruitmentService:
                 else self._string_value(fields.get("post.name"))
             ),
             department=self._string_value(
-                fields.get("department") if "department" in fields else fields.get("organisation")
+                fields.get("department.name")
+                or fields.get("organisation.name")
+                or fields.get("department")
+                or fields.get("organisation")
             ),
             qualification=self._string_value(
                 fields.get("qualification.minimum")
-                if "qualification.minimum" in fields
-                else fields.get("eligibility.qualification.summary")
+                or fields.get("qualification.essential")
+                or fields.get("eligibility.qualification.summary")
             ),
         )
 
@@ -356,6 +405,7 @@ class PublicRecruitmentService:
         post = item.record.post
         return PublicRecruitmentSummary(
             id=post.public_id if post is not None else item.record.master.id,
+            advertisement_id=item.record.master.id,
             candidate_key=item.record.master.candidate_key,
             display_name=post.name if post is not None else item.record.revision.display_name,
             advertisement_title=item.record.revision.display_name,
@@ -371,6 +421,8 @@ class PublicRecruitmentService:
             application=item.application,
             vacancies_total=item.vacancies_total,
             post_name=item.post_name,
+            organisation=item.department,
+            qualification_summary=item.qualification,
         )
 
     @staticmethod
@@ -378,7 +430,24 @@ class PublicRecruitmentService:
         return PublicSourceRead(
             document_url=source.document.document_url,
             document_type=source.document.document_type,
+            label=PublicRecruitmentService._source_label(
+                source.document.document_url, source.document.document_type.value
+            ),
             endpoint_name=source.endpoint.name,
             source_class=source.endpoint.source_class,
             authority_code=source.authority.code,
         )
+
+    @staticmethod
+    def _source_label(document_url: str, document_type: str) -> str:
+        lowered = document_url.casefold()
+        for marker, label in (
+            ("corrigendum", "Official Corrigendum"),
+            ("addendum", "Official Addendum"),
+            ("syllabus", "Official Syllabus"),
+            ("annexure", "Official Annexure"),
+            ("instruction", "Official Application Instructions"),
+        ):
+            if marker in lowered:
+                return label
+        return f"Official {document_type.upper()}"

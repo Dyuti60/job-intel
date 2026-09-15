@@ -1,0 +1,50 @@
+{% extends "public/base.html" %}
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Jobs</a><span aria-hidden="true">/</span><span>Advertisement</span></nav>
+
+<section class="detail-hero">
+  <div>
+    <p class="eyebrow">Advertisement Summary</p>
+    <h1>{{ view.advertisement.title }}</h1>
+    <p>{{ view.advertisement.authority.name }}</p>
+    {% if view.official_document_url %}<a href="{{ view.official_document_url }}" target="_blank" rel="noopener noreferrer">Complete Official Advertisement <span aria-hidden="true">↗</span></a>{% endif %}
+  </div>
+</section>
+
+<section class="detail-section" aria-labelledby="posts-heading">
+  <h2 id="posts-heading">Posts in this Advertisement</h2>
+  <div class="job-grid">
+    {% for post in view.advertisement.posts %}
+    <article class="job-card">
+      <h3>{{ post.display_name }}</h3>
+      <p>Vacancies: {{ post.vacancies_total if post.vacancies_total is not none else 'Not specified' }}</p>
+      <a href="/jobs/{{ post.id }}">View Job Details</a>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+{% for section in view.sections %}
+<section class="detail-section" aria-labelledby="advertisement-{{ section.key }}-heading">
+  <h2 id="advertisement-{{ section.key }}-heading">{{ section.title }}</h2>
+  <div class="field-list">
+    {% for field in section.fields %}
+    <article class="field-row">
+      <div><h3>{{ field.label }}</h3><span class="type-label">{{ field.value_type }}</span></div>
+      <pre>{{ field.display_value }}</pre>
+      <a href="{{ field.source_url }}" target="_blank" rel="noopener noreferrer">Official source <span aria-hidden="true">↗</span></a>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+
+<section class="detail-section" aria-labelledby="official-documents-heading">
+  <h2 id="official-documents-heading">Official Documents</h2>
+  <div class="source-list">
+    {% for source in view.advertisement.sources %}
+    <article><h3>{{ source.label }}</h3><p>{{ source.endpoint_name }}</p><a href="{{ source.document_url }}" target="_blank" rel="noopener noreferrer">Open {{ source.label }} <span aria-hidden="true">↗</span></a></article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

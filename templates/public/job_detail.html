@@ -8,6 +8,10 @@
     <h1>{{ view.recruitment.display_name }}</h1>
     <p>{{ view.recruitment.authority.name }}</p>
     {% if view.recruitment.post_key %}<p>Advertisement: {{ view.recruitment.advertisement_title }}</p>{% endif %}
+    <div class="form-actions">
+      <a href="/jobs/advertisements/{{ view.recruitment.advertisement_id }}">Advertisement Summary</a>
+      {% if view.official_document_url %}<a href="{{ view.official_document_url }}" target="_blank" rel="noopener noreferrer">Complete Official Advertisement <span aria-hidden="true">↗</span></a>{% endif %}
+    </div>
   </div>
   <span class="status status-{{ view.recruitment.application.status.value|lower }}">{{ view.recruitment.application.status.value|replace('_', ' ')|title }}</span>
 </section>
@@ -17,62 +21,10 @@
   <dl class="summary-grid">
     <div><dt>Application opens</dt><dd>{{ view.recruitment.application.start_date or 'Not specified' }}</dd></div>
     <div><dt>Application closes</dt><dd>{{ view.recruitment.application.end_date or 'Not specified' }}</dd></div>
-    <div><dt>Vacancies</dt><dd>{{ view.recruitment.vacancies_total if view.recruitment.vacancies_total is not none else 'Not specified' }}</dd></div>
+    <div><dt>Post vacancies</dt><dd>{{ view.recruitment.vacancies_total if view.recruitment.vacancies_total is not none else 'Not specified' }}</dd></div>
     <div><dt>Last verified</dt><dd>{{ view.recruitment.last_verified_at.strftime('%Y-%m-%d') }}</dd></div>
   </dl>
   <p class="as-of">Application status evaluated on {{ view.recruitment.application.evaluated_on }}.</p>
-</section>
-
-<section class="detail-section" aria-labelledby="eligibility-heading">
-  <h2 id="eligibility-heading">Check deterministic eligibility</h2>
-  <p>This check uses only approved structured facts. Missing or text-only rules return Unknown or Review required.</p>
-  <form class="search-panel" method="post" action="/jobs/{{ view.recruitment.id }}/eligibility">
-    <div class="filter-grid">
-      <label>Date of birth
-        <input type="date" name="date_of_birth">
-      </label>
-      <label>Category
-        <select name="category">
-          <option value="">Not supplied</option>
-          <option value="GENERAL">General</option>
-          <option value="OBC_MOBC">OBC/MOBC</option>
-          <option value="SC">SC</option>
-          <option value="ST_P">ST(P)</option>
-          <option value="ST_H">ST(H)</option>
-          <option value="EWS">EWS</option>
-          <option value="PWBD">PwBD</option>
-        </select>
-      </label>
-      <label>Assam domicile
-        <select name="assam_domicile">
-          <option value="">Not supplied</option>
-          <option value="yes">Yes</option>
-          <option value="no">No</option>
-        </select>
-      </label>
-      <label>Experience in months
-        <input type="number" min="0" max="1200" name="experience_months">
-      </label>
-    </div>
-    <label>Qualifications, one per line
-      <textarea name="qualifications" rows="3" maxlength="10000"></textarea>
-    </label>
-    <div class="form-actions"><button type="submit">Evaluate eligibility</button></div>
-  </form>
-  {% if eligibility %}
-  <div class="summary-panel" aria-live="polite">
-    <h3>Overall: {{ eligibility.overall_outcome.value|replace('_', ' ')|title }}</h3>
-    <p>Rule {{ eligibility.rule_version }} · Master revision {{ eligibility.master_revision_number }}</p>
-    <div class="field-list">
-      {% for criterion in eligibility.criteria %}
-      <article class="field-row">
-        <h4>{{ criterion.criterion|title }} — {{ criterion.outcome.value|replace('_', ' ')|title }}</h4>
-        <p>{{ criterion.explanation }}</p>
-      </article>
-      {% endfor %}
-    </div>
-  </div>
-  {% endif %}
 </section>
 
 {% for section in view.sections %}
@@ -81,10 +33,7 @@
   <div class="field-list">
     {% for field in section.fields %}
     <article class="field-row">
-      <div>
-        <h3>{{ field.label }}</h3>
-        <span class="type-label">{{ field.value_type }}</span>
-      </div>
+      <div><h3>{{ field.label }}</h3><span class="type-label">{{ field.value_type }}</span></div>
       <pre>{{ field.display_value }}</pre>
       <a href="{{ field.source_url }}" target="_blank" rel="noopener noreferrer">Official source <span aria-hidden="true">↗</span></a>
     </article>
@@ -93,15 +42,48 @@
 </section>
 {% endfor %}
 
+<section class="detail-section" aria-labelledby="eligibility-heading">
+  <h2 id="eligibility-heading">Check deterministic eligibility</h2>
+  <p>This check uses only approved structured facts shown above. Missing or text-only rules return Unknown or Review required.</p>
+  <form class="search-panel" method="post" action="/jobs/{{ view.recruitment.id }}/eligibility">
+    <div class="filter-grid">
+      <label>Date of birth <input type="date" name="date_of_birth"></label>
+      <label>Category
+        <select name="category">
+          <option value="">Not supplied</option><option value="GENERAL">General</option>
+          <option value="OBC_MOBC">OBC/MOBC</option><option value="SC">SC</option>
+          <option value="ST_P">ST(P)</option><option value="ST_H">ST(H)</option>
+          <option value="EWS">EWS</option><option value="PWBD">PwBD</option>
+        </select>
+      </label>
+      <label>Assam domicile <select name="assam_domicile"><option value="">Not supplied</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+      <label>Experience in months <input type="number" min="0" max="1200" name="experience_months"></label>
+    </div>
+    <label>Qualifications, one per line <textarea name="qualifications" rows="3" maxlength="10000"></textarea></label>
+    <div class="form-actions"><button type="submit">Evaluate eligibility</button></div>
+  </form>
+  {% if eligibility %}
+  <div class="summary-panel" aria-live="polite">
+    <h3>Overall: {{ eligibility.overall_outcome.value|replace('_', ' ')|title }}</h3>
+    <p>Rule {{ eligibility.rule_version }} · Master revision {{ eligibility.master_revision_number }}</p>
+    <div class="field-list">
+      {% for criterion in eligibility.criteria %}
+      <article class="field-row"><h4>{{ criterion.criterion|title }} — {{ criterion.outcome.value|replace('_', ' ')|title }}</h4><p>{{ criterion.explanation }}</p></article>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</section>
+
 <section class="detail-section" aria-labelledby="sources-heading">
   <h2 id="sources-heading">Official Source</h2>
   <p>These registered sources underpin the approved values above.</p>
   <div class="source-list">
     {% for source in view.recruitment.sources %}
     <article>
-      <h3>{{ source.endpoint_name }}</h3>
-      <p><span class="source-class">{{ source.source_class.value|replace('_', ' ')|title }}</span> · {{ source.document_type.value }}</p>
-      <a href="{{ source.document_url }}" target="_blank" rel="noopener noreferrer">Open source document <span aria-hidden="true">↗</span></a>
+      <h3>{{ source.label }}</h3>
+      <p>{{ source.endpoint_name }} · <span class="source-class">{{ source.source_class.value|replace('_', ' ')|title }}</span> · {{ source.document_type.value }}</p>
+      <a href="{{ source.document_url }}" target="_blank" rel="noopener noreferrer">Open {{ source.label }} <span aria-hidden="true">↗</span></a>
     </article>
     {% endfor %}
   </div>

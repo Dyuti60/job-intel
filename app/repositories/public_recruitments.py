@@ -175,6 +175,38 @@ class PublicRecruitmentRepository:
         legacy_row = self.session.execute(legacy_statement).one_or_none()
         return PublicMasterRecord(*legacy_row) if legacy_row is not None else None
 
+    def list_current_active_for_master(self, master_id: uuid.UUID) -> list[PublicMasterRecord]:
+        statement = (
+            select(
+                RecruitmentMaster,
+                RecruitingAuthority,
+                RecruitmentMasterRevision,
+                MasterPost,
+            )
+            .join(
+                RecruitingAuthority,
+                RecruitingAuthority.id == RecruitmentMaster.recruiting_authority_id,
+            )
+            .join(
+                RecruitmentMasterRevision,
+                RecruitmentMasterRevision.id == RecruitmentMaster.current_revision_id,
+            )
+            .join(MasterPost, MasterPost.master_revision_id == RecruitmentMasterRevision.id)
+            .options(
+                selectinload(RecruitmentMasterRevision.fields),
+                selectinload(MasterPost.facts).selectinload(MasterPostFact.master_field),
+            )
+            .where(
+                RecruitmentMaster.id == master_id,
+                RecruitmentMaster.status == RecruitmentMasterStatus.ACTIVE,
+            )
+        )
+        rows = self.session.execute(statement).all()
+        if rows:
+            return [PublicMasterRecord(*row) for row in rows]
+        legacy = self.get_current_active(master_id)
+        return [legacy] if legacy is not None else []
+
     def field_sources(self, master_fields: list[MasterField]) -> dict[uuid.UUID, PublicFieldSource]:
         field_ids = [field.source_candidate_field_id for field in master_fields]
         if not field_ids:

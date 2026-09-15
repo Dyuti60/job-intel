@@ -104,6 +104,90 @@ def test_public_job_detail_shows_approved_fields_and_safe_source_links(
     assert "projection_hash" not in response.text
 
 
+def test_public_detail_renders_rich_master_fields_before_eligibility_and_official_pdf(
+    client: TestClient,
+) -> None:
+    graph = _direct_graph(
+        client,
+        "RICH_DETAIL",
+        [
+            {
+                "field_path": "recruitment_name",
+                "value_type": "STRING",
+                "value": "Driver Recruitment",
+            },
+            {
+                "field_path": "qualification.essential",
+                "value_type": "STRING",
+                "value": "HSLC and a valid driving licence",
+            },
+            {"field_path": "age.minimum", "value_type": "INTEGER", "value": 18},
+            {
+                "field_path": "age.relaxations",
+                "value_type": "JSON",
+                "value": [{"category": "SC/ST", "relaxation": "5 years"}],
+            },
+            {
+                "field_path": "physical.criteria",
+                "value_type": "STRING",
+                "value": "Minimum height 162.5 cm",
+            },
+            {
+                "field_path": "medical.criteria",
+                "value_type": "STRING",
+                "value": "Must be medically fit",
+            },
+            {
+                "field_path": "application.steps",
+                "value_type": "JSON",
+                "value": ["Open the official portal", "Submit before the closing date"],
+            },
+            {
+                "field_path": "application.documents_required",
+                "value_type": "JSON",
+                "value": ["Age proof", "Driving licence"],
+            },
+            {
+                "field_path": "selection.phases",
+                "value_type": "JSON",
+                "value": [{"sequence": 1, "name": "Physical Standard Test"}],
+            },
+            {
+                "field_path": "selection.exam_pattern",
+                "value_type": "JSON",
+                "value": [{"phase": "Written examination", "marks": "100"}],
+            },
+            {
+                "field_path": "syllabus.phases",
+                "value_type": "JSON",
+                "value": [{"phase": "Written examination", "subject": "General Knowledge"}],
+            },
+        ],
+    )
+    publication = _publish(client, graph["confidence"]["id"]).json()
+    master_id = publication["master"]["id"]
+
+    detail = client.get(f"/jobs/{master_id}")
+    summary = client.get(f"/jobs/advertisements/{master_id}")
+
+    assert detail.status_code == summary.status_code == 200
+    assert "Essential Qualification" in detail.text
+    assert "Physical Standards" in detail.text
+    assert "Medical Standards" in detail.text
+    assert "Official Application Steps" in detail.text
+    assert "Documents Required" in detail.text
+    assert "Recruitment Phases" in detail.text
+    assert "Exam Pattern / Syllabus" in detail.text
+    assert detail.text.index("Educational Qualification") < detail.text.index(
+        "Check deterministic eligibility"
+    )
+    assert "Advertisement Summary" in detail.text
+    assert "Complete Official Advertisement" in detail.text
+    assert graph["document"]["document_url"] in detail.text
+    assert graph["document"]["document_url"] in summary.text
+    assert "Posts in this Advertisement" in summary.text
+
+
 def test_public_web_hides_unpublished_and_inactive_records(
     client: TestClient, db_session: Session
 ) -> None:
