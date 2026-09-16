@@ -27,9 +27,12 @@ These rules apply to all future work in this repository.
 23. Prefer deterministic code for crawling, hashing, deduplication, state transitions, deadlines, and other rule-based behavior.
 24. External AI is optional and should be used only where it genuinely improves extraction or verification.
 25. Keep raw/discovery data separate from cleansed/approved master data.
-26. Advertisement is not Post; approved Post-level Master data is the canonical public job unit.
+26. Advertisement and Post are distinct; one advertisement may produce multiple independently
+    usable Posts. Approved Post-level Master data is the canonical public and eligibility unit,
+    with parent Advertisement provenance retained.
 27. Missing optional facts and low confidence do not by themselves invalidate a recruitment.
-28. Confidence, Review routing, and Publication policy are separate; policy versions are immutable.
+28. Confidence, Human Review routing, and Publication policy are separate, versioned concerns;
+    published policy versions are immutable.
 29. Rejection never deletes immutable source, candidate, evidence, verification, or review history.
 30. V1 must remain deterministic and LLM-independent; agentic Internet discovery is V2 scope.
 31. Prefer reusable bounded adapter families and respectful, rate-limited crawling.
@@ -43,25 +46,54 @@ These rules apply to all future work in this repository.
 37. Results, merit lists, admit cards, appointments, and similar lifecycle documents are not new
     jobs; historical advertisements do not imply recurrence.
 38. Migrations and backfills must never fabricate unsupported Post splits or facts.
-26. Advertisement and Post are distinct; one advertisement may produce multiple independently usable Posts.
-27. The approved canonical Master and deterministic eligibility unit is a Post, with its parent Advertisement provenance retained.
-28. Missing optional facts and low confidence do not by themselves invalidate a recruitment.
-29. Confidence, Human Review routing, and publication policy are separate, versioned concerns; published policy versions are immutable.
-30. Rejection never deletes source, evidence, candidate, review, or publication history.
-31. Official facts must remain separate from derived intelligence.
-32. V1 is deterministic and LLM-independent; agentic Internet discovery is future V2 scope.
-33. Reuse bounded adapter families where practical, and crawl official sites respectfully with rate and timeout limits.
-34. Scheduling and backfill must be idempotent and failure-isolated; historical advertisements never imply recurrence.
-35. Results, merit lists, answer keys, appointment notices, and similar lifecycle documents are not new jobs.
-36. Eligibility evaluates only approved Post Master revisions; missing or ambiguous requirements produce UNKNOWN or REVIEW_REQUIRED.
-37. The public runtime must not expose private review, operations, audit internals, or mutation capabilities.
-38. Operations UI actions must call bounded internal functions and must never execute arbitrary shell input.
-39. Migrations and backfills must not fabricate unsupported post splits or facts.
+39. Official facts must remain separate from derived intelligence.
 
 ## Codex Execution, Token, and Time Discipline
 
 These rules prevent implementation sessions from wasting tokens or execution time while preserving
 all correctness, trust, security, architecture, and engineering requirements above.
+
+### Execution mode selection
+
+Select the narrowest applicable mode before inspecting files:
+
+- `LOCAL_FIX`: a localized defect with an established architecture. Start with at most 3-5 directly
+  relevant files, do not perform repository-wide inspection, and follow references only when a
+  direct dependency requires it.
+- `FEATURE`: a bounded behavior addition. For a small Feature, use the same 3-5-file starting limit
+  and dependency-driven expansion as `LOCAL_FIX`.
+- `ARCHITECTURE_REVIEW`: broader inspection is allowed only when the user explicitly requests an
+  architecture review.
+- `DATA_MIGRATION`: inspect only affected models, the relevant migration chain,
+  repository/service code, and focused migration tests.
+- `SOURCE_ADAPTER`: inspect only the adapter/parser, direct helpers, fixtures/tests, and the minimum
+  persistence path needed. Do not inspect Human Review, public UI, scheduler, or publisher unless a
+  focused regression proves it necessary.
+
+For `LOCAL_FIX` and small `FEATURE` tasks, do not reread unchanged files, use one focused test
+command while iterating, and run full validation only once after implementation is stable.
+
+### Hard limits for ordinary tasks
+
+- Start with at most 3-5 directly relevant files before the first implementation change.
+- Do not run the complete pytest suite more than once unless the final run fails.
+- Do not run Alembic repeatedly during iteration.
+- Do not inspect Git history unless it is explicitly relevant to the task.
+- Do not inspect documentation before implementation unless a documented contract changes.
+- Do not wait for CI unless the user explicitly requests CI verification.
+- Stop after implementation, required validation, commit, and push.
+
+### Parser/source-adapter discipline
+
+- Start from the exact parser/adapter and the failing fixture or real extracted text.
+- Prefer reproducing the defect with one failing focused test before implementing the fix.
+- Do not inspect unrelated systems.
+- Do not broaden regex or heading vocabulary without a confirmed official-source need.
+- Preserve ambiguity instead of forcing extraction when ownership or meaning is uncertain.
+- Prefer small bounded parsing helpers over giant regexes.
+- For real-PDF hardening, use a small representative set of persisted SourceDocuments.
+- Do not commit real downloaded PDFs; keep fixtures to the minimum representative text needed.
+- Run complete validation once after focused parser tests pass.
 
 ### 1. Scope-first execution
 
