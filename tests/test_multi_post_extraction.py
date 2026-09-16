@@ -170,23 +170,46 @@ def test_pypdf_whitespace_and_multiline_sections_are_post_isolated() -> None:
     ]
     assert shared["domicile.requirement"].endswith("Permanent Resident of Assam")
     assert "162.5 cm" in str(shared["physical.criteria"])
+    assert "3200 metres" in str(shared["physical.criteria"])
+    assert "Long jump" in str(shared["physical.criteria"])
     assert "colour blindness" in str(shared["medical.criteria"])
+    assert "eyesight and hearing" in str(shared["medical.criteria"])
     assert len(shared["application.documents_required"]) == 2
     assert len(shared["selection.phases"]) == 5
     assert shared["selection.exam_pattern"][0]["questions"] == 100
     assert shared["selection.exam_pattern"][0]["marks"] == 50
+    assert shared["selection.exam_pattern"][0]["duration"] == "2 hours"
+    assert shared["selection.exam_pattern"][0]["negative_marking"] == "None"
+    assert shared["selection.exam_pattern"][0]["mode"] == "OMR answer sheet"
+    assert shared["selection.exam_pattern"][0]["languages"] == [
+        "Assamese",
+        "Bodo",
+        "Bengali",
+        "English",
+    ]
     assert shared["syllabus.phases"][0]["subjects"][-1] == "Logical reasoning"
 
     facts = [{fact.field_path: fact.value for fact in post.facts} for post in extraction.posts]
     assert facts[0]["vacancies.total"] == 127
     assert facts[0]["vacancies.tea_tribes_adivasi"] == 4
+    assert facts[0]["vacancies.women"] == 10
+    assert facts[0]["vacancies.ex_servicemen"] == 2
     assert facts[0]["age.maximum"] == 25
     assert facts[0]["pay.grade_pay"] == "Rs. 5600/-"
+    assert facts[0]["qualification.essential"] == (
+        "HSLC passed from recognised Board or Council"
+    )
+    assert facts[0]["qualification.desirable"] == "Heavy vehicle driving experience"
     assert facts[0]["qualification.registration_or_licence"].endswith("LMV or MMV or HMV")
     assert facts[1]["vacancies.total"] == 4
     assert facts[1]["age.minimum"] == 20
     assert facts[1]["age.maximum"] == 30
+    assert facts[1]["qualification.essential"] == (
+        "HSSLC passed from recognised Board or Council"
+    )
+    assert facts[1]["qualification.desirable"] == "Fire appliance driving experience"
     assert facts[1]["qualification.registration_or_licence"].endswith("for HMV")
+    assert "Heavy vehicle driving experience" not in str(facts[1])
     assert "LMV" not in str(facts[1])
 
     diagnostic = extraction_diagnostic_summary(

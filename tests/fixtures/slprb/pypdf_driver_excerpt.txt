@@ -15,6 +15,8 @@ Communities 4
 SC 9
 ST (P) 13
 ST (H) 6
+Women 10
+Ex-Servicemen 2
 Total 127
 Driver Operator in F & ES with Grade Pay of Rs. 5200/-
 Category Number of Posts Total
@@ -41,13 +43,22 @@ Page 2 of 4
 Board or Council.
 5.6.B For the post of Driver Constable in Assam Police, Applicant must possess valid driving license for LMV or MMV or HMV.
 5.6.C For the post of Driver Operator in F & ES, Applicant must possess valid driving license for HMV.
+Name of Post                  Essential Qualification                  Desirable Qualification                  Age
+Driver Constable              HSLC passed from recognised              Heavy vehicle driving experience         18 to 25 years
+                              Board or Council
+Driver Operator               HSSLC passed from recognised             Fire appliance driving experience        20 to 30 years
+                              Board or Council
 5.7 PHYSICAL STANDARDS:
 5.7.A Height:
 Male General 162.5 cm
 5.7.B Chest (Only for men):
 Normal 80 cm Expanded 85 cm
+5.7.C PHYSICAL EFFICIENCY TEST:
+Race 3200 metres within 14 minutes
+Long jump minimum 335 cm
 5.8 MEDICAL STANDARDS:
-Applicants must be in good mental and bodily health and free from colour blindness.
+Applicants must be in good mental and bodily health, have normal eyesight and hearing,
+and be free from colour blindness.
 Male General 162.5 cm
 Normal 80 cm Expanded 85 cm
 6. HOW TO APPLY:
@@ -66,10 +77,12 @@ Page 3 of 4
 (v) Medical Examination
 7.9 WRITTEN TEST:
 The test will consist of 100 multiple choice type questions on an OMR answer sheet.
-Total marks for the Written Test will be 50. There will be no negative marking.
+Total marks for the Written Test will be 50. Duration: 2 hours. There will be no negative marking.
 The subjects to be covered will be:
 (i) Elementary Arithmetic
 (ii) General English
 (iii) Logical reasoning
+The question paper for Written Exam will be in the following languages:
+Assamese/ Bodo/Bengali/English.
 7.10 GENERAL INSTRUCTIONS:
 Candidates must produce original documents during verification.

@@ -456,8 +456,9 @@ def parse_official_advertisement_text(
         )
     if split_status == AdvertisementSplitStatus.EXPLICIT:
         posts, ambiguities = apply_post_detail_tables(raw_text, posts)
+        posts, whitespace_ambiguities = apply_whitespace_post_detail_tables(raw_text, posts)
         posts, text_ambiguities = apply_pypdf_post_details(raw_text, posts)
-        ambiguities = (*ambiguities, *text_ambiguities)
+        ambiguities = (*ambiguities, *whitespace_ambiguities, *text_ambiguities)
         if ambiguities:
             warnings = (*warnings, *ambiguities)
             ambiguity_excerpt = "; ".join(ambiguities)[:8000]
@@ -572,6 +573,7 @@ _POST_DETAIL_HEADERS = {
     "minimumgrade": "qualification.minimum_grade",
     "minimumage": "age.minimum",
     "maximumage": "age.maximum",
+    "age": "age.range",
     "agereferencedate": "age.reference_date",
     "agecutoffdate": "age.reference_date",
     "agerelaxation": "age.relaxations",
@@ -592,6 +594,134 @@ _POST_DETAIL_HEADERS = {
 
 _INTEGER_POST_FACTS = {"age.minimum", "age.maximum"}
 _DATE_POST_FACTS = {"age.reference_date"}
+
+
+def apply_whitespace_post_detail_tables(
+    raw_text: str, posts: tuple[ParsedPost, ...]
+) -> tuple[tuple[ParsedPost, ...], tuple[str, ...]]:
+    """Attach bounded Post details from aligned pypdf columns without pipe delimiters."""
+    lines = raw_text.replace("\r\n", "\n").split("\n")
+    fact_maps = [{fact.field_path: fact for fact in post.facts} for post in posts]
+    ambiguities: list[str] = []
+    for header_index, line in enumerate(lines):
+        columns = _aligned_columns(line)
+        mapped = {
+            index: _POST_DETAIL_HEADERS[key]
+            for index, (_start, heading) in enumerate(columns)
+            if (key := _header_key(heading)) in _POST_DETAIL_HEADERS
+        }
+        detail_paths = {
+            path
+            for path in mapped.values()
+            if path not in {"post_name", "organisation", "department"}
+        }
+        if "post_name" not in mapped.values() or not detail_paths:
+            continue
+        starts = [start for start, _heading in columns]
+        rows = _aligned_detail_rows(lines, header_index, starts, mapped, posts)
+        for row_number, values in enumerate(rows, start=1):
+            locator = f"pdf:whitespace-table=post-details-{header_index + 1};row={row_number}"
+            matches = _matching_post_indexes(posts, values)
+            if len(matches) != 1:
+                ambiguities.append(
+                    f"Whitespace Post detail row at {locator} matches {len(matches)} Posts"
+                )
+                continue
+            facts: list[ParsedField] = []
+            excerpt = " | ".join(values.get(path, "") for path in mapped.values())[:8000]
+            for path in sorted(detail_paths):
+                raw_value = _clean_text(values.get(path, ""))
+                if not raw_value or raw_value in {"-", "—"}:
+                    continue
+                if path == "age.range":
+                    age_match = re.fullmatch(
+                        r"(\d{1,3})\s*(?:to|-|and)\s*(\d{1,3})(?:\s*years?)?",
+                        raw_value,
+                        re.I,
+                    )
+                    if age_match is None:
+                        ambiguities.append(
+                            f"Whitespace Post age at {locator} is not an exact range"
+                        )
+                        continue
+                    for age_path, group in (("age.minimum", 1), ("age.maximum", 2)):
+                        facts.append(
+                            ParsedField(
+                                age_path,
+                                CandidateValueType.INTEGER,
+                                int(age_match.group(group)),
+                                raw_value,
+                                f"{locator};column=age",
+                                excerpt,
+                            )
+                        )
+                    continue
+                facts.append(
+                    ParsedField(
+                        path,
+                        CandidateValueType.STRING,
+                        raw_value,
+                        raw_value,
+                        f"{locator};column={path}",
+                        excerpt,
+                    )
+                )
+            _attach_post_facts(fact_maps, matches, tuple(facts), ambiguities, locator)
+    updated = tuple(
+        replace(post, facts=tuple(facts[path] for path in sorted(facts)))
+        for post, facts in zip(posts, fact_maps, strict=True)
+    )
+    return updated, tuple(ambiguities)
+
+
+def _aligned_columns(line: str) -> list[tuple[int, str]]:
+    if "|" in line or not re.search(r"\S\s{2,}\S", line):
+        return []
+    return [
+        (match.start(), _clean_text(match.group(0)))
+        for match in re.finditer(r"\S(?:.*?\S)?(?=\s{2,}|$)", line.rstrip())
+    ]
+
+
+def _aligned_detail_rows(
+    lines: list[str],
+    header_index: int,
+    starts: list[int],
+    mapped: dict[int, str],
+    posts: tuple[ParsedPost, ...],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for line in lines[header_index + 1 : header_index + 51]:
+        if not line.strip():
+            if current:
+                rows.append(current)
+                current = None
+            if rows:
+                break
+            continue
+        cells = [
+            line[start : starts[index + 1] if index + 1 < len(starts) else None].strip()
+            for index, start in enumerate(starts)
+        ]
+        values = {mapped[index]: cells[index] for index in mapped if index < len(cells)}
+        post_name = _clean_text(values.get("post_name", ""))
+        if post_name:
+            if not _matching_post_indexes(posts, values):
+                if current:
+                    rows.append(current)
+                break
+            if current:
+                rows.append(current)
+            current = values
+        elif current:
+            for path, value in values.items():
+                if path == "post_name" or not value:
+                    continue
+                current[path] = _clean_text(f"{current.get(path, '')} {value}")
+    if current:
+        rows.append(current)
+    return rows
 
 
 def parse_vacancy_table(
@@ -1145,6 +1275,25 @@ def _exam_fields(lines: list[str], locator: str, excerpt: str) -> list[ParsedFie
         pattern["negative_marking"] = "None"
     if re.search(r"\bOMR\s+answer\s+sheet\b", text, re.I):
         pattern["mode"] = "OMR answer sheet"
+    if re.search(r"question\s+paper.+?following\s+languages", text, re.I):
+        language_line = next(
+            (
+                line
+                for line in lines
+                if re.fullmatch(
+                    r"(?:Assamese|Bodo|Bengali|English)(?:\s*/\s*"
+                    r"(?:Assamese|Bodo|Bengali|English))+\.?",
+                    line,
+                    re.I,
+                )
+            ),
+            None,
+        )
+        if language_line:
+            pattern["languages"] = [
+                language.strip().title()
+                for language in language_line.rstrip(".").split("/")
+            ]
     subjects = _subjects_from_exam_lines(lines)
     parsed: list[ParsedField] = []
     if len(pattern) > 1:
@@ -1778,6 +1927,19 @@ _CATEGORY_PATHS = {
     "st (p)": "vacancies.st_p",
     "st (h)": "vacancies.st_h",
     "ews": "vacancies.ews",
+    "pwbd": "vacancies.pwbd",
+    "pwd": "vacancies.pwbd",
+    "women": "vacancies.women",
+    "ex-servicemen": "vacancies.ex_servicemen",
+}
+_PRIMARY_CATEGORY_PATHS = {
+    "vacancies.ur",
+    "vacancies.obc_mobc",
+    "vacancies.tea_tribes_adivasi",
+    "vacancies.sc",
+    "vacancies.st_p",
+    "vacancies.st_h",
+    "vacancies.ews",
 }
 
 
@@ -1983,7 +2145,10 @@ def _attach_roster_blocks(
         post_index = matches[0]
         expected = fact_maps[post_index].get("vacancies.total")
         categories = _category_counts(block)
-        if expected is None or not categories or sum(categories.values()) != expected.value:
+        reconciled_total = sum(
+            value for path, value in categories.items() if path in _PRIMARY_CATEGORY_PATHS
+        )
+        if expected is None or not categories or reconciled_total != expected.value:
             ambiguities.append(f"Post roster at {locator} does not reconcile to the Post total")
             continue
         excerpt = "\n".join(block)[:8000]
