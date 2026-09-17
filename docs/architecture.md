@@ -608,6 +608,13 @@ positive, uniquely keyed entries are required. Repeated base Post names and trai
 group members are displayed with their supported organisation, while stable identity always uses
 the base Post plus organisation so same-named Posts in different units remain distinct.
 
+When an Advertisement first names an intermediate organisational Post group but a bounded official
+roster then provides independently named trade rows with reconciled row vacancies and eligibility,
+the lowest safely attributable trade is the canonical Post. The intermediate group total remains
+Advertisement context and is not emitted as an additional Post. Category/gender rows and
+trade-specific requirements attach only after exact organisation/trade ownership checks; an
+unreconciled or incomplete roster preserves the parent Posts and records ambiguity.
+
 Post-wise tables may add essential/minimum/desirable and technical qualification,
 subject/specialisation, recognised-institution or licence requirements, minimum/maximum age and
 reference date, pay, experience, domicile/nationality/language, physical/medical criteria,

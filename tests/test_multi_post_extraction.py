@@ -255,6 +255,123 @@ def test_pypdf_post_fact_without_exact_organisation_is_left_ambiguous() -> None:
     )
 
 
+def test_grade_iv_pypdf_uses_atomic_trade_posts_and_clean_section_ownership() -> None:
+    metadata = ArchiveNoticeMetadata(
+        title=(
+            "Advertisement for 181 posts of Grade IV staff in Assam Police, "
+            "6 posts of Grade IV staff in Assam Commando Battalions and "
+            "69 posts of Grade IV staff under DGCD & CGHG"
+        ),
+        document_url="https://slprbassam.in/pdf/grade-iv-atomic.pdf",
+        notification_number="SLPRB/REC/GRADE-IV/2026/91",
+        notification_date=date(2026, 1, 16),
+    )
+    extraction = parse_official_advertisement_text(
+        _text("pypdf_grade_iv_excerpt.txt"),
+        metadata,
+        "State Level Police Recruitment Board, Assam",
+    )
+
+    expected = {
+        ("Cook", "Assam Police"): 115,
+        ("Barber", "Assam Police"): 34,
+        ("Water Carrier", "Assam Police"): 19,
+        ("Dhobi", "Assam Police"): 11,
+        ("Cobbler", "Assam Police"): 2,
+        ("Barber", "Assam Commando Battalions"): 2,
+        ("Water Carrier", "Assam Commando Battalions"): 3,
+        ("Plumber", "Assam Commando Battalions"): 1,
+        ("Cook", "DGCD & CGHG"): 27,
+        ("Water Carrier", "DGCD & CGHG"): 11,
+        ("Dhobi", "DGCD & CGHG"): 8,
+        ("Barber", "DGCD & CGHG"): 12,
+        ("Cobbler", "DGCD & CGHG"): 11,
+    }
+    actual = {}
+    facts_by_name = {}
+    for post in extraction.posts:
+        facts = {fact.field_path: fact.value for fact in post.facts}
+        organisation = facts["organisation.name"]
+        actual[(post.normalized_name.title(), organisation)] = facts["vacancies.total"]
+        facts_by_name[post.name] = facts
+    assert actual == expected
+    assert len({post.post_key for post in extraction.posts}) == 13
+    assert not any(post.normalized_name == "grade iv staff" for post in extraction.posts)
+    shared = {field.field_path: field.value for field in extraction.fields}
+    assert shared["vacancies.total"] == 256
+    assert shared["qualification.minimum"].startswith("Minimum Class VIII")
+    assert shared["qualification.maximum"].startswith("HSSLC or Class XII")
+
+    police_cook = facts_by_name["Cook - Assam Police"]
+    police_barber = facts_by_name["Barber - Assam Police"]
+    commando_plumber = facts_by_name["Plumber - Assam Commando Battalions"]
+    assert "Cooking" in police_cook["experience.requirement"]
+    assert "Saloon" not in str(police_cook)
+    assert "Saloon" in police_barber["experience.requirement"]
+    assert "Cooking" not in str(police_barber)
+    assert "Industrial Training Institution" in commando_plumber["qualification.certificate"]
+    assert police_cook["age.maximum"] == 40
+    assert commando_plumber["age.maximum"] == 25
+    assert commando_plumber["age.reference_date"] == "2026-01-01"
+    assert police_cook["vacancies.ur"] == 60
+    assert police_cook["vacancies.women"] == 12
+    assert police_cook["vacancies.category_gender"][0] == {
+        "category": "UR",
+        "male": 54,
+        "female": 6,
+        "total": 60,
+    }
+
+    physical = shared["physical.criteria"]
+    assert physical["height"][0]["male"] == "160 cm"
+    assert physical["height"][1]["female"] == "147.5 cm"
+    assert physical["chest"][0]["normal"] == "Min. 80 cm"
+    assert physical["chest"][0]["categories"].endswith("ST (P)")
+    assert "160 cm" not in str(shared["application.steps"])
+    assert shared["application.steps"][-1].startswith("Upload necessary documents")
+    assert len(shared["application.documents_required"]) == 3
+    assert [phase["name"] for phase in shared["selection.phases"]] == [
+        "Preliminary Identity Verification",
+        "Medical Examination",
+        "Physical Standard Test (PST)",
+        "Trade Proficiency Test (TPT)",
+        "Final Merit List",
+    ]
+    assert shared["selection.trade_proficiency_test"]["maximum_marks"] == 50
+    assert shared["selection.final_merit"]["qualifying_percentage"] == 33
+    assert "Rejection Slip" not in str(shared["selection.phases"])
+    assert "colour blind" in str(shared["medical.criteria"])
+    assert shared["age.relaxations"][0]["relaxation"] == "5 years"
+
+
+def test_unreconciled_trade_roster_preserves_parent_posts_and_ambiguity() -> None:
+    raw_text = _text("pypdf_grade_iv_excerpt.txt").replace(
+        "Cook 54 6 25 3 3 0 7 1 10 1 4 1 115",
+        "Cook 54 6 25 3 3 0 7 1 10 1 4 1 114",
+    )
+    extraction = parse_official_advertisement_text(
+        raw_text,
+        ArchiveNoticeMetadata(
+            title=(
+                "Advertisement for 181 posts of Grade IV staff in Assam Police, "
+                "6 posts of Grade IV staff in Assam Commando Battalions and "
+                "69 posts of Grade IV staff under DGCD & CGHG"
+            ),
+            document_url="https://slprbassam.in/pdf/grade-iv-unreconciled.pdf",
+            notification_number=None,
+            notification_date=None,
+        ),
+        "State Level Police Recruitment Board, Assam",
+    )
+
+    assert [post.normalized_name for post in extraction.posts] == [
+        "grade iv staff",
+        "grade iv staff",
+        "grade iv staff",
+    ]
+    assert any("do not reconcile" in warning for warning in extraction.warnings)
+
+
 def test_unheaded_optional_rules_are_not_fabricated() -> None:
     extraction = parse_official_advertisement_text(
         "Online applications from 20/09/2026 to 20/10/2026. No syllabus is supplied.",
@@ -721,6 +838,82 @@ def test_pypdf_like_extraction_reaches_candidate_master_and_public_detail(
     assert values["application.documents_required"][1].endswith("valid driving licence.")
     assert values["selection.exam_pattern"][0]["questions"] == 100
     assert values["syllabus.phases"][0]["subjects"][0] == "Elementary Arithmetic"
+
+
+def test_atomic_grade_iv_posts_reach_master_and_public_jobs(client, db_session, tmp_path) -> None:
+    metadata = ArchiveNoticeMetadata(
+        title=(
+            "Advertisement for 181 posts of Grade IV staff in Assam Police, "
+            "6 posts of Grade IV staff in Assam Commando Battalions and "
+            "69 posts of Grade IV staff under DGCD & CGHG"
+        ),
+        document_url="https://slprbassam.in/pdf/grade-iv-atomic.pdf",
+        notification_number="SLPRB/REC/GRADE-IV/2026/91",
+        notification_date=date(2026, 1, 16),
+    )
+    content = _text("pypdf_grade_iv_excerpt.txt").encode()
+    extraction = parse_official_advertisement_text(
+        content.decode(), metadata, "State Level Police Recruitment Board, Assam"
+    )
+    result = ArchiveAdapterResult(
+        listing_document=AdapterDocument(
+            _resource("https://slprbassam.in/", b"<html>official</html>", "text/html"),
+            DocumentType.HTML,
+            "html",
+        ),
+        notices=(
+            ArchiveNotice(
+                metadata=metadata,
+                document=AdapterDocument(
+                    _resource(metadata.document_url, content, "application/pdf"),
+                    DocumentType.PDF,
+                    "pdf",
+                ),
+                candidate_key=archive_candidate_key("SLPRB_ASSAM", metadata),
+                fields=extraction.fields,
+                posts=extraction.posts,
+                split_status=extraction.split_status,
+                split_note=extraction.split_note,
+            ),
+        ),
+        warnings=(),
+    )
+    OfficialArchiveDiscoveryWorkerService(
+        db_session,
+        Settings(raw_storage_root=str(tmp_path)),
+        logging.getLogger(__name__),
+        OFFICIAL_ARCHIVE_SOURCES["SLPRB_ASSAM"],
+    ).run(adapter=_FakeAdapter(result))
+
+    revision_row = db_session.scalar(select(RecruitmentCandidateRevision))
+    assert revision_row is not None
+    assert db_session.scalar(select(func.count()).select_from(RecruitmentPost)) == 13
+    revision = client.get(f"/api/v1/candidate-revisions/{revision_row.id}").json()
+    document = client.get(f"/api/v1/source-documents/{revision_row.source_document_id}").json()
+    assert client.patch(
+        f"/api/v1/recruitment-candidates/{revision_row.recruitment_candidate_id}",
+        json={"status": "READY_FOR_VERIFICATION"},
+    ).status_code == 200
+    confidence = _verify_revision(client, document, revision)["confidence"]
+    assert _publish(client, confidence["id"]).status_code == 201
+
+    public = client.get("/api/public/v1/recruitments", params={"as_of": "2026-01-22"}).json()
+    assert public["total"] == 13
+    assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 13
+    assert not any(item["display_name"].startswith("Grade IV Staff") for item in public["items"])
+    dgcd_cook = next(
+        item
+        for item in public["items"]
+        if item["display_name"] == "Cook - DGCD & CGHG"
+    )
+    assert dgcd_cook["vacancies_total"] == 27
+    detail = client.get(f"/api/public/v1/recruitments/{dgcd_cook['id']}").json()
+    values = {field["field_path"]: field["value"] for field in detail["fields"]}
+    assert values["vacancies.total"] == 27
+    assert values["vacancies.ur"] == 15
+    assert "Cooking" in values["experience.requirement"]
+    assert values["qualification.maximum"].startswith("HSSLC or Class XII")
+    assert "160 cm" not in str(values["application.steps"])
 
 
 def test_slprb_narrative_publishes_three_isolated_master_posts_and_public_jobs(

@@ -455,10 +455,16 @@ def parse_official_advertisement_text(
             metadata.title, raw_text
         )
     if split_status == AdvertisementSplitStatus.EXPLICIT:
+        posts, trade_ambiguities = refine_atomic_trade_posts(raw_text, posts)
         posts, ambiguities = apply_post_detail_tables(raw_text, posts)
         posts, whitespace_ambiguities = apply_whitespace_post_detail_tables(raw_text, posts)
         posts, text_ambiguities = apply_pypdf_post_details(raw_text, posts)
-        ambiguities = (*ambiguities, *whitespace_ambiguities, *text_ambiguities)
+        ambiguities = (
+            *trade_ambiguities,
+            *ambiguities,
+            *whitespace_ambiguities,
+            *text_ambiguities,
+        )
         if ambiguities:
             warnings = (*warnings, *ambiguities)
             ambiguity_excerpt = "; ".join(ambiguities)[:8000]
@@ -594,6 +600,290 @@ _POST_DETAIL_HEADERS = {
 
 _INTEGER_POST_FACTS = {"age.minimum", "age.maximum"}
 _DATE_POST_FACTS = {"age.reference_date"}
+
+
+_TRADE_GROUP_HEADING = re.compile(
+    r"^(.+?)\s*(?::-|:)\s*The\s+Post\s+based\s+category\s+wise\s+distribution\b",
+    re.I,
+)
+_TRADE_CATEGORY_PATTERNS = (
+    ("UR", r"\bUR\b", "vacancies.ur"),
+    ("OBC/MOBC", r"\bOBC\s*/\s*MOBC\b", "vacancies.obc_mobc"),
+    (
+        "Tea Tribes & Adivasi",
+        r"\bTea\s+Tribes\s*&\s*Adivasi\b",
+        "vacancies.tea_tribes_adivasi",
+    ),
+    ("SC", r"\bSC\b", "vacancies.sc"),
+    ("ST(P)", r"\bST\s*\(P\)", "vacancies.st_p"),
+    ("ST(H)", r"\bST\s*\(H\)", "vacancies.st_h"),
+    ("EWS", r"\bEWS\b", "vacancies.ews"),
+)
+
+
+def refine_atomic_trade_posts(
+    raw_text: str, posts: tuple[ParsedPost, ...]
+) -> tuple[tuple[ParsedPost, ...], tuple[str, ...]]:
+    """Replace intermediate organisation Posts with reconciled trade roster rows."""
+    lines = _source_lines(raw_text)
+    starts = [
+        (index, match)
+        for index, line in enumerate(lines)
+        if (match := _TRADE_GROUP_HEADING.match(line))
+    ]
+    if not starts:
+        return posts, ()
+    replacements: dict[int, list[ParsedPost]] = {}
+    ambiguities: list[str] = []
+    for occurrence, (start, match) in enumerate(starts, start=1):
+        end = starts[occurrence][0] if occurrence < len(starts) else len(lines)
+        section_end = next(
+            (
+                index
+                for index in range(start + 1, end)
+                if _match_kind(lines[index]) == "eligibility"
+            ),
+            end,
+        )
+        heading_organisation = _clean_text(match.group(1)).strip(" :-")
+        parent_matches = [
+            index
+            for index, post in enumerate(posts)
+            if _canonical_owner(_post_organisation(post))
+            == _canonical_owner(heading_organisation)
+        ]
+        locator = f"pdf:trade-roster;occurrence={occurrence}"
+        if len(parent_matches) != 1:
+            ambiguities.append(
+                f"Trade roster at {locator} matches {len(parent_matches)} organisation Posts"
+            )
+            continue
+        parent_index = parent_matches[0]
+        organisation = _post_organisation(posts[parent_index])
+        rows, error = _parse_trade_roster_rows(lines[start + 1 : section_end])
+        parent_total = next(
+            (
+                int(fact.value)
+                for fact in posts[parent_index].facts
+                if fact.field_path == "vacancies.total"
+            ),
+            None,
+        )
+        if error or not rows or parent_total != sum(row[1] for row in rows):
+            ambiguities.append(error or f"Trade roster at {locator} does not reconcile")
+            continue
+        children: list[ParsedPost] = []
+        for row_number, (trade_name, total, categories) in enumerate(rows, start=1):
+            row_locator = f"{locator};row={row_number}"
+            display_name = f"{trade_name} - {organisation}"
+            facts: list[ParsedField] = [
+                ParsedField(
+                    "name", CandidateValueType.STRING, display_name, trade_name,
+                    f"{row_locator};field=post", trade_name,
+                ),
+                ParsedField(
+                    "organisation.name", CandidateValueType.STRING, organisation,
+                    organisation, f"{row_locator};field=organisation", organisation,
+                ),
+                ParsedField(
+                    "vacancies.total", CandidateValueType.INTEGER, total, str(total),
+                    f"{row_locator};field=total", str(total),
+                ),
+            ]
+            men = sum(category["male"] for category in categories)
+            women = sum(category["female"] for category in categories)
+            category_gender = [
+                {key: value for key, value in category.items() if key != "path"}
+                for category in categories
+            ]
+            facts.extend(
+                (
+                    ParsedField(
+                        "vacancies.men", CandidateValueType.INTEGER, men, str(men),
+                        f"{row_locator};field=men", str(men),
+                    ),
+                    ParsedField(
+                        "vacancies.women", CandidateValueType.INTEGER, women, str(women),
+                        f"{row_locator};field=women", str(women),
+                    ),
+                    ParsedField(
+                        "vacancies.category_gender", CandidateValueType.JSON, category_gender,
+                        str(category_gender), f"{row_locator};field=category-gender",
+                        str(category_gender),
+                    ),
+                )
+            )
+            for category in categories:
+                facts.append(
+                    ParsedField(
+                        category["path"], CandidateValueType.INTEGER, category["total"],
+                        str(category["total"]), f"{row_locator};field={category['path']}",
+                        str(category),
+                    )
+                )
+            children.append(
+                ParsedPost(
+                    post_key=_stable_post_key(trade_name, organisation),
+                    ordinal=0,
+                    name=display_name,
+                    normalized_name=" ".join(trade_name.casefold().split()),
+                    source_locator=row_locator,
+                    facts=tuple(sorted(facts, key=lambda fact: fact.field_path)),
+                )
+            )
+        replacements[parent_index] = children
+    if ambiguities or len(replacements) != len(starts):
+        return posts, tuple(ambiguities or ["Trade rosters could not be decomposed completely"])
+    refined: list[ParsedPost] = []
+    for index, post in enumerate(posts):
+        refined.extend(replacements.get(index, [post]))
+    if len({post.post_key for post in refined}) != len(refined):
+        return posts, ("Trade rosters produce duplicate stable Post identities",)
+    refined = [replace(post, ordinal=ordinal) for ordinal, post in enumerate(refined, start=1)]
+    refined_posts, qualification_ambiguities = _attach_trade_requirements(lines, tuple(refined))
+    return refined_posts, qualification_ambiguities
+
+
+def _parse_trade_roster_rows(
+    lines: list[str],
+) -> tuple[list[tuple[str, int, list[dict[str, object]]]], str | None]:
+    header_text = " ".join(lines[:8])
+    category_matches = sorted(
+        (
+            match.start(),
+            label,
+            path,
+        )
+        for label, pattern, path in _TRADE_CATEGORY_PATTERNS
+        if (match := re.search(pattern, header_text, re.I))
+    )
+    categories = [(label, path) for _position, label, path in category_matches]
+    if not categories:
+        return [], "Trade roster has no deterministic category header"
+    rows: list[tuple[str, int, list[dict[str, object]]]] = []
+    pending_name: list[str] = []
+    for line in lines:
+        if _match_section_heading(line) is not None:
+            break
+        if re.match(
+            r"^(?:Name\s+of|Posts?$|UR\b|&\s*Adivasi\b|TOTAL\b|M\s+F\b)",
+            line,
+            re.I,
+        ):
+            continue
+        numbers = [int(value) for value in re.findall(r"\b\d+\b", line)]
+        if not numbers:
+            if re.fullmatch(r"[A-Za-z][A-Za-z ]+", line):
+                pending_name.append(_clean_text(line))
+            continue
+        first_number = re.search(r"\b\d+\b", line)
+        assert first_number is not None
+        prefix = _clean_text(line[: first_number.start()])
+        trade_name = _clean_text(" ".join((*pending_name, prefix)))
+        pending_name = []
+        expected_values = len(categories) * 2
+        if len(numbers) not in {expected_values, expected_values + 1} or not trade_name:
+            return [], "Trade roster row has an unsupported whitespace shape"
+        gender_values = numbers[:expected_values]
+        total = numbers[-1] if len(numbers) == expected_values + 1 else sum(gender_values)
+        category_rows = [
+            {
+                "category": label,
+                "path": path,
+                "male": gender_values[index * 2],
+                "female": gender_values[index * 2 + 1],
+                "total": gender_values[index * 2] + gender_values[index * 2 + 1],
+            }
+            for index, (label, path) in enumerate(categories)
+        ]
+        if sum(int(category["total"]) for category in category_rows) != total:
+            return [], "Trade roster category/gender values do not reconcile to the row total"
+        rows.append((trade_name, total, category_rows))
+    return rows, None
+
+
+def _attach_trade_requirements(
+    lines: list[str], posts: tuple[ParsedPost, ...]
+) -> tuple[tuple[ParsedPost, ...], tuple[str, ...]]:
+    start = next(
+        (index for index, line in enumerate(lines) if _match_kind(line) == "qualification"),
+        None,
+    )
+    end = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if start is not None and index > start and _match_kind(line) == "physical"
+        ),
+        None,
+    )
+    if start is None or end is None:
+        return posts, ()
+    labels = {
+        post.normalized_name
+        for post in posts
+    }
+    blocks: dict[str, list[str]] = {}
+    current: str | None = None
+    for line in lines[start:end]:
+        match = re.fullmatch(r"(.+?)\s*:-\s*", line)
+        normalized = " ".join(match.group(1).casefold().split()) if match else ""
+        if normalized in labels:
+            current = normalized
+            blocks.setdefault(current, [])
+        elif current is not None:
+            if re.match(r"^\d+(?:\.\d+)+", line):
+                current = None
+            else:
+                blocks[current].append(line)
+    fact_maps = [{fact.field_path: fact for fact in post.facts} for post in posts]
+    for trade_name, block in blocks.items():
+        text = _clean_text(" ".join(block)).strip(" .")
+        if not text:
+            continue
+        facts = [
+            ParsedField(
+                "qualification.additional", CandidateValueType.STRING, text, text,
+                f"pdf:trade-requirement={trade_name}", text[:8000],
+            )
+        ]
+        certificate = re.search(
+            r"((?:Training\s+Certificate|Minimum\s+one\s+year\s+Certificate\s+course)"
+            r".+?(?:5\s+marks|$))",
+            text,
+            re.I,
+        )
+        if certificate:
+            facts.append(
+                ParsedField(
+                    "qualification.certificate", CandidateValueType.STRING,
+                    _clean_text(certificate.group(1)), certificate.group(1),
+                    f"pdf:trade-requirement={trade_name};field=certificate", text[:8000],
+                )
+            )
+        experience = re.search(
+            r"((?:Minimum\s+\d+\s*\([^)]*\)\s+year|Two\s+years?)\s+"
+            r"(?:working\s+)?experience.+?(?:5\s+marks|Institution))",
+            text,
+            re.I,
+        )
+        if experience:
+            facts.append(
+                ParsedField(
+                    "experience.requirement", CandidateValueType.STRING,
+                    _clean_text(experience.group(1)), experience.group(1),
+                    f"pdf:trade-requirement={trade_name};field=experience", text[:8000],
+                )
+            )
+        indexes = [
+            index for index, post in enumerate(posts) if post.normalized_name == trade_name
+        ]
+        _attach_post_facts(fact_maps, indexes, tuple(facts), [], f"pdf:trade={trade_name}")
+    updated = tuple(
+        replace(post, facts=tuple(facts[path] for path in sorted(facts)))
+        for post, facts in zip(posts, fact_maps, strict=True)
+    )
+    return updated, ()
 
 
 def apply_whitespace_post_detail_tables(
@@ -983,7 +1273,10 @@ def _parse_recruitment_sections(raw_text: str) -> list[ParsedField]:
         elif kind == "application_fee":
             parsed.extend(_application_fee_fields(lines, locator, excerpt))
         elif kind == "application_steps":
-            parsed.extend(_list_section_field("application.steps", lines, locator, excerpt))
+            application_lines = _exclude_embedded_physical_table(lines)
+            parsed.extend(
+                _list_section_field("application.steps", application_lines, locator, excerpt)
+            )
         elif kind == "application_location":
             parsed.extend(
                 _text_section_field("application.where_to_apply", lines, locator, excerpt)
@@ -993,7 +1286,7 @@ def _parse_recruitment_sections(raw_text: str) -> list[ParsedField]:
                 _list_section_field("application.documents_required", lines, locator, excerpt)
             )
         elif kind == "selection":
-            parsed.extend(_ordered_structured_field("selection.phases", lines, locator, excerpt))
+            pass
         elif kind == "exam_pattern":
             parsed.extend(_exam_fields(lines, locator, excerpt))
         elif kind == "syllabus":
@@ -1008,6 +1301,7 @@ def _parse_recruitment_sections(raw_text: str) -> list[ParsedField]:
             parsed.extend(_list_section_field("instructions.important", lines, locator, excerpt))
 
     parsed.extend(_physical_fields(raw_text))
+    parsed.extend(_selection_fields(raw_text))
     parsed.extend(_inline_application_fee(raw_text))
     parsed.extend(_inline_pay_fields(raw_text))
 
@@ -1192,6 +1486,23 @@ def _physical_fields(raw_text: str) -> list[ParsedField]:
     if start is None or end is None:
         return []
     bounded = lines[start:end]
+    height, chest = _physical_tables(lines)
+    other = [
+        line
+        for line in bounded
+        if re.search(r"\b(?:weight|physically\s+fit|positive\s+aptitude)\b", line, re.I)
+    ]
+    if height or chest:
+        value = {"height": height, "chest": chest, "other": _clean_list(other)}
+        excerpt = "\n".join(
+            (*bounded, *[str(item) for item in height], *[str(item) for item in chest])
+        )
+        return [
+            ParsedField(
+                "physical.criteria", CandidateValueType.JSON, value, str(value),
+                "pdf:section=physical-standards", excerpt[:8000],
+            )
+        ]
     useful = [
         line
         for line in bounded
@@ -1215,6 +1526,173 @@ def _physical_fields(raw_text: str) -> list[ParsedField]:
             excerpt,
         )
     ]
+
+
+def _physical_tables(lines: list[str]) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    height: list[dict[str, object]] = []
+    chest: list[dict[str, object]] = []
+    height_start = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if re.fullmatch(r"Sl\.\s*No\.\s+Categories\s+Male\s+Female", line, re.I)
+        ),
+        None,
+    )
+    chest_start = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if re.fullmatch(r"Sl\.\s*No\.\s+Categories\s+Normal\s+Expansion", line, re.I)
+        ),
+        None,
+    )
+    if height_start is not None:
+        stop = chest_start if chest_start is not None else min(len(lines), height_start + 10)
+        for line in lines[height_start + 1 : stop]:
+            match = re.fullmatch(
+                r"\([a-z]\)\s+(.+?)\s+(\d+(?:\.\d+)?\s*cm)\s+"
+                r"(\d+(?:\.\d+)?\s*cm)",
+                line,
+                re.I,
+            )
+            if match:
+                height.append(
+                    {
+                        "categories": _clean_text(match.group(1)),
+                        "male": _clean_text(match.group(2)),
+                        "female": _clean_text(match.group(3)),
+                    }
+                )
+    if chest_start is not None:
+        pending_categories: str | None = None
+        for line in lines[chest_start + 1 : chest_start + 10]:
+            inline = re.fullmatch(
+                r"\([a-z]\)\s+(.+?)\s+(Min\.\s*\d+(?:\.\d+)?\s*cm)\s+"
+                r"(\+\s*\d+(?:\.\d+)?\s*cm)",
+                line,
+                re.I,
+            )
+            if inline:
+                chest.append(
+                    {
+                        "categories": _clean_text(inline.group(1)),
+                        "normal": _clean_text(inline.group(2)),
+                        "expansion": _clean_text(inline.group(3)),
+                    }
+                )
+                pending_categories = None
+                continue
+            category = re.fullmatch(r"\([a-z]\)\s+(.+)", line, re.I)
+            if category:
+                pending_categories = _clean_text(category.group(1))
+                continue
+            values = re.fullmatch(
+                r"(Min\.\s*\d+(?:\.\d+)?\s*cm)\s+(\+\s*\d+(?:\.\d+)?\s*cm)",
+                line,
+                re.I,
+            )
+            if values and pending_categories:
+                chest.append(
+                    {
+                        "categories": pending_categories,
+                        "normal": _clean_text(values.group(1)),
+                        "expansion": _clean_text(values.group(2)),
+                    }
+                )
+                pending_categories = None
+            elif pending_categories and re.fullmatch(r"[A-Za-z() /&]+", line):
+                pending_categories = _clean_text(f"{pending_categories} {line}")
+    return height, chest
+
+
+def _exclude_embedded_physical_table(lines: list[str]) -> list[str]:
+    start = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if re.fullmatch(r"Sl\.\s*No\.\s+Categories\s+Male\s+Female", line, re.I)
+        ),
+        None,
+    )
+    if start is None:
+        return lines
+    end = next(
+        (
+            index
+            for index, line in enumerate(lines[start + 1 :], start=start + 1)
+            if re.match(r"^\(?[ivxlcdm]+[.)]\s+", line, re.I)
+        ),
+        len(lines),
+    )
+    return [*lines[:start], *lines[end:]]
+
+
+def _selection_fields(raw_text: str) -> list[ParsedField]:
+    lines = _source_lines(raw_text)
+    stages = (
+        (r"^7\.1\s+PRELIMINARY\s+IDENTITY\s+VERIFICATION\b", "Preliminary Identity Verification"),
+        (r"^7\.3\s+MEDICAL\s+EXAMINATION\b", "Medical Examination"),
+        (r"^7\.4\s+PHYSICAL\s+STANDARD\s+TEST\b", "Physical Standard Test (PST)"),
+        (r"^7\.5\s+TRADE\s+PROFICIENCY\s+TEST\b", "Trade Proficiency Test (TPT)"),
+        (r"^8\.\s+FINAL\s+MERIT\s+LISTS?\b", "Final Merit List"),
+    )
+    phase_names = [
+        name
+        for line in lines
+        for pattern, name in stages
+        if re.search(pattern, line, re.I)
+    ]
+    phases = [
+        {"sequence": sequence, "name": name}
+        for sequence, name in enumerate(phase_names, start=1)
+    ]
+    if len(phases) >= 2:
+        parsed = [
+            ParsedField(
+                "selection.phases", CandidateValueType.JSON, phases, str(phases),
+                "pdf:section=selection-stages", str(phases),
+            )
+        ]
+        text = " ".join(lines)
+        marks = re.search(r"7\.5\s+TRADE\s+PROFICIENCY\s+TEST\s*:\s*(\d+)\s+Marks", text, re.I)
+        if marks:
+            value = {"maximum_marks": int(marks.group(1))}
+            parsed.append(
+                ParsedField(
+                    "selection.trade_proficiency_test", CandidateValueType.JSON, value,
+                    marks.group(0), "pdf:section=trade-proficiency-test", marks.group(0),
+                )
+            )
+        maximum = re.search(r"Maximum\s+Marks\s*:\s*(\d+)", text, re.I)
+        qualifying = re.search(r"Passed\s+Marks\s*:\s*(\d+)%", text, re.I)
+        if maximum or qualifying:
+            value = {}
+            if maximum:
+                value["maximum_marks"] = int(maximum.group(1))
+            if qualifying:
+                value["qualifying_percentage"] = int(qualifying.group(1))
+            parsed.append(
+                ParsedField(
+                    "selection.final_merit", CandidateValueType.JSON, value, str(value),
+                    "pdf:section=final-merit", str(value),
+                )
+            )
+        return parsed
+    selection = next(
+        (
+            (heading, section_lines)
+            for kind, heading, section_lines in _bounded_sections(raw_text)
+            if kind == "selection"
+        ),
+        None,
+    )
+    if selection is None:
+        return []
+    heading, section_lines = selection
+    return _ordered_structured_field(
+        "selection.phases", section_lines, "pdf:section=selection", heading
+    )
 
 
 def _inline_application_fee(raw_text: str) -> list[ParsedField]:
@@ -1377,6 +1855,17 @@ def _qualification_fields(lines: list[str], locator: str, excerpt: str) -> list[
         if minimum:
             result.extend(
                 _string_field("qualification.minimum", minimum.group(0), locator, excerpt)
+            )
+        maximum = re.search(
+            r"maximum\s+qualification\s+(?:will\s+)?be\s+(.{1,180}?"
+            r"(?:recognized|recognised)\s+(?:Board|Council|Institution|University)"
+            r"(?:\s+or\s+(?:Board|Council|Institution|University))?)",
+            text,
+            re.I,
+        )
+        if maximum:
+            result.extend(
+                _string_field("qualification.maximum", maximum.group(1), locator, excerpt)
             )
     return result
 
