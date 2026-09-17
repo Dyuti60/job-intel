@@ -16,6 +16,7 @@ from app.db.session import get_db
 from app.models.candidates import CandidateValueType
 from app.models.confidence import ReviewPriority
 from app.models.review import ReviewCaseStatus, ReviewDecisionType
+from app.review_web.actions import ReviewPublicationActions
 from app.review_web.services import ReviewCaseViewService
 from app.schemas.review import ReviewDecisionCreate
 from app.services.candidate_values import normalize_typed_value
@@ -67,6 +68,11 @@ def _case_redirect(
 
 
 async def _read_form(request: Request) -> dict[str, str]:
+    values = await _read_form_values(request)
+    return {key: items[-1] for key, items in values.items()}
+
+
+async def _read_form_values(request: Request) -> dict[str, list[str]]:
     body = await request.body()
     if len(body) > 65_536:
         raise ValueError("Form submission is too large")
@@ -74,7 +80,63 @@ async def _read_form(request: Request) -> dict[str, str]:
     if content_type != "application/x-www-form-urlencoded":
         raise ValueError("Only standard URL-encoded form submissions are accepted")
     values = parse_qs(body.decode("utf-8"), keep_blank_values=True, strict_parsing=False)
-    return {key: items[-1] for key, items in values.items()}
+    return values
+
+
+@router.post("/bulk-publish")
+async def bulk_publish(
+    request: Request, session: DatabaseSession, settings: ApplicationSettings
+) -> HTMLResponse:
+    try:
+        form = await _read_form_values(request)
+        selected = form.get("selected", [])
+        if not 1 <= len(selected) <= 50:
+            raise ValueError("Select between 1 and 50 Posts")
+        selections = []
+        for value in selected:
+            case, post = value.split(":", 1)
+            selections.append((uuid.UUID(case), post))
+        result = ReviewPublicationActions(session).bulk(
+            selections,
+            settings.review_web_reviewer_identifier,
+            form.get("comment", [""])[-1],
+        )
+    except (ValueError, DomainConflictError) as error:
+        return _error_page(request, str(error), 400)
+    message = (
+        f"{result['published']} published; {result['already_published']} already published; "
+        f"{len(result['blocked'])} blocked"
+    )
+    return _template(
+        request,
+        "review/bulk_result.html",
+        {
+            "title": "Bulk review result",
+            "message": message,
+            "details": result["blocked"],
+        },
+    )
+
+
+@router.post("/cases/{case_id}/quick-publish")
+async def quick_publish(
+    request: Request, case_id: uuid.UUID, session: DatabaseSession, settings: ApplicationSettings
+) -> RedirectResponse:
+    post = None
+    try:
+        form = await _read_form(request)
+        post = form.get("post", "")
+        ReviewPublicationActions(session).quick(
+            case_id,
+            post,
+            settings.review_web_reviewer_identifier,
+            form.get("comment", ""),
+        )
+        session.commit()
+    except (ValueError, DomainConflictError, ResourceNotFoundError) as error:
+        session.rollback()
+        return _case_redirect(case_id, post=post, error=str(error))
+    return _case_redirect(case_id, post=post, message="Post approved and published")
 
 
 def _typed_form_value(value_type: CandidateValueType, raw_value: str) -> Any:

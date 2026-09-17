@@ -1,0 +1,10 @@
+{% extends "review/base.html" %}
+{% block content %}
+<section class="card">
+  <p class="eyebrow">Human Review</p>
+  <h1>Bulk review result</h1>
+  <p role="status">{{ message }}</p>
+  {% if details %}<h2>Blocked Posts</h2><ul>{% for detail in details %}<li>{{ detail }}</li>{% endfor %}</ul>{% endif %}
+  <p><a href="/review">Return to the review queue</a></p>
+</section>
+{% endblock %}

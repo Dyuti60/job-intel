@@ -18,6 +18,27 @@
   </div>
 </div>
 
+{% if focused_post and publication %}
+<section class="card quick-review">
+  <h2>Quick Review</h2>
+  {% if publication.status == 'PUBLISHED' %}
+  <p>PUBLISHED</p><a class="button" href="{{ publication.public_url }}">View Published Job</a>
+  {% elif publication.status == 'READY_TO_PUBLISH' %}
+  <p>READY TO PUBLISH</p>
+  <form method="post" action="/review/cases/{{ case_id }}/publish">
+    <input type="hidden" name="post" value="{{ focused_post.key }}"><button>Publish Job</button>
+  </form>
+  {% elif not focused_outcome and quick_eligible %}
+  <p class="muted">Quick approval accepts all remaining review values exactly as extracted. Use detailed review below if corrections are required. Unsaved edits below are not submitted.</p>
+  <form method="post" action="/review/cases/{{ case_id }}/quick-publish">
+    <input type="hidden" name="post" value="{{ focused_post.key }}">
+    <label>Reviewer comment<textarea name="comment" required maxlength="8000" rows="2"></textarea></label>
+    <button>Approve As-Is &amp; Publish</button>
+  </form>
+  {% else %}<p>{{ focused_outcome or 'Blocked' }}</p><p class="muted">{{ publication.blocker }}</p>{% endif %}
+</section>
+{% endif %}
+
 {% if status == 'QUEUED' %}
 <div class="toolbar">
   <form method="post" action="/review/cases/{{ case_id }}/start{% if focused_post %}?post={{ focused_post.key|urlencode }}{% endif %}"><button type="submit">Start Review</button></form>
@@ -123,7 +144,7 @@
 </section>
 {% endif %}
 
-{% if publication %}
+{% if publication and not focused_post %}
 <section class="card publication-state">
   <p class="eyebrow">Publication</p>
   <h2>{{ publication.status | replace('_', ' ') }}</h2>

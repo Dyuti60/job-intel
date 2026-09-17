@@ -36,13 +36,23 @@
   <button type="submit">Apply filters</button>
 </form>
 
+<form method="post" action="/review/bulk-publish" id="bulk-review">
+<section class="card bulk-toolbar">
+  <h2>Approve As-Is &amp; Publish Selected</h2>
+  <p>Selected Posts: <output id="selected-post-count">0</output></p>
+  <p class="muted">Select explicit Posts below. Remaining values are accepted as extracted; existing corrections are preserved.</p>
+  <label>Reviewer comment<textarea name="comment" required maxlength="8000" rows="2"></textarea></label>
+  <button>Approve As-Is &amp; Publish Selected</button>
+  <small>Maximum 50 Posts per submission.</small>
+</section>
 <section class="card table-wrap">
   {% if cases %}
   <table>
-    <thead><tr><th>Priority</th><th>Post</th><th>Context</th><th>Important facts</th><th>Confidence / reasons</th><th>Progress</th></tr></thead>
+    <thead><tr><th>Select</th><th>Priority</th><th>Post</th><th>Context</th><th>Important facts</th><th>Confidence / reasons</th><th>Progress</th></tr></thead>
     <tbody>
     {% for case in cases %}
       <tr>
+        <td>{% if case.quick_eligible and not case.published %}<input type="checkbox" name="selected" value="{{ case.id }}:{{ case.post_key }}" aria-label="Select {{ case.post_name }}">{% else %}<span class="muted">{{ 'Published' if case.published else 'Not selectable' }}</span>{% endif %}</td>
         <td><span class="badge priority-{{ case.priority | lower }}">{{ case.priority }}</span></td>
         <td>
           <a class="case-link" href="/review/cases/{{ case.id }}{% if case.post_key %}?post={{ case.post_key|urlencode }}{% endif %}">{{ case.post_name }}</a>
@@ -60,4 +70,6 @@
   <p class="empty">No review cases match these filters.</p>
   {% endif %}
 </section>
+</form>
+<script src="/static/review-bulk.js" defer></script>
 {% endblock %}

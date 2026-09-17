@@ -129,8 +129,12 @@ def test_public_detail_renders_rich_master_fields_before_eligibility_and_officia
             },
             {
                 "field_path": "physical.criteria",
-                "value_type": "STRING",
-                "value": "Minimum height 162.5 cm",
+                "value_type": "JSON",
+                "value": {
+                    "height": [{"category": "General", "male_cm": 160, "female_cm": 150}],
+                    "chest": [{"category": "General", "normal_cm": 80, "expansion_cm": 5}],
+                    "weight": "Proportionate to height and age",
+                },
             },
             {
                 "field_path": "medical.criteria",
@@ -175,6 +179,14 @@ def test_public_detail_renders_rich_master_fields_before_eligibility_and_officia
     assert "Physical Standards" in detail.text
     assert "Medical Standards" in detail.text
     assert "Official Application Steps" in detail.text
+    assert 'class="type-label"' not in detail.text
+    assert '<ol class="recruitment-list">' in detail.text
+    assert '<ul class="recruitment-list">' in detail.text
+    assert '<dl class="structured-facts">' in detail.text
+    assert '5 years' in detail.text
+    assert 'Male Cm' in detail.text and '<td>160</td>' in detail.text
+    assert 'Normal Cm' in detail.text and 'Proportionate to height and age' in detail.text
+    assert '<pre>' not in detail.text
     assert "Documents Required" in detail.text
     assert "Recruitment Phases" in detail.text
     assert "Exam Pattern / Syllabus" in detail.text

@@ -162,30 +162,43 @@ class ReviewCaseViewService:
                     for item in grouped_items
                     if item.confidence_score_snapshot is not None
                 ]
-                entries.append({
-                    "id": case.id,
-                    "short_id": str(case.id).split("-")[0],
-                    "candidate_name": candidate.display_name,
-                    "candidate_key": candidate.candidate_key,
-                    "advertisement_title": candidate.display_name,
-                    "post_key": post_key,
-                    "post_name": post.name if post is not None else candidate.display_name,
-                    "authority_name": candidate.recruiting_authority.name,
-                    "organization": self._organization(revision),
-                    "important_fields": self._important_post_fields(post),
-                    "review_reasons": [humanize(reason) for reason in reasons],
-                    "status": "RESOLVED" if scope_outcome is not None else case.status.value,
-                    "outcome": scope_outcome,
-                    "priority": case.priority.value,
-                    "score": min(scores) if scores else case.revision_score_snapshot,
-                    "policy_version": case.policy_version.value,
-                    "pending_items": sum(
-                        item.status == ReviewItemStatus.PENDING for item in grouped_items
-                    ),
-                    "total_items": len(grouped_items),
-                    "opened_at": case.opened_at,
-                    "published": self._published_post(post),
-                })
+                entries.append(
+                    {
+                        "id": case.id,
+                        "short_id": str(case.id).split("-")[0],
+                        "candidate_name": candidate.display_name,
+                        "candidate_key": candidate.candidate_key,
+                        "advertisement_title": candidate.display_name,
+                        "post_key": post_key,
+                        "post_name": post.name if post is not None else candidate.display_name,
+                        "authority_name": candidate.recruiting_authority.name,
+                        "organization": self._organization(revision),
+                        "important_fields": self._important_post_fields(post),
+                        "review_reasons": [humanize(reason) for reason in reasons],
+                        "status": "RESOLVED" if scope_outcome is not None else case.status.value,
+                        "outcome": scope_outcome,
+                        "priority": case.priority.value,
+                        "score": min(scores) if scores else case.revision_score_snapshot,
+                        "policy_version": case.policy_version.value,
+                        "pending_items": sum(
+                            item.status == ReviewItemStatus.PENDING for item in grouped_items
+                        ),
+                        "total_items": len(grouped_items),
+                        "opened_at": case.opened_at,
+                        "published": self._published_post(post),
+                        "quick_eligible": post is not None
+                        and case.status
+                        in {
+                            ReviewCaseStatus.QUEUED,
+                            ReviewCaseStatus.IN_REVIEW,
+                            ReviewCaseStatus.RESOLVED,
+                        }
+                        and not any(
+                            item.decision and item.decision.decision == ReviewDecisionType.REJECT
+                            for item in grouped_items
+                        ),
+                    }
+                )
         all_cases = self.review.list_cases(
             status=None,
             priority=None,
@@ -441,6 +454,12 @@ class ReviewCaseViewService:
             "revision_items": [item for item in focused_items if item["scope"] == "REVISION"],
             "projection": None,
             "publication": publication,
+            "quick_eligible": focused_post is not None
+            and review_case.status in {ReviewCaseStatus.QUEUED, ReviewCaseStatus.IN_REVIEW}
+            and not any(
+                item["decision"] and item["decision"]["decision"] == "REJECT"
+                for item in focused_items
+            ),
         }
         if review_case.status == ReviewCaseStatus.RESOLVED:
             projection = self.review.approved_projection(review_case.id)

@@ -1,11 +1,13 @@
 {% extends "public/base.html" %}
 {% block content %}
+{% from "public/field_value.html" import render_value %}
 <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Jobs</a><span aria-hidden="true">/</span><span>Details</span></nav>
 
 <section class="detail-hero">
   <div>
-    <p class="eyebrow">{{ view.recruitment.authority.code }} · {{ view.recruitment.candidate_key }}</p>
+    <p class="eyebrow">{{ view.recruitment.authority.code }}</p>
     <h1>{{ view.recruitment.display_name }}</h1>
+    {% for field in view.fields if field.field_path in ['organization.unit', 'organization.name'] %}<p>{{ field.display_value }}</p>{% endfor %}
     <p>{{ view.recruitment.authority.name }}</p>
     {% if view.recruitment.post_key %}<p>Advertisement: {{ view.recruitment.advertisement_title }}</p>{% endif %}
     <div class="form-actions">
@@ -23,6 +25,7 @@
     <div><dt>Application closes</dt><dd>{{ view.recruitment.application.end_date or 'Not specified' }}</dd></div>
     <div><dt>Post vacancies</dt><dd>{{ view.recruitment.vacancies_total if view.recruitment.vacancies_total is not none else 'Not specified' }}</dd></div>
     <div><dt>Last verified</dt><dd>{{ view.recruitment.last_verified_at.strftime('%Y-%m-%d') }}</dd></div>
+    {% for field in view.fields if field.field_path in ['qualification.minimum', 'age.minimum', 'age.maximum', 'pay.scale'] %}<div><dt>{{ field.label }}</dt><dd>{{ field.display_value }}</dd></div>{% endfor %}
   </dl>
   <p class="as-of">Application status evaluated on {{ view.recruitment.application.evaluated_on }}.</p>
 </section>
@@ -33,8 +36,8 @@
   <div class="field-list">
     {% for field in section.fields %}
     <article class="field-row">
-      <div><h3>{{ field.label }}</h3><span class="type-label">{{ field.value_type }}</span></div>
-      <pre>{{ field.display_value }}</pre>
+      <div><h3>{{ field.label }}</h3></div>
+      <div class="field-content">{{ render_value(field.presentation) }}</div>
       <a href="{{ field.source_url }}" target="_blank" rel="noopener noreferrer">Official source <span aria-hidden="true">↗</span></a>
     </article>
     {% endfor %}

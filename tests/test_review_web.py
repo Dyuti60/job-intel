@@ -180,6 +180,157 @@ def _start_web_case(client: TestClient, case_id: str) -> None:
     assert response.status_code == 303
 
 
+def test_quick_review_and_bulk_publication_preserve_post_isolation(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    graph = _three_post_review_graph(client)
+    case_id = graph["case"]["id"]
+    keys = [post[0] for post in graph["posts"]]
+    page = client.get(f"/review/cases/{case_id}?post={keys[0]}")
+    assert "Approve As-Is &amp; Publish" in page.text
+    queue = client.get("/review").text
+    assert f'value="{case_id}:{keys[0]}"' in queue
+    missing = client.post(
+        f"/review/cases/{case_id}/quick-publish", data={"post": keys[0]}, follow_redirects=False
+    )
+    assert "error=" in missing.headers["location"]
+    first = client.post(
+        f"/review/cases/{case_id}/quick-publish",
+        data={"post": keys[0], "comment": "Checked official source"},
+    )
+    assert "View Published Job" in first.text
+    assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 1
+    decisions = db_session.scalar(select(func.count()).select_from(ReviewDecision))
+    client.post(
+        f"/review/cases/{case_id}/quick-publish", data={"post": keys[0], "comment": "Replay"}
+    )
+    assert db_session.scalar(select(func.count()).select_from(ReviewDecision)) == decisions
+    result = client.post(
+        "/review/bulk-publish",
+        data={
+            "selected": [f"{case_id}:{keys[0]}", f"{case_id}:{keys[1]}", f"{case_id}:invalid"],
+            "comment": "Common bulk comment",
+        },
+    )
+    assert "1 published; 1 already published; 1 blocked" in result.text
+    shared = next(item for item in graph["case"]["items"]
+                  if item["field_path_snapshot"] == "application.end_date")
+    assert db_session.scalar(select(func.count()).select_from(ReviewDecision).where(
+        ReviewDecision.review_item_id == UUID(shared["id"])
+    )) == 1
+    assert db_session.scalar(select(func.count()).select_from(ReviewDecision).where(
+        ReviewDecision.decision_note == "Common bulk comment"
+    )) == 1
+    assert (
+        db_session.scalar(select(func.count()).select_from(MasterPost)) == 3
+    )  # immutable revisions
+    current = client.get("/api/v1/review-cases/" + case_id).json()
+    sibling = [
+        item
+        for item in current["items"]
+        if (item["field_path_snapshot"] or "").startswith(f"posts.{keys[2]}.")
+    ]
+    assert all(item["status"] == "PENDING" for item in sibling)
+    assert (
+        client.post(
+            "/review/bulk-publish",
+            data={
+                "selected": [f"{case_id}:{keys[2]}"] * 51,
+                "comment": "Bound",
+            },
+        ).status_code
+        == 400
+    )
+    assert client.get("/review/bulk-publish").status_code == 405
+
+
+def test_quick_publication_failure_rolls_back_decisions_and_case_start(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.exceptions import DomainConflictError
+    from app.services.master import MasterPublisherService
+
+    graph = _three_post_review_graph(client)
+
+    def blocked(*args, **kwargs):
+        raise DomainConflictError("Publication policy blocked")
+
+    monkeypatch.setattr(MasterPublisherService, "publish_post", blocked)
+    result = client.post(
+        "/review/bulk-publish",
+        data={
+            "selected": [f"{graph['case']['id']}:assam_police"],
+            "comment": "Checked",
+        },
+    )
+    assert "Publication policy blocked" in result.text
+    assert db_session.scalar(select(func.count()).select_from(ReviewDecision)) == 0
+    case = client.get(f"/api/v1/review-cases/{graph['case']['id']}").json()
+    assert case["status"] == "QUEUED"
+    assert all(item["status"] == "PENDING" for item in case["items"])
+
+
+def test_quick_preserves_corrected_shared_values_and_blocks_rejected_posts(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    graph = _three_post_review_graph(client)
+    case_id = graph["case"]["id"]
+    _start_web_case(client, case_id)
+    shared = next(
+        item
+        for item in graph["case"]["items"]
+        if item["field_path_snapshot"] == "application.end_date"
+    )
+    correction = client.post(
+        f"/api/v1/review-items/{shared['id']}/decision",
+        json={
+            "decision": "CORRECT_AND_APPROVE",
+            "reviewer_identifier": "operator",
+            "decision_note": "Corrected from official source",
+            "corrected_value_type": "DATE",
+            "corrected_value": "2026-10-25",
+        },
+    )
+    assert correction.status_code in {200, 201}, correction.text
+    rejected = next(
+        item
+        for item in graph["case"]["items"]
+        if (item["field_path_snapshot"] or "").startswith("posts.assam_commando_battalions.")
+    )
+    _decision(client, rejected["id"], "REJECT")
+    before = db_session.scalar(select(func.count()).select_from(ReviewDecision))
+    blocked = client.post(
+        f"/review/cases/{case_id}/quick-publish",
+        data={
+            "post": "assam_commando_battalions",
+            "comment": "Cannot override",
+        },
+        follow_redirects=False,
+    )
+    assert "error=" in blocked.headers["location"]
+    assert db_session.scalar(select(func.count()).select_from(ReviewDecision)) == before
+    result = client.post(
+        f"/review/cases/{case_id}/quick-publish",
+        data={
+            "post": "assam_police",
+            "comment": "Keep correction",
+        },
+    )
+    assert "View Published Job" in result.text
+    listing = client.get("/api/public/v1/recruitments").json()
+    detail = client.get(f"/api/public/v1/recruitments/{listing['items'][0]['id']}").json()
+    assert (
+        next(field for field in detail["fields"] if field["field_path"] == "application.end_date")[
+            "value"
+        ]
+        == "2026-10-25"
+    )
+
+
 def _decision(
     client: TestClient,
     item_id: str,
@@ -356,7 +507,7 @@ def test_explicit_three_post_review_is_post_first_when_active_and_resolved(
     assert "posts.assam_police.vacancies.total" in police.text
     assert "posts.assam_commando_battalions.vacancies.total" not in police.text
     assert "posts.dgcd_cghg.vacancies.total" not in police.text
-    assert 'name="post" value="assam_police"' not in police.text
+    assert "/quick-publish" in police.text
 
     start = client.post(
         f"/review/cases/{case['id']}/start",
@@ -705,7 +856,7 @@ def test_grouped_post_submission_approves_and_rejects_posts_independently(
         or item["field_path_snapshot"].startswith("posts.assam_police.")
     ]
     assert police_page.text.count('type="radio"') == len(relevant_pending) * 2
-    assert police_page.text.count('name="comment"') == 1
+    assert police_page.text.count('name="comment"') == 2  # quick and detailed forms
 
     approved = _submit_post(
         client, case, "assam_police", final_action="APPROVE_POST"
@@ -837,7 +988,7 @@ def test_review_metrics_and_manual_publication_are_post_scoped_and_idempotent(
 
     published_page = client.get(first.headers["location"])
     assert "PUBLISHED" in published_page.text
-    assert "View Public Job" in published_page.text
+    assert "View Published Job" in published_page.text
     assert "Publish Job" not in published_page.text
     listing = client.get("/api/public/v1/recruitments", params={"page_size": 10}).json()
     assert listing["total"] == 1

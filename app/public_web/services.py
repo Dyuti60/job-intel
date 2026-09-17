@@ -16,6 +16,7 @@ class PublicFieldView:
     value_type: str
     display_value: str
     source_url: str
+    presentation: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -204,7 +205,53 @@ class PublicRecruitmentViewService:
             value_type=field.value_type.value,
             display_value=cls._display_value(field.value, field.value_type.value),
             source_url=field.source.document_url,
+            presentation=cls._presentation(field.value, field.field_path, field.value_type.value),
         )
+
+    @classmethod
+    def _presentation(cls, value: Any, path: str = "", value_type: str | None = None) -> dict:
+        if isinstance(value, list):
+            if path == "selection.phases" and value and all(
+                isinstance(item, dict) and isinstance(item.get("name"), str) for item in value
+            ):
+                return {"kind": "phase_list", "items": [
+                    {"title": item["name"], "details": cls._presentation({
+                        key: cell for key, cell in item.items() if key not in {"name", "sequence"}
+                    })} for item in value
+                ]}
+            if (
+                path not in {
+                    "selection.phases", "application.steps", "application.documents_required"
+                }
+                and value
+                and all(
+                    isinstance(item, dict)
+                    and item
+                    and all(not isinstance(cell, (dict, list)) for cell in item.values())
+                    for item in value
+                )
+            ):
+                keys = list(dict.fromkeys(key for item in value for key in item))
+                return {
+                    "kind": "structured_table",
+                    "headers": [cls._humanize(str(key)) for key in keys],
+                    "rows": [[cls._display_value(item.get(key)) for key in keys] for item in value],
+                }
+            return {
+                "kind": "numbered_list"
+                if path in {"application.steps", "selection.phases"}
+                else "bullet_list",
+                "items": [cls._presentation(item) for item in value],
+            }
+        if isinstance(value, dict):
+            return {
+                "kind": "key_value_list",
+                "items": [
+                    {"label": cls._humanize(str(key)), "value": cls._presentation(item)}
+                    for key, item in value.items()
+                ],
+            }
+        return {"kind": "paragraph", "text": cls._display_value(value, value_type)}
 
     @staticmethod
     def _humanize(path: str) -> str:

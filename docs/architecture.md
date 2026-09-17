@@ -468,6 +468,15 @@ The resolved-case projection remains a non-persistent preview. The separate expl
 mutation delegates eligible Post publication to the Master Publisher; rendering the preview itself
 never creates Recruitment Master data.
 
+Explicit Post detail pages also offer a top-level Approve As-Is & Publish action. It accepts only
+persisted current values, requires one comment, preserves resolved corrections, and never overwrites
+rejections. The queue can apply the same operation to up to 50 selected explicit Posts with one
+common comment. Each Post uses a savepoint so publication failure rolls back its new review work;
+successful selections reuse shared decisions once and never approve unselected sibling items.
+The Master Publisher remains the publication boundary and supplies idempotent publication identity.
+Public detail formatting operates only on approved public DTOs, rendering structured values as
+lists, labelled facts, and bounded tables without public value-type badges or Candidate fallbacks.
+
 ## Approved Recruitment Master and deterministic Publisher
 
 T-010 adds the trusted-data boundary after Verification, Confidence, and, when required, Human

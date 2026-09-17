@@ -52,6 +52,18 @@ dd { margin:.2rem 0 0; font-weight:700; }
 .summary-grid { grid-template-columns:repeat(4,1fr); }
 .as-of { margin-bottom:0; color:var(--muted); font-size:.85rem; }
 .field-list { display:grid; gap:.6rem; }
+.recruitment-value { margin:0; line-height:1.75; overflow-wrap:anywhere; }
+.recruitment-list { margin:0; padding-left:1.5rem; line-height:1.75; }
+.recruitment-list > li { margin-bottom:.8rem; }
+.structured-facts { margin:0; display:grid; gap:.4rem; }
+.structured-facts dt { font-weight:600; color:var(--muted); }
+.structured-facts dd { margin:0 0 .6rem; }
+.field-row > a { font-size:.8rem; color:var(--muted); }
+.field-content table { width:100%; border-collapse:collapse; line-height:1.6; }
+.field-content th, .field-content td { padding:.6rem; text-align:left; border-bottom:1px solid var(--line); }
+.field-content .table-wrap { overflow-x:auto; }
+.phase-list > li { padding:.5rem 0 .5rem .5rem; }
+.phase-list h4 { margin:0 0 .5rem; }
 .field-row { display:grid; grid-template-columns:minmax(180px,.8fr) minmax(220px,1.5fr) auto; gap:1rem; align-items:start; padding:1rem 0; border-top:1px solid var(--line); }
 .field-row h3 { margin:0 0 .25rem; font-size:1rem; }
 .field-row pre { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; font-weight:600; }

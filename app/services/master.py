@@ -91,8 +91,9 @@ def compute_projection_hash(
 
 
 class MasterPublisherService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, commit: bool = True) -> None:
         self.session = session
+        self.commit = commit
         self.masters = RecruitmentMasterRepository(session)
         self.master_revisions = MasterRevisionRepository(session)
         self.events = MasterPublicationEventRepository(session)
@@ -231,8 +232,12 @@ class MasterPublisherService:
                 published_or_verified_at=now,
             )
             self.events.add(event)
-            self.session.commit()
+            self.session.commit() if self.commit else self.session.flush()
         except IntegrityError as error:
+            if not self.commit:
+                raise DomainConflictError(
+                    "Publication conflicted with concurrent publishing; retry"
+                ) from error
             self.session.rollback()
             replay = self.events.get_by_confidence_assessment(
                 assessment.id, post_key=post_key
@@ -246,7 +251,8 @@ class MasterPublisherService:
                 "Publication conflicted with concurrent publishing; retry"
             ) from error
         except Exception:
-            self.session.rollback()
+            if self.commit:
+                self.session.rollback()
             raise
         return (
             self.get_master(master.id),
