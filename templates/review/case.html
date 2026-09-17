@@ -9,7 +9,6 @@
   <div>
     <p class="eyebrow">{{ candidate.authority_name }} · {{ candidate.authority_code }}</p>
     <h1>{{ focused_post.name if focused_post else candidate.display_name }}</h1>
-    <p>{{ candidate.candidate_key }} · Revision {{ candidate.revision_number }}</p>
   </div>
   <div class="case-state">
     <span class="badge priority-{{ priority | lower }}">{{ priority }}</span>
@@ -41,11 +40,12 @@
 
 {% if status == 'QUEUED' %}
 <div class="toolbar">
-  <form method="post" action="/review/cases/{{ case_id }}/start{% if focused_post %}?post={{ focused_post.key|urlencode }}{% endif %}"><button type="submit">Start Review</button></form>
+    <form method="post" action="/review/cases/{{ case_id }}/start{% if focused_post %}?post={{ focused_post.key|urlencode }}{% endif %}"><button class="secondary" type="submit">Start Detailed Review</button></form>
   <form method="post" action="/review/cases/{{ case_id }}/cancel{% if focused_post %}?post={{ focused_post.key|urlencode }}{% endif %}"><button class="danger secondary" type="submit">Cancel Case</button></form>
 </div>
 {% elif status == 'IN_REVIEW' %}
 <div class="toolbar">
+  <a class="button secondary" href="#needs-review">Continue Detailed Review</a>
   <form method="post" action="/review/cases/{{ case_id }}/cancel{% if focused_post %}?post={{ focused_post.key|urlencode }}{% endif %}" onsubmit="return confirm('Cancel this review case?');"><button class="danger secondary" type="submit">Cancel Case</button></form>
 </div>
 {% endif %}
@@ -58,18 +58,14 @@
       <dt>Organization / unit</dt><dd>{{ candidate.organization }}</dd>
       <dt>Parent Advertisement</dt><dd>{{ candidate.display_name }}</dd>
       <dt>Recruiter / authority</dt><dd>{{ candidate.authority_name }}</dd>
-      <dt>Candidate key</dt><dd>{{ candidate.candidate_key }}</dd>
-      <dt>Revision</dt><dd>{{ candidate.revision_number }}</dd>
-      <dt>Source type</dt><dd>{{ candidate.source_document_type }}</dd>
       <dt>Source document</dt><dd><a href="{{ candidate.source_document_url }}" target="_blank" rel="noopener noreferrer">Open original source</a></dd>
     </dl>
+    <details class="technical"><summary>Technical details</summary><p>Candidate key: {{ candidate.candidate_key }} · Revision {{ candidate.revision_number }} · {{ candidate.source_document_type }}</p></details>
   </article>
   <article class="card">
     <h2>Revision confidence</h2>
     <div class="score">{{ score if score is not none else 'N/A' }}<small>{% if score is not none %}/100{% endif %}</small></div>
     <dl class="facts">
-      <dt>Policy</dt><dd>{{ policy_version }}</dd>
-      <dt>Coverage</dt><dd>{{ coverage_ratio }}</dd>
       <dt>Progress</dt><dd>{{ focused_resolved_items }} of {{ focused_total_items }} review items resolved for this {{ 'Post' if focused_post else 'Advertisement' }}</dd>
     </dl>
     <div class="reasons">
@@ -78,10 +74,13 @@
   </article>
 </section>
 
-{% if post_links|length > 1 %}
-<nav class="card" aria-label="Posts requiring review"><strong>Posts in this review:</strong>
-  {% for post in post_links %}<a href="/review/cases/{{ case_id }}?post={{ post.key|urlencode }}">{{ post.name }}</a>{% endfor %}
+{% if post_navigation and post_navigation.total > 1 %}
+<nav class="card post-navigation" aria-label="Posts requiring review">
+  {% if post_navigation.previous %}<a href="/review/cases/{{ case_id }}?post={{ post_navigation.previous.key|urlencode }}">← Previous Post</a>{% endif %}
+  <span>Post {{ post_navigation.position }} of {{ post_navigation.total }}</span>
+  {% if post_navigation.next %}<a href="/review/cases/{{ case_id }}?post={{ post_navigation.next.key|urlencode }}">Next Post →</a>{% endif %}
 </nav>
+{% if publication and publication.status == 'PUBLISHED' and post_navigation.next_unresolved %}<p><a href="/review/cases/{{ case_id }}?post={{ post_navigation.next_unresolved.key|urlencode }}">Review Next Post →</a></p>{% endif %}
 {% endif %}
 
 {% if focused_post and focused_post.important_fields %}
@@ -91,7 +90,8 @@
 {% endif %}
 
 <details class="card breakdown">
-  <summary>Revision confidence component breakdown</summary>
+  <summary>Technical confidence details</summary>
+  <p>Policy: {{ policy_version }} · Coverage: {{ coverage_ratio }}</p>
   <table><tbody>{% for row in breakdown %}<tr><th>{{ row.label }}</th><td>{{ row.value }}</td></tr>{% endfor %}</tbody></table>
 </details>
 
@@ -99,12 +99,14 @@
 <form method="post" action="/review/cases/{{ case_id }}/submit" class="post-review-form">
   {% if focused_post %}<input type="hidden" name="post" value="{{ focused_post.key }}">{% endif %}
 {% endif %}
-<section>
-  <div class="section-heading"><h2>Attributes</h2><span>{{ focused_resolved_items }} / {{ focused_total_items }} required reviews resolved</span></div>
+<section id="needs-review">
+  <div class="section-heading"><h2>Needs Review</h2><span>{{ focused_total_items - focused_resolved_items }} required reviews remaining</span></div>
   {% for group in attribute_groups %}
+  {% set pending = group.attributes|selectattr('actionable')|list %}
+  {% if pending %}
   <div class="section-heading"><h3>{{ group.name }}</h3><span>{{ group.scope }}</span></div>
-  {% if not group.attributes %}<article class="card"><p class="muted">No supported attributes were extracted in this scope.</p></article>{% endif %}
-  {% for attribute in group.attributes %}{% include "review/_attribute.html" %}{% endfor %}
+  {% for attribute in pending %}{% include "review/_attribute.html" %}{% endfor %}
+  {% endif %}
   {% endfor %}
 
   {% if revision_items %}
@@ -124,6 +126,12 @@
   </article>
   {% endfor %}
   {% endif %}
+  <details class="card trusted-attributes"><summary>Trusted Attributes &amp; Review History</summary>
+    {% for group in attribute_groups %}
+    {% set trusted = group.attributes|rejectattr('actionable')|list %}
+    {% if trusted %}<h3>{{ group.name }}</h3>{% for attribute in trusted %}{% include "review/_attribute.html" %}{% endfor %}{% endif %}
+    {% endfor %}
+  </details>
 </section>
 
 {% if status == 'IN_REVIEW' and not focused_review_complete %}
@@ -162,7 +170,8 @@
 {% endif %}
 
 {% if projection %}
-<section class="card projection">
+<details class="card projection">
+  <summary>Technical approved projection</summary>
   <p class="eyebrow">Internal preview only</p>
   <h2>Approved Projection</h2>
   <p class="outcome-large">{{ projection.outcome | replace('_', ' ') }}</p>
@@ -179,6 +188,6 @@
   {% else %}
   <div class="flash error">This revision is not eligible for Master publication.</div>
   {% endif %}
-</section>
+</details>
 {% endif %}
 {% endblock %}

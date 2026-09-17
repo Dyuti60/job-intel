@@ -17,6 +17,8 @@
 </section>
 
 <form class="filters card" method="get" action="/review">
+  <label>Search<input name="q" value="{{ search_query }}" maxlength="100" placeholder="Post, Advertisement, or authority"></label>
+  <input type="hidden" name="page_size" value="{{ page_size }}">
   <label>Status
     <select name="status">
       <option value="">Active cases</option>
@@ -38,30 +40,33 @@
 
 <form method="post" action="/review/bulk-publish" id="bulk-review">
 <section class="card bulk-toolbar">
-  <h2>Approve As-Is &amp; Publish Selected</h2>
+  <div class="toolbar"><button type="button" id="select-page" class="secondary">Select all eligible on this page</button><button type="button" id="clear-selection" class="secondary">Clear selection</button></div>
   <p>Selected Posts: <output id="selected-post-count">0</output></p>
+  <div id="bulk-actions">
   <p class="muted">Select explicit Posts below. Remaining values are accepted as extracted; existing corrections are preserved.</p>
   <label>Reviewer comment<textarea name="comment" required maxlength="8000" rows="2"></textarea></label>
   <button>Approve As-Is &amp; Publish Selected</button>
   <small>Maximum 50 Posts per submission.</small>
+  </div>
 </section>
 <section class="card table-wrap">
   {% if cases %}
   <table>
-    <thead><tr><th>Select</th><th>Priority</th><th>Post</th><th>Context</th><th>Important facts</th><th>Confidence / reasons</th><th>Progress</th></tr></thead>
+    <thead><tr><th scope="col">Select</th><th scope="col">Post / organisation</th><th scope="col">Vacancies</th><th scope="col">Status / progress</th><th scope="col">Confidence / reason</th><th scope="col">Action</th></tr></thead>
     <tbody>
     {% for case in cases %}
       <tr>
         <td>{% if case.quick_eligible and not case.published %}<input type="checkbox" name="selected" value="{{ case.id }}:{{ case.post_key }}" aria-label="Select {{ case.post_name }}">{% else %}<span class="muted">{{ 'Published' if case.published else 'Not selectable' }}</span>{% endif %}</td>
-        <td><span class="badge priority-{{ case.priority | lower }}">{{ case.priority }}</span></td>
         <td>
           <a class="case-link" href="/review/cases/{{ case.id }}{% if case.post_key %}?post={{ case.post_key|urlencode }}{% endif %}">{{ case.post_name }}</a>
-          <small>{{ (case.outcome or case.status) | replace('_', ' ') }} · {{ case.pending_items }} pending / {{ case.total_items }} total</small>
+          <small>{{ case.organization }}</small>
+          <small><a href="/review/cases/{{ case.id }}{% if case.post_key %}?post={{ case.post_key|urlencode }}{% endif %}">Advertisement details</a></small>
+          <details class="technical"><summary>Technical details</summary>{{ case.advertisement_title }}<br>{{ case.authority_name }}<br>{{ case.candidate_key }}<br>Case {{ case.short_id }}</details>
         </td>
-        <td>{{ case.organization }}<small>Advertisement: {{ case.advertisement_title }}<br>{{ case.authority_name }} · {{ case.candidate_key }}</small></td>
-        <td>{% if case.important_fields %}{% for field in case.important_fields %}<small><strong>{{ field.label }}:</strong> {{ field.value }}</small>{% endfor %}{% else %}<small>Advertisement-level facts</small>{% endif %}</td>
-        <td>{{ case.score if case.score is not none else 'N/A' }} / 100 <small>{{ case.policy_version }}{% for reason in case.review_reasons %}<br>{{ reason }}{% endfor %}</small></td>
-        <td><time datetime="{{ case.opened_at.isoformat() }}">{{ case.opened_at.strftime('%Y-%m-%d %H:%M') }}</time><small>Case {{ case.short_id }}</small></td>
+        <td>{% for field in case.important_fields if 'Vacancies' in field.label %}<small><strong>{{ field.label }}:</strong> {{ field.value }}</small>{% else %}Not specified{% endfor %}</td>
+        <td><strong>{{ (case.outcome or case.status) | replace('_', ' ') }}</strong><small>{{ case.pending_items }} pending / {{ case.total_items }} total</small><span class="badge priority-{{ case.priority|lower }}">{{ case.priority }}</span></td>
+        <td>{{ case.score if case.score is not none else 'N/A' }} / 100 <small>{% for reason in case.review_reasons %}{{ reason }}{% if not loop.last %}<br>{% endif %}{% endfor %}</small></td>
+        <td><a href="/review/cases/{{ case.id }}{% if case.post_key %}?post={{ case.post_key|urlencode }}{% endif %}">Review →</a></td>
       </tr>
     {% endfor %}
     </tbody>
@@ -71,5 +76,6 @@
   {% endif %}
 </section>
 </form>
+<nav class="pagination" aria-label="Review pages">{% if previous_url %}<a href="{{ previous_url }}" rel="prev">← Previous</a>{% endif %}<span>Page {{ page }} of {{ pages }}</span>{% if next_url %}<a href="{{ next_url }}" rel="next">Next →</a>{% endif %}</nav>
 <script src="/static/review-bulk.js" defer></script>
 {% endblock %}

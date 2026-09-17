@@ -167,13 +167,31 @@ def review_queue(
     session: DatabaseSession,
     status: str | None = None,
     priority: str | None = None,
+    q: str = "",
+    page: int = 1,
+    page_size: int = 25,
 ) -> HTMLResponse:
+    if len(q) > 100 or page < 1 or not 1 <= page_size <= 50:
+        return _error_page(request, "Invalid queue search or page", 400)
     try:
         status_filter = ReviewCaseStatus(status) if status else None
         priority_filter = ReviewPriority(priority) if priority else None
     except ValueError:
         return _error_page(request, "Invalid review queue filter", 400)
     view = ReviewCaseViewService(session).queue(status=status_filter, priority=priority_filter)
+    rows = view["cases"]
+    if q.strip():
+        term = q.strip().casefold()
+        rows = [
+            row for row in rows if term in " ".join(
+                str(row[key]) for key in (
+                    "post_name", "organization", "authority_name", "advertisement_title"
+                )
+            ).casefold()
+        ]
+    pages = max(1, (len(rows) + page_size - 1) // page_size)
+    page = min(page, pages)
+    view["cases"] = rows[(page - 1) * page_size:page * page_size]
     return _template(
         request,
         "review/queue.html",
@@ -182,6 +200,16 @@ def review_queue(
             **view,
             "selected_status": status or "",
             "selected_priority": priority or "",
+            "search_query": q,
+            "page": page,
+            "pages": pages,
+            "page_size": page_size,
+            "previous_url": (
+                str(request.url.include_query_params(page=page - 1)) if page > 1 else None
+            ),
+            "next_url": (
+                str(request.url.include_query_params(page=page + 1)) if page < pages else None
+            ),
             "statuses": [item.value for item in ReviewCaseStatus],
             "priorities": [item.value for item in ReviewPriority],
         },

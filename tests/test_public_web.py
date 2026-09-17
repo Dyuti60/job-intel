@@ -81,6 +81,33 @@ def test_public_jobs_pagination_preserves_filters(client: TestClient) -> None:
     assert "page=2" in response.text
 
 
+def test_public_cards_and_detail_use_candidate_focused_hierarchy(client: TestClient) -> None:
+    from tests.test_review_web import _three_post_review_graph
+
+    graph = _three_post_review_graph(client)
+    case_id = graph['case']['id']
+    client.post(f'/review/cases/{case_id}/quick-publish', data={
+        'post': 'assam_police', 'comment': 'Checked official source',
+    })
+    cards = client.get('/jobs', params={'authority': graph['candidate'].get('authority_code', ''),
+                                      'minimum_vacancies': 1, 'as_of': '2026-09-22'})
+    assert 'candidate-key' not in cards.text
+    assert 'REVIEW_THREE_POSTS' not in cards.text
+    assert 'SLPRB Grade IV Advertisement' not in cards.text
+    assert 'Parent Advertisement' in cards.text
+    assert '181' in cards.text and '20 Oct 2026' in cards.text
+    assert 'Advanced filters' in cards.text and 'name="minimum_vacancies" value="1"' in cards.text
+    listing = client.get('/api/public/v1/recruitments').json()
+    detail = client.get(f"/jobs/{listing['items'][0]['id']}")
+    assert 'Job sections' in detail.text
+    assert 'href="#section-age"' in detail.text
+    assert 'href="#section-physical-medical"' not in detail.text
+    assert 'href="#sources-heading"' in detail.text
+    assert '<h3>Post Name</h3>' not in detail.text
+    assert '<h3>Total Vacancies</h3>' not in detail.text
+    assert 'Official source' in detail.text
+
+
 def test_public_job_detail_shows_approved_fields_and_safe_source_links(
     client: TestClient,
 ) -> None:
@@ -95,7 +122,7 @@ def test_public_job_detail_shows_approved_fields_and_safe_source_links(
     assert "Important Dates" in response.text
     assert "Closing Date" in response.text
     assert "31 October 2026" in response.text
-    assert "Total Vacancies" in response.text
+    assert "Post vacancies" in response.text
     assert "AUTHORITATIVE" not in response.text
     assert "Authoritative Official" in response.text
     assert graph["document"]["document_url"] in response.text

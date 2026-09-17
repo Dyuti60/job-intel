@@ -73,5 +73,11 @@ dd { margin:.2rem 0 0; font-weight:700; }
 .source-class { color:var(--green-dark); font-weight:700; }
 .error-state { margin-top:4rem; }
 .public-footer { margin-top:4rem; border-top:1px solid var(--line); color:var(--muted); padding:2rem 0; font-size:.85rem; }
+.advanced-filters { margin-top:1rem; }
+summary { cursor:pointer; font-weight:650; }
+.parent-link { font-size:.85rem; color:var(--muted); }
+.section-nav { display:flex; flex-wrap:wrap; gap:.6rem 1rem; background:var(--card); padding:1rem; margin-bottom:1rem; border:1px solid var(--line); border-radius:9px; }
+[id] { scroll-margin-top:6rem; }
+@media (min-width:850px) { .section-nav { position:sticky; top:0; z-index:2; } }
 @media (max-width:850px) { .filter-grid { grid-template-columns:repeat(2,1fr); } .summary-grid { grid-template-columns:repeat(2,1fr); } }
 @media (max-width:620px) { .trust-label { display:none; } .hero { padding-top:2.5rem; } .hero h1,.detail-hero h1 { overflow-wrap:anywhere; } .job-grid,.filter-grid,.source-list { grid-template-columns:minmax(0,1fr); } .filter-grid > * { min-width:0; } .detail-hero { display:grid; } .field-row { grid-template-columns:minmax(0,1fr); } .job-facts,.summary-grid { grid-template-columns:minmax(0,1fr); } .empty-state { padding:2rem 1rem; } }

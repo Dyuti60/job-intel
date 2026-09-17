@@ -461,6 +461,17 @@ class ReviewCaseViewService:
                 for item in focused_items
             ),
         }
+        if focused_post is not None:
+            links = result["post_links"]
+            index = next(i for i, link in enumerate(links) if link["key"] == focused_post.post_key)
+            result["post_navigation"] = {
+                "position": index + 1, "total": len(links),
+                "previous": links[index - 1] if index > 0 else None,
+                "next": links[index + 1] if index + 1 < len(links) else None,
+                "next_unresolved": next((link for link in [*links[index + 1:], *links[:index]]
+                    if any(item["status"] != "RESOLVED" and item["post_key"] in {None, link["key"]}
+                           for item in items)), None),
+            }
         if review_case.status == ReviewCaseStatus.RESOLVED:
             projection = self.review.approved_projection(review_case.id)
             projection_fields = projection["fields"]

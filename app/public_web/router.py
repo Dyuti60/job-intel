@@ -20,6 +20,9 @@ from app.services.public_recruitments import PublicRecruitmentFilters, PublicRec
 
 router = APIRouter(prefix="/jobs", tags=["public-web"])
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[2] / "templates"))
+templates.env.filters["public_date"] = lambda value: (
+    value.strftime("%d %b %Y").lstrip("0") if value else "Not specified"
+)
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
@@ -78,7 +81,7 @@ def public_jobs(
     maximum_vacancies: str | None = None,
     sort: str = PublicRecruitmentSort.PUBLISHED_DESC.value,
     page: Annotated[int, Query(ge=1)] = 1,
-    page_size: Annotated[int, Query(ge=1, le=100)] = 25,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     as_of: date | None = None,
 ) -> HTMLResponse:
     try:

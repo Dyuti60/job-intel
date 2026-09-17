@@ -107,7 +107,7 @@ def test_public_etag_revalidates_against_current_master(
         refreshed = public_client.get(f"/jobs/{master_id}", headers={"if-none-match": etag})
         assert refreshed.status_code == 200
         assert refreshed.headers["etag"] != etag
-        assert "2026-10-27" in refreshed.text
+        assert "27 Oct 2026" in refreshed.text
 
 
 def test_public_eligibility_post_is_stateless_and_never_cached(client, test_engine) -> None:

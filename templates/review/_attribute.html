@@ -3,14 +3,16 @@
     <div>
       <p class="eyebrow">{{ attribute.scope }} attribute</p>
       <h3>{{ attribute.label }}</h3>
-      <small class="muted">{{ attribute.field_path }}</small>
+      <details class="technical"><summary>Technical details</summary><small>{{ attribute.field_path }}</small></details>
     </div>
     <div><span class="badge">{{ attribute.status }}</span></div>
   </header>
 
   <div class="grid three">
-    <div><span class="label">Extracted value</span><pre class="value">{{ attribute.extracted_value_display }}</pre></div>
-    <div><span class="label">Final / trusted value</span><pre class="value">{{ attribute.final_value_display }}</pre></div>
+    {% if attribute.decision and attribute.decision.corrected_value_type and attribute.extracted_value != attribute.final_value %}
+    <div><span class="label">Extracted</span><pre class="value">{{ attribute.extracted_value_display }}</pre></div>
+    <div><span class="label">Approved / Corrected</span><pre class="value">{{ attribute.final_value_display }}</pre></div>
+    {% else %}<div><span class="label">Current value</span><pre class="value">{{ attribute.extracted_value_display }}</pre></div>{% endif %}
     <div><span class="label">Confidence / criticality</span><strong>{{ attribute.confidence_score if attribute.confidence_score is not none else 'N/A' }}{% if attribute.criticality %} / 100 · {{ attribute.criticality }}{% endif %}</strong></div>
   </div>
 
@@ -44,5 +46,5 @@
     {% endfor %}{% else %}<p class="muted">No verification Evidence assessments were recorded.</p>{% endif %}
   </details>
 
-  {% if attribute.decision %}<section class="decision-summary"><h4>Final decision: {{ attribute.decision.decision | replace('_', ' ') }}</h4><dl class="facts"><dt>Decided</dt><dd>{{ attribute.decision.decided_at.strftime('%Y-%m-%d %H:%M:%S') }}</dd><dt>Extracted</dt><dd><pre class="value">{{ attribute.decision.original_value }}</pre></dd>{% if attribute.decision.corrected_value_type %}<dt>Corrected / canonical</dt><dd><pre class="value">{{ attribute.decision.corrected_value }}</pre> ({{ attribute.decision.corrected_value_type }})</dd>{% endif %}{% if attribute.decision.note %}<dt>Decision comment</dt><dd>{{ attribute.decision.note }}</dd>{% endif %}</dl></section>{% endif %}
+  {% if attribute.decision %}<section class="decision-summary"><h4>Final decision: {{ attribute.decision.decision | replace('_', ' ') }}</h4><p><strong>Decided:</strong> {{ attribute.decision.decided_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>{% if attribute.decision.note %}<p><strong>Decision comment:</strong> {{ attribute.decision.note }}</p>{% endif %}</section>{% endif %}
 </article>

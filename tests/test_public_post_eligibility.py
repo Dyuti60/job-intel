@@ -134,7 +134,9 @@ def test_three_explicit_posts_are_independent_public_jobs_with_shared_context(cl
     html = client.get(f"/jobs/{first['id']}").text
     assert "Important Dates" in html and "20 September 2026" in html
     assert "Educational Qualification" in html and "Salary / Pay Scale" in html
-    assert "Combined Services Advertisement" in html
+    assert "Advertisement Summary" in html
+    summary = client.get(f"/jobs/advertisements/{first['advertisement_id']}").text
+    assert "Combined Services Advertisement" in summary
 
 
 def _publish_valid_sibling(client) -> dict:
@@ -361,6 +363,6 @@ def test_eligibility_is_versioned_explainable_and_conservative(client) -> None:
         },
     )
     assert page.status_code == rendered.status_code == 200
-    assert "Advertisement: Two Post Recruitment" in page.text
+    assert "Advertisement Summary" in page.text
     assert "Evaluate eligibility" in page.text
     assert "Overall: Eligible" in rendered.text

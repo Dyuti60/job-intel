@@ -7,9 +7,8 @@
   <div>
     <p class="eyebrow">{{ view.recruitment.authority.code }}</p>
     <h1>{{ view.recruitment.display_name }}</h1>
-    {% for field in view.fields if field.field_path in ['organization.unit', 'organization.name'] %}<p>{{ field.display_value }}</p>{% endfor %}
+    {% for organisation in view.organisations %}<p>{{ organisation }}</p>{% endfor %}
     <p>{{ view.recruitment.authority.name }}</p>
-    {% if view.recruitment.post_key %}<p>Advertisement: {{ view.recruitment.advertisement_title }}</p>{% endif %}
     <div class="form-actions">
       <a href="/jobs/advertisements/{{ view.recruitment.advertisement_id }}">Advertisement Summary</a>
       {% if view.official_document_url %}<a href="{{ view.official_document_url }}" target="_blank" rel="noopener noreferrer">Complete Official Advertisement <span aria-hidden="true">↗</span></a>{% endif %}
@@ -21,17 +20,22 @@
 <section class="summary-panel" aria-labelledby="application-heading">
   <h2 id="application-heading">Application overview</h2>
   <dl class="summary-grid">
-    <div><dt>Application opens</dt><dd>{{ view.recruitment.application.start_date or 'Not specified' }}</dd></div>
-    <div><dt>Application closes</dt><dd>{{ view.recruitment.application.end_date or 'Not specified' }}</dd></div>
+    <div><dt>Application opens</dt><dd>{{ view.recruitment.application.start_date|public_date }}</dd></div>
+    <div><dt>Application closes</dt><dd>{{ view.recruitment.application.end_date|public_date }}</dd></div>
     <div><dt>Post vacancies</dt><dd>{{ view.recruitment.vacancies_total if view.recruitment.vacancies_total is not none else 'Not specified' }}</dd></div>
-    <div><dt>Last verified</dt><dd>{{ view.recruitment.last_verified_at.strftime('%Y-%m-%d') }}</dd></div>
+    <div><dt>Last verified</dt><dd>{{ view.recruitment.last_verified_at|public_date }}</dd></div>
     {% for field in view.fields if field.field_path in ['qualification.minimum', 'age.minimum', 'age.maximum', 'pay.scale'] %}<div><dt>{{ field.label }}</dt><dd>{{ field.display_value }}</dd></div>{% endfor %}
   </dl>
-  <p class="as-of">Application status evaluated on {{ view.recruitment.application.evaluated_on }}.</p>
+  <p class="as-of">Application status evaluated on {{ view.recruitment.application.evaluated_on|public_date }}.</p>
 </section>
 
+<nav class="section-nav" aria-label="Job sections">
+  {% for section in view.sections %}<a href="#section-{{ section.key }}">{{ section.title }}</a>{% endfor %}
+  <a href="#sources-heading">Official Source</a>
+</nav>
 {% for section in view.sections %}
-<section class="detail-section" aria-labelledby="{{ section.key }}-heading">
+<section id="section-{{ section.key }}" class="detail-section" aria-labelledby="{{ section.key }}-heading">
+  {% if section.key == 'important-notes' %}<details><summary>{{ section.title }}</summary>{% endif %}
   <h2 id="{{ section.key }}-heading">{{ section.title }}</h2>
   <div class="field-list">
     {% for field in section.fields %}
@@ -42,6 +46,7 @@
     </article>
     {% endfor %}
   </div>
+  {% if section.key == 'important-notes' %}</details>{% endif %}
 </section>
 {% endfor %}
 

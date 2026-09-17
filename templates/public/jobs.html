@@ -7,22 +7,18 @@
 </section>
 
 <form class="search-panel" method="get" action="/jobs" aria-label="Recruitment filters">
+  {% if filters.as_of %}<input type="hidden" name="as_of" value="{{ filters.as_of }}">{% endif %}
+  <input type="hidden" name="page_size" value="{{ request.query_params.get('page_size', '20') }}">
   <div class="search-primary">
     <label for="q">Search</label>
-    <input id="q" name="q" value="{{ filters.q }}" maxlength="100" placeholder="Recruitment, authority, or candidate key">
+    <input id="q" name="q" value="{{ filters.q }}" maxlength="100" placeholder="Post, department, or authority">
   </div>
   <div class="filter-grid">
-    <label>Post name
-      <input name="post_name" value="{{ filters.post_name }}" maxlength="100">
-    </label>
     <label>Department
       <input name="department" value="{{ filters.department }}" maxlength="100">
     </label>
     <label>Qualification
       <input name="qualification" value="{{ filters.qualification }}" maxlength="100">
-    </label>
-    <label>Authority code
-      <input name="authority" value="{{ filters.authority }}" placeholder="APSC">
     </label>
     <label>Application status
       <select name="application_status">
@@ -30,6 +26,12 @@
         {% for status in statuses %}<option value="{{ status.value }}" {% if filters.application_status == status.value %}selected{% endif %}>{{ status.value|replace('_', ' ')|title }}</option>{% endfor %}
       </select>
     </label>
+  </div>
+  <details class="advanced-filters"{% if filters.authority or filters.post_name or filters.application_end_from or filters.application_end_to or filters.minimum_vacancies %} open{% endif %}>
+    <summary>Advanced filters</summary>
+    <div class="filter-grid">
+    <label>Post name<input name="post_name" value="{{ filters.post_name }}" maxlength="100"></label>
+    <label>Authority code<input name="authority" value="{{ filters.authority }}" placeholder="APSC"></label>
     <label>Closing from
       <input type="date" name="application_end_from" value="{{ filters.application_end_from }}">
     </label>
@@ -45,6 +47,7 @@
       </select>
     </label>
   </div>
+  </details>
   <div class="form-actions">
     <button type="submit">Apply filters</button>
     <a href="/jobs">Clear</a>
@@ -62,19 +65,16 @@
   <article class="job-card">
     <div class="card-topline">
       <span class="status status-{{ job.application.status.value|lower }}">{{ job.application.status.value|replace('_', ' ')|title }}</span>
-      <span class="candidate-key">{{ job.candidate_key }}</span>
     </div>
     <h3><a href="/jobs/{{ job.id }}{% if filters.as_of %}?as_of={{ filters.as_of }}{% endif %}">{{ job.display_name }}</a></h3>
-    <p class="authority">{{ job.authority.name }}</p>
-    {% if job.organisation %}<p>Organisation: {{ job.organisation }}</p>{% endif %}
-    {% if job.post_key %}<p>Advertisement: {{ job.advertisement_title }}</p>{% endif %}
+    <p class="authority">{{ job.organisation or job.authority.name }}</p>
+    {% if job.post_key %}<a class="parent-link" href="/jobs/advertisements/{{ job.advertisement_id }}">Parent Advertisement ↗</a>{% endif %}
     <dl class="job-facts">
-      <div><dt>Opens</dt><dd>{{ job.application.start_date or 'Not specified' }}</dd></div>
-      <div><dt>Closes</dt><dd>{{ job.application.end_date or 'Not specified' }}</dd></div>
+      <div><dt>Closes</dt><dd>{{ job.application.end_date|public_date }}</dd></div>
       <div><dt>Vacancies</dt><dd>{{ job.vacancies_total if job.vacancies_total is not none else 'Not specified' }}</dd></div>
       {% if job.qualification_summary %}<div><dt>Qualification</dt><dd>{{ job.qualification_summary }}</dd></div>{% endif %}
     </dl>
-    <a class="card-link" href="/jobs/{{ job.id }}{% if filters.as_of %}?as_of={{ filters.as_of }}{% endif %}">View approved details <span aria-hidden="true">→</span></a>
+    <a class="card-link" href="/jobs/{{ job.id }}{% if filters.as_of %}?as_of={{ filters.as_of }}{% endif %}">View Job Details <span aria-hidden="true">→</span></a>
   </article>
   {% endfor %}
 </div>

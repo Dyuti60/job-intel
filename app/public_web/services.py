@@ -32,6 +32,7 @@ class PublicRecruitmentDetailView:
     fields: tuple[PublicFieldView, ...]
     sections: tuple[PublicFieldSectionView, ...]
     official_document_url: str | None
+    organisations: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -151,8 +152,18 @@ class PublicRecruitmentViewService:
         return PublicRecruitmentDetailView(
             recruitment=recruitment,
             fields=fields,
-            sections=cls._sections(fields),
+            sections=cls._sections(tuple(field for field in fields if field.field_path not in {
+                "name", "recruitment_name", "organization.name", "organization.unit",
+            } and not (field.field_path == "vacancies.total"
+                       and recruitment.vacancies_total is not None)
+              and not (field.field_path in {"authority.name", "recruiting_authority.name"}
+                       and field.display_value == recruitment.authority.name))),
             official_document_url=cls._official_document_url(fields),
+            organisations=tuple(dict.fromkeys(
+                field.display_value for field in fields
+                if field.field_path in {"organization.name", "organization.unit"}
+                and field.display_value != recruitment.authority.name
+            )),
         )
 
     @classmethod

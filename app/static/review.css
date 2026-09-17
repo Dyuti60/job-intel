@@ -54,6 +54,22 @@ blockquote { margin: .8rem 0; padding: .7rem 1rem; border-left: 4px solid #98a2b
 .quick-review, .bulk-toolbar { border-top:4px solid #079455; margin-bottom:1.5rem; }
 .quick-review form, .bulk-toolbar { display:grid; gap:.8rem; }
 #bulk-review input[type=checkbox] { width:1.2rem; height:1.2rem; }
+[hidden] { display:none !important; }
+.bulk-toolbar { padding:.75rem 1rem; gap:.4rem; }
+.bulk-toolbar p { margin:.3rem 0; }
+.technical { font-size:.8rem; color:var(--muted); margin-top:.4rem; }
+.technical summary, .trusted-attributes > summary { cursor:pointer; }
+.trusted-attributes .review-item { padding:.8rem; border-left:0; box-shadow:none; }
+.trusted-attributes .value { font-family:inherit; }
+.post-navigation, .pagination { display:flex; flex-wrap:wrap; justify-content:space-between; gap:1rem; }
+.pagination { margin:1.5rem 0; }
+.button { display:inline-block; padding:.6rem .9rem; border-radius:.4rem; font-weight:700; }
+.button.secondary { background:#eef2f6; }
+.toolbar button.danger.secondary { background:transparent; color:var(--muted); border:1px solid var(--line); }
+.filters { flex-wrap:wrap; }
+td > small { display:block; }
+:focus-visible { outline:3px solid #079455; outline-offset:3px; }
+#needs-review { scroll-margin-top:1rem; }
 .flash { border-radius: .5rem; padding: .8rem 1rem; margin: 1rem 0; }.flash.success { color: #05603a; background: #dcfae6; }.flash.error, .error-panel { color: #912018; background: #fef3f2; }.empty { padding: 2rem; text-align: center; }.breadcrumbs { color: var(--muted); margin-bottom: 1rem; }
 .health-healthy { color: #05603a; background: #dcfae6; }.health-running { color: #175cd3; background: #dbeafe; }.health-degraded, .health-stale { color: #93370d; background: #ffead5; }.health-failed { color: #912018; background: #fee4e2; }.health-no_data { color: #475467; background: #eef2f6; }
 .checkbox { display: flex; align-items: center; gap: .5rem; }.checkbox input { width: auto; }.operation-result { white-space: pre-wrap; overflow-wrap: anywhere; padding: 1rem; border-radius: .5rem; background: #f8fafc; }.toolbar { flex-wrap: wrap; justify-content: flex-start; align-items: end; }

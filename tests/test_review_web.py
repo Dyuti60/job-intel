@@ -411,6 +411,42 @@ def test_queue_page_lists_counts_orders_and_filters(client: TestClient) -> None:
     assert normal["id"] not in filtered.text
 
 
+def test_review_search_pagination_and_post_navigation(client: TestClient) -> None:
+    graph = _three_post_review_graph(client)
+    case_id = graph["case"]["id"]
+    page = client.get('/review', params={
+        'q': 'SLPRB Grade IV', 'status': 'QUEUED', 'page_size': 1,
+    })
+    assert page.status_code == 200
+    assert page.text.count('class="case-link"') == 1
+    assert page.text.count('name="selected"') == 1
+    assert 'Page 1 of 3' in page.text and 'page=2' in page.text
+    assert 'status=QUEUED' in page.text and 'q=SLPRB' in page.text
+    second = client.get('/review', params={'q': 'SLPRB Grade IV', 'page_size': 1, 'page': 2})
+    assert 'Page 2 of 3' in second.text
+    specific = client.get('/review', params={'q': 'Commando'})
+    assert specific.text.count('class="case-link"') == 1
+    assert 'Select all eligible on this page' in specific.text
+    assert 'clear-selection' in specific.text
+    assert client.get('/review', params={'page': 0}).status_code == 400
+    assert 'No review cases' in client.get('/review', params={'q': 'no-match'}).text
+    middle = client.get(f'/review/cases/{case_id}?post=assam_commando_battalions')
+    assert 'Post 2 of 3' in middle.text
+    assert 'Previous Post' in middle.text and 'Next Post' in middle.text
+    assert 'post=assam_police' in middle.text and 'post=dgcd_cghg' in middle.text
+    assert 'Start Detailed Review' in middle.text
+    assert 'Needs Review' in middle.text
+    assert '<details class="card trusted-attributes">' in middle.text
+    assert '<details class="technical">' in middle.text
+    assert middle.text.index('Quick Review') < middle.text.index('Needs Review')
+    client.post(f'/review/cases/{case_id}/quick-publish', data={
+        'post': 'assam_commando_battalions', 'comment': 'Checked official source',
+    })
+    published = client.get(f'/review/cases/{case_id}?post=assam_commando_battalions')
+    assert 'Review Next Post' in published.text
+    assert 'post=dgcd_cghg' in published.text
+
+
 def test_case_page_composes_candidate_confidence_and_evidence_safely(
     client: TestClient,
 ) -> None:
@@ -466,7 +502,7 @@ def test_review_queue_and_detail_focus_on_exact_post(client: TestClient) -> None
     focused = client.get(f"/review/cases/{case['id']}", params={"post": "conflicted_post"})
 
     assert "Conflicted Post" in queue.text
-    assert "Advertisement: Two Post Recruitment" in queue.text
+    assert "Advertisement details" in queue.text
     assert f"/review/cases/{case['id']}?post=conflicted_post" in queue.text
     assert "Vacancies Total" in queue.text and "20" in queue.text
     assert "Authoritative Conflict" in queue.text
@@ -496,7 +532,7 @@ def test_explicit_three_post_review_is_post_first_when_active_and_resolved(
         entry = active.text.split(f">{rendered_name}</a>", 1)[1].split("</tr>", 1)[0]
         assert "Vacancies Total" in entry
         assert f"</strong> {vacancies}</small>" in entry
-        assert "Advertisement: SLPRB Grade IV Advertisement" in entry
+        assert "Advertisement details" in entry
 
     police = client.get(
         f"/review/cases/{case['id']}", params={"post": "assam_police"}

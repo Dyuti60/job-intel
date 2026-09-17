@@ -250,8 +250,8 @@ def test_default_public_history_keeps_current_recent_and_unknown_but_hides_old_c
         recent["candidate"]["candidate_key"],
         unknown["candidate"]["candidate_key"],
     }
-    assert old["candidate"]["candidate_key"] not in web.text
-    assert unknown["candidate"]["candidate_key"] in web.text
+    assert f"/jobs/{old['publication']['master']['id']}" not in web.text
+    assert f"/jobs/{unknown['publication']['master']['id']}" in web.text
     old_master_id = old["publication"]["master"]["id"]
     assert client.get(f"/api/v1/recruitment-master/{old_master_id}").status_code == 200
     historical_detail = client.get(
