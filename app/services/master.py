@@ -51,6 +51,7 @@ from app.services.candidate_values import compute_persisted_revision_hash, norma
 from app.services.confidence import ConfidenceService
 from app.services.confidence_v2 import ConfidenceV2Service
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
+from app.services.post_identity import canonical_post_name
 from app.services.review import ReviewService
 from app.services.review_routing import ReviewRoutingService
 
@@ -392,6 +393,40 @@ class MasterPublisherService:
             ]
             if not approved_facts:
                 continue
+            effective = {
+                fact.fact_key: fields_by_source[fact.candidate_field_id].value
+                for fact in approved_facts
+            }
+            name = canonical_post_name(
+                effective.get("name", post.name),
+                next(
+                    (
+                        effective[key]
+                        for key in (
+                            "organisation.name",
+                            "organization.name",
+                            "organization.unit",
+                            "department.name",
+                        )
+                        if key in effective
+                    ),
+                    "",
+                ),
+                previous_organisation=next(
+                    (
+                        str(fact.candidate_field.value)
+                        for fact in post.facts
+                        if fact.fact_key
+                        in {
+                            "organisation.name",
+                            "organization.name",
+                            "organization.unit",
+                            "department.name",
+                        }
+                    ),
+                    "",
+                ),
+            )
             master_post = MasterPost(
                 master_revision_id=master_revision.id,
                 source_recruitment_post_id=post.id,
@@ -402,7 +437,7 @@ class MasterPublisherService:
                 ),
                 post_key=post.post_key,
                 ordinal=post.ordinal,
-                name=post.name,
+                name=name,
                 normalized_name=post.normalized_name,
             )
             self.session.add(master_post)

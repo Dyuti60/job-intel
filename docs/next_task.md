@@ -1,6 +1,11 @@
 # V1 operational activation checklist
 
-V1 implementation is complete. The remaining work is an operator-owned production activation,
+V1 implementation includes shared deterministic Advertisement-to-Post structuring, canonical Post
+naming, explicit safe single-Post creation, and an audited Human Review builder for ambiguous or
+legacy-unsplit advertisements. Human-confirmed structures create immutable successor revisions and
+use the normal Verification, Review, MasterPost, and public paths.
+
+The remaining work is an operator-owned production activation,
 not another application milestone.
 
 - create and protect the GitHub `public-production` environment

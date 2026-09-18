@@ -11,9 +11,19 @@ from pypdf import PdfReader
 from app.models.candidates import AdvertisementSplitStatus, CandidateValueType
 from app.models.discovery import DocumentType
 from app.models.source_registry import AuthorityType, SourceScheduleGroup
+from app.services.post_identity import stable_post_key as _stable_post_key
 from sources.adapters.apsc_recruitment import AdapterDocument
 from sources.extraction import ParsedAdvertisement, ParsedField, ParsedPost
 from sources.http import BoundedHttpClient
+from sources.post_structure import (
+    _header_key,
+    _separator_row,
+    _table_cells,
+    canonicalize_posts,
+    structure_posts,
+)
+from sources.post_structure import parse_narrative_vacancies as parse_narrative_vacancies
+from sources.post_structure import parse_vacancy_table as parse_vacancy_table
 
 
 @dataclass(frozen=True)
@@ -449,11 +459,7 @@ def parse_official_advertisement_text(
         )
     fields.extend(_parse_recruitment_sections(raw_text))
     unique = {field.field_path: field for field in fields}
-    posts, split_status, split_note, warnings = parse_vacancy_table(raw_text)
-    if split_status == AdvertisementSplitStatus.LEGACY_UNSPLIT:
-        posts, split_status, split_note, warnings = parse_narrative_vacancies(
-            metadata.title, raw_text
-        )
+    posts, split_status, split_note, warnings = structure_posts(metadata.title, raw_text)
     if split_status == AdvertisementSplitStatus.EXPLICIT:
         posts, trade_ambiguities = refine_atomic_trade_posts(raw_text, posts)
         posts, ambiguities = apply_post_detail_tables(raw_text, posts)
@@ -478,7 +484,7 @@ def parse_official_advertisement_text(
             )
     return ParsedAdvertisement(
         fields=tuple(unique[path] for path in sorted(unique)),
-        posts=posts,
+        posts=canonicalize_posts(posts),
         split_status=split_status,
         split_note=split_note,
         warnings=warnings,
@@ -528,33 +534,6 @@ def extraction_diagnostic_summary(
     }
 
 
-_VACANCY_HEADERS = {
-    "post": "post_name",
-    "postname": "post_name",
-    "nameofpost": "post_name",
-    "nameofthepost": "post_name",
-    "department": "department",
-    "dept": "department",
-    "organisation": "organisation",
-    "organization": "organisation",
-    "unitorganisation": "organisation",
-    "unitorganization": "organisation",
-    "ur": "vacancies.ur",
-    "unreserved": "vacancies.ur",
-    "obcmobc": "vacancies.obc_mobc",
-    "obc": "vacancies.obc_mobc",
-    "sc": "vacancies.sc",
-    "stp": "vacancies.st_p",
-    "sth": "vacancies.st_h",
-    "ews": "vacancies.ews",
-    "pwbd": "vacancies.pwbd",
-    "pwd": "vacancies.pwbd",
-    "women": "vacancies.women",
-    "total": "vacancies.total",
-    "totalposts": "vacancies.total",
-    "noofposts": "vacancies.total",
-    "numberofposts": "vacancies.total",
-}
 
 _POST_DETAIL_HEADERS = {
     "post": "post_name",
@@ -1014,168 +993,6 @@ def _aligned_detail_rows(
     return rows
 
 
-def parse_vacancy_table(
-    raw_text: str,
-) -> tuple[
-    tuple[ParsedPost, ...],
-    AdvertisementSplitStatus,
-    str | None,
-    tuple[str, ...],
-]:
-    """Parse a bounded pipe-delimited vacancy table or retain explicit ambiguity."""
-    lines = [line.strip() for line in raw_text.replace("\r\n", "\n").split("\n")]
-    candidates: list[tuple[int, list[str], dict[int, str]]] = []
-    for index, line in enumerate(lines):
-        if "|" not in line:
-            continue
-        cells = _table_cells(line)
-        mapped = {
-            cell_index: _VACANCY_HEADERS[key]
-            for cell_index, cell in enumerate(cells)
-            if (key := _header_key(cell)) in _VACANCY_HEADERS
-        }
-        if "post_name" in mapped.values() and "vacancies.total" in mapped.values():
-            candidates.append((index, cells, mapped))
-    if not candidates:
-        return (), AdvertisementSplitStatus.LEGACY_UNSPLIT, None, ()
-    if len(candidates) != 1:
-        note = "Multiple vacancy tables matched; post ownership requires Human Review."
-        return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
-
-    header_index, headers, mapped = candidates[0]
-    rows: list[list[str]] = []
-    for line in lines[header_index + 1 : header_index + 102]:
-        if not line:
-            if rows:
-                break
-            continue
-        if "|" not in line:
-            if rows:
-                break
-            continue
-        cells = _table_cells(line)
-        if _separator_row(cells):
-            continue
-        rows.append(cells)
-    if not rows:
-        note = "Vacancy table header was found but no deterministic post rows followed."
-        return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
-
-    parsed: list[ParsedPost] = []
-    seen_keys: set[str] = set()
-    errors: list[str] = []
-    for row_number, cells in enumerate(rows, start=1):
-        if len(cells) != len(headers):
-            errors.append(
-                f"Vacancy row {row_number} has {len(cells)} cells; expected {len(headers)}"
-            )
-            continue
-        values = {meaning: cells[column] for column, meaning in mapped.items()}
-        name = _clean_text(values.get("post_name", ""))
-        total_text = values.get("vacancies.total", "")
-        if not name or not re.fullmatch(r"\d+", total_text.strip()):
-            errors.append(f"Vacancy row {row_number} has an unsupported post name or total")
-            continue
-        primary_categories = (
-            "vacancies.ur",
-            "vacancies.obc_mobc",
-            "vacancies.sc",
-            "vacancies.st_p",
-            "vacancies.st_h",
-            "vacancies.ews",
-        )
-        if all(key in values for key in primary_categories) and all(
-            re.fullmatch(r"\d+", values[key].strip()) for key in primary_categories
-        ):
-            category_total = sum(int(values[key]) for key in primary_categories)
-            if category_total != int(total_text):
-                errors.append(
-                    f"Vacancy row {row_number} category total {category_total} "
-                    f"does not match stated total {total_text}"
-                )
-                continue
-        organisation = _clean_text(values.get("organisation", ""))
-        department = _clean_text(values.get("department", ""))
-        post_key = _stable_post_key(name, organisation or department)
-        if post_key in seen_keys:
-            errors.append(f"Vacancy row {row_number} duplicates stable post key {post_key}")
-            continue
-        seen_keys.add(post_key)
-        row_excerpt = " | ".join(cells)[:8000]
-        row_locator = f"pdf:table=vacancies;row={row_number}"
-        facts = [
-            ParsedField(
-                "name",
-                CandidateValueType.STRING,
-                name,
-                values["post_name"],
-                f"{row_locator};column=post",
-                row_excerpt,
-            ),
-            ParsedField(
-                "vacancies.total",
-                CandidateValueType.INTEGER,
-                int(total_text),
-                total_text,
-                f"{row_locator};column=total",
-                row_excerpt,
-            ),
-        ]
-        for fact_key, value in sorted(values.items()):
-            if fact_key in {"post_name", "vacancies.total"}:
-                continue
-            if fact_key == "organisation" and value.strip():
-                facts.append(
-                    ParsedField(
-                        "organisation.name",
-                        CandidateValueType.STRING,
-                        _clean_text(value),
-                        value,
-                        f"{row_locator};column=organisation",
-                        row_excerpt,
-                    )
-                )
-            elif fact_key == "department" and value.strip():
-                facts.append(
-                    ParsedField(
-                        "department.name",
-                        CandidateValueType.STRING,
-                        _clean_text(value),
-                        value,
-                        f"{row_locator};column=department",
-                        row_excerpt,
-                    )
-                )
-            elif fact_key.startswith("vacancies.") and re.fullmatch(r"\d+", value.strip()):
-                facts.append(
-                    ParsedField(
-                        fact_key,
-                        CandidateValueType.INTEGER,
-                        int(value),
-                        value,
-                        f"{row_locator};column={fact_key.removeprefix('vacancies.')}",
-                        row_excerpt,
-                    )
-                )
-        parsed.append(
-            ParsedPost(
-                post_key=post_key,
-                ordinal=row_number,
-                name=name,
-                normalized_name=" ".join(name.casefold().split()),
-                source_locator=row_locator,
-                facts=tuple(sorted(facts, key=lambda fact: fact.field_path)),
-            )
-        )
-    if errors or len(parsed) != len(rows):
-        note = "; ".join(errors)[:4000] or "Vacancy table could not be split safely."
-        return (), AdvertisementSplitStatus.AMBIGUOUS, note, tuple(errors or [note])
-    return (
-        _qualify_duplicate_post_names(tuple(parsed)),
-        AdvertisementSplitStatus.EXPLICIT,
-        f"Deterministically parsed {len(parsed)} post rows from the vacancy table.",
-        (),
-    )
 
 
 _SECTION_HEADINGS = {
@@ -2125,195 +1942,6 @@ def _ordered_items(lines: list[str]) -> list[str]:
     return list(dict.fromkeys(item for item in items if item))
 
 
-_NARRATIVE_MARKER = re.compile(r"\b(?P<total>[0-9][0-9,]*)\s+posts?\s+of\s+", re.I)
-_NARRATIVE_ORGANISATION = re.compile(
-    r"^(?P<name>.+?)\s+(?:in|under)\s+(?P<organisation>.+)$", re.I
-)
-_NARRATIVE_SEPARATOR = re.compile(r"(?P<separator>,|&|\band\b)\s*$", re.I)
-
-
-def parse_narrative_vacancies(
-    title: str, raw_text: str
-) -> tuple[
-    tuple[ParsedPost, ...],
-    AdvertisementSplitStatus,
-    str | None,
-    tuple[str, ...],
-]:
-    """Split bounded vacancy groups, including a shared trailing organization."""
-    candidate = ""
-    markers: list[re.Match[str]] = []
-    for candidate in (_clean_text(title), _clean_text(raw_text[:8000])):
-        candidate_markers = list(_NARRATIVE_MARKER.finditer(candidate))
-        if len(candidate_markers) >= 2:
-            markers = candidate_markers
-            break
-    if len(markers) < 2:
-        return (), AdvertisementSplitStatus.LEGACY_UNSPLIT, None, ()
-
-    grouped: list[tuple[re.Match[str], str, str, str, bool]] = []
-    pending: list[tuple[re.Match[str], str]] = []
-    group_start = markers[0].start()
-    for index, marker in enumerate(markers):
-        body_end = markers[index + 1].start() if index + 1 < len(markers) else len(candidate)
-        body = candidate[marker.end() : body_end].strip()
-        if index + 1 < len(markers):
-            separator = _NARRATIVE_SEPARATOR.search(body)
-            if separator is None:
-                return _ambiguous_narrative()
-            body = body[: separator.start()].strip()
-            if re.search(r"[.;]", body):
-                return _ambiguous_narrative()
-        else:
-            boundary = re.search(r"[.;]", body)
-            if boundary is not None:
-                body = body[: boundary.start()].strip()
-        if not body or re.search(r"[,;]|\band\b", body, re.I):
-            return _ambiguous_narrative()
-
-        qualified = _NARRATIVE_ORGANISATION.match(body)
-        if qualified is None:
-            pending.append((marker, body.strip(" ,-:")))
-            continue
-        name = _clean_text(qualified.group("name")).strip(" ,-:")
-        organisation = _clean_text(qualified.group("organisation")).strip(" ,-:")
-        organisation = re.split(
-            r"\s+in\s+the\s+Pay\s+Scale\b", organisation, maxsplit=1, flags=re.I
-        )[0].strip()
-        if not name or not organisation or re.search(r"[,;]", organisation):
-            return _ambiguous_narrative()
-        pending.append((marker, name))
-        group_excerpt = candidate[group_start:body_end].strip(" ,&")[:8000]
-        grouped_qualifier = len(pending) > 1
-        grouped.extend(
-            (
-                pending_marker,
-                pending_name,
-                organisation,
-                group_excerpt,
-                grouped_qualifier,
-            )
-            for pending_marker, pending_name in pending
-        )
-        pending = []
-        if index + 1 < len(markers):
-            group_start = markers[index + 1].start()
-    if pending or len(grouped) != len(markers):
-        return _ambiguous_narrative()
-
-    parsed: list[ParsedPost] = []
-    seen_keys: set[str] = set()
-    name_counts: dict[str, int] = {}
-    for _marker, name, _organisation, _excerpt, _grouped_qualifier in grouped:
-        normalized = " ".join(name.casefold().split())
-        name_counts[normalized] = name_counts.get(normalized, 0) + 1
-    for ordinal, (
-        marker,
-        base_name,
-        organisation,
-        excerpt,
-        grouped_qualifier,
-    ) in enumerate(grouped, start=1):
-        normalized_name = " ".join(base_name.casefold().split())
-        qualified_base_name = " ".join(
-            word.capitalize() if word.islower() else word for word in base_name.split()
-        )
-        name = (
-            f"{qualified_base_name} - {organisation}"
-            if grouped_qualifier or name_counts[normalized_name] > 1
-            else base_name
-        )
-        total = int(marker.group("total").replace(",", ""))
-        post_key = _stable_post_key(base_name, organisation)
-        if total < 1 or post_key in seen_keys:
-            note = "Narrative vacancy series contains an invalid total or duplicate Post."
-            return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
-        seen_keys.add(post_key)
-        locator = f"pdf:narrative-vacancies;item={ordinal}"
-        parsed.append(
-            ParsedPost(
-                post_key=post_key,
-                ordinal=ordinal,
-                name=name,
-                normalized_name=normalized_name,
-                source_locator=locator,
-                facts=(
-                    ParsedField(
-                        "name",
-                        CandidateValueType.STRING,
-                        name,
-                        base_name,
-                        f"{locator};field=post",
-                        excerpt,
-                    ),
-                    ParsedField(
-                        "organisation.name",
-                        CandidateValueType.STRING,
-                        organisation,
-                        organisation,
-                        f"{locator};field=organisation",
-                        excerpt,
-                    ),
-                    ParsedField(
-                        "vacancies.total",
-                        CandidateValueType.INTEGER,
-                        total,
-                        marker.group("total"),
-                        f"{locator};field=total",
-                        excerpt,
-                    ),
-                ),
-            )
-        )
-    posts = tuple(parsed)
-    return (
-        posts,
-        AdvertisementSplitStatus.EXPLICIT,
-        f"Deterministically parsed {len(posts)} Posts from an explicit vacancy series.",
-        (),
-    )
-
-
-def _ambiguous_narrative() -> tuple[
-    tuple[ParsedPost, ...],
-    AdvertisementSplitStatus,
-    str,
-    tuple[str, ...],
-]:
-    note = "Narrative vacancy series could not be split completely and safely."
-    return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
-
-
-def _qualify_duplicate_post_names(posts: tuple[ParsedPost, ...]) -> tuple[ParsedPost, ...]:
-    counts: dict[str, int] = {}
-    for post in posts:
-        counts[post.normalized_name] = counts.get(post.normalized_name, 0) + 1
-    qualified: list[ParsedPost] = []
-    for post in posts:
-        if counts[post.normalized_name] == 1:
-            qualified.append(post)
-            continue
-        organisation = next(
-            (
-                str(fact.value)
-                for fact in post.facts
-                if fact.field_path in {"organisation.name", "department.name"}
-            ),
-            "",
-        )
-        if not organisation:
-            qualified.append(post)
-            continue
-        base_name = " ".join(
-            word.capitalize() if word.islower() else word for word in post.name.split()
-        )
-        display_name = f"{base_name} - {organisation}"
-        facts = tuple(
-            replace(fact, value=display_name) if fact.field_path == "name" else fact
-            for fact in post.facts
-        )
-        qualified.append(replace(post, name=display_name, facts=facts))
-    return tuple(qualified)
 
 
 def apply_post_detail_tables(
@@ -2715,26 +2343,6 @@ def _matching_post_indexes(posts: tuple[ParsedPost, ...], values: dict[str, str]
     return matches
 
 
-def _table_cells(line: str) -> list[str]:
-    return [cell.strip() for cell in line.strip().strip("|").split("|")]
-
-
-def _header_key(value: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", value.casefold())
-
-
-def _separator_row(cells: list[str]) -> bool:
-    return bool(cells) and all(re.fullmatch(r"[-: ]+", cell) for cell in cells)
-
-
-def _stable_post_key(name: str, qualifier: str) -> str:
-    seed = _clean_text(f"{name} {qualifier}").casefold()
-    slug = re.sub(r"[^a-z0-9]+", "_", seed).strip("_")
-    if not slug:
-        slug = "post"
-    if len(slug) > 110:
-        slug = f"{slug[:97].rstrip('_')}_{hashlib.sha256(seed.encode()).hexdigest()[:12]}"
-    return slug
 
 
 def archive_candidate_key(authority_code: str, metadata: ArchiveNoticeMetadata) -> str:

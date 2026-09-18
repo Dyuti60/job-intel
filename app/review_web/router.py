@@ -22,6 +22,7 @@ from app.schemas.review import ReviewDecisionCreate
 from app.services.candidate_values import normalize_typed_value
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
 from app.services.master import MasterPublisherService
+from app.services.post_structure_review import PostStructureReviewService
 from app.services.review import ReviewService
 
 router = APIRouter(prefix="/review", tags=["review-web"])
@@ -81,6 +82,51 @@ async def _read_form_values(request: Request) -> dict[str, list[str]]:
         raise ValueError("Only standard URL-encoded form submissions are accepted")
     values = parse_qs(body.decode("utf-8"), keep_blank_values=True, strict_parsing=False)
     return values
+
+
+@router.post("/cases/{case_id}/structure")
+async def approve_structure(
+    request: Request, case_id: uuid.UUID, session: DatabaseSession, settings: ApplicationSettings
+) -> HTMLResponse:
+    rows = []
+    comment = ""
+    try:
+        form = await _read_form_values(request)
+        titles = form.get("post_title", [])
+        organisations = form.get("post_organisation", [])
+        vacancies = form.get("post_vacancies", [])
+        if len(titles) != len(organisations) or len(titles) != len(vacancies):
+            raise ValueError("Incomplete proposed Post rows")
+        rows = [
+            dict(title=t, organisation=o, vacancies=v)
+            for t, o, v in zip(titles, organisations, vacancies, strict=True)
+        ]
+        comment = form.get("structure_comment", [""])[-1]
+        case = PostStructureReviewService(session).approve(
+            case_id, rows, settings.review_web_reviewer_identifier, comment
+        )
+        session.commit()
+        return _case_redirect(
+            case.id, message="Structure approved. Review remaining shared facts before publication."
+        )
+    except (ValueError, ValidationError, DomainConflictError, ResourceNotFoundError) as error:
+        session.rollback()
+        try:
+            context = ReviewCaseViewService(session).case(case_id)
+        except ResourceNotFoundError:
+            return _error_page(request, "Review case not found", 404)
+        return _template(
+            request,
+            "review/case.html",
+            {
+                **context,
+                "title": "Review Advertisement structure",
+                "error": str(error),
+                "proposed_posts": rows,
+                "structure_comment": comment,
+            },
+            status_code=400,
+        )
 
 
 @router.post("/bulk-publish")

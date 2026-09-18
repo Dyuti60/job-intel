@@ -34,6 +34,7 @@ from app.models.verification import FieldVerification, VerificationEvidenceAsses
 from app.repositories.confidence import FieldConfidenceRepository
 from app.services.exceptions import DomainConflictError
 from app.services.master import MasterPublisherService
+from app.services.post_identity import canonical_post_name
 from app.services.review import ReviewService
 
 
@@ -170,7 +171,9 @@ class ReviewCaseViewService:
                         "candidate_key": candidate.candidate_key,
                         "advertisement_title": candidate.display_name,
                         "post_key": post_key,
-                        "post_name": post.name if post is not None else candidate.display_name,
+                        "post_name": self._post_name(post, case.items)
+                        if post is not None
+                        else candidate.display_name,
                         "authority_name": candidate.recruiting_authority.name,
                         "organization": self._organization(revision),
                         "important_fields": self._important_post_fields(post),
@@ -261,7 +264,7 @@ class ReviewCaseViewService:
             == AdvertisementSplitStatus.EXPLICIT
             else []
         )
-        post_names = {post.post_key: post.name for post in posts}
+        post_names = {post.post_key: self._post_name(post, review_case.items) for post in posts}
         if focus_post_key is not None and focus_post_key not in post_names:
             raise DomainConflictError("The selected Post is not part of this review case")
 
@@ -311,7 +314,7 @@ class ReviewCaseViewService:
             {
                 "scope": "POST",
                 "key": post.post_key,
-                "name": post.name,
+                "name": post_names[post.post_key],
                 "items": [item for item in items if item["post_key"] == post.post_key],
             }
             for post in explicit_posts
@@ -405,6 +408,20 @@ class ReviewCaseViewService:
             )
         result = {
             "case": review_case,
+            "structure_builder": (
+                {
+                    "status": revision.advertisement_revision.split_status.value,
+                    "reason": revision.advertisement_revision.split_note,
+                }
+                if revision.advertisement_revision is not None
+                and revision.advertisement_revision.split_status
+                != AdvertisementSplitStatus.EXPLICIT
+                and review_case.status != ReviewCaseStatus.CANCELLED
+                else None
+            ),
+            "structure_audit": revision.extraction_note
+            if revision.extraction_method == "HUMAN_POST_STRUCTURE"
+            else None,
             "case_id": review_case.id,
             "status": review_case.status.value,
             "priority": review_case.priority.value,
@@ -439,7 +456,7 @@ class ReviewCaseViewService:
             "focused_post": (
                 {
                     "key": focused_post.post_key,
-                    "name": focused_post.name,
+                    "name": post_names[focused_post.post_key],
                     "important_fields": self._important_post_fields(focused_post),
                 }
                 if focused_post is not None
@@ -499,8 +516,49 @@ class ReviewCaseViewService:
         return result
 
     @staticmethod
+    def _post_name(post, items) -> str:
+        values = {fact.fact_key: fact.candidate_field.value for fact in post.facts}
+        old_unit = next(
+            (
+                values[key]
+                for key in (
+                    "organisation.name",
+                    "organization.name",
+                    "organization.unit",
+                    "department.name",
+                )
+                if key in values
+            ),
+            "",
+        )
+        for item in items:
+            if ReviewService._post_key(item.field_path_snapshot) != post.post_key:
+                continue
+            if (
+                item.decision is not None
+                and item.decision.decision == ReviewDecisionType.CORRECT_AND_APPROVE
+            ):
+                path = item.field_path_snapshot.split(".", 2)[2]
+                values[path] = item.decision.corrected_value
+        unit = next(
+            (
+                values[key]
+                for key in (
+                    "organisation.name",
+                    "organization.name",
+                    "organization.unit",
+                    "department.name",
+                )
+                if key in values
+            ),
+            "",
+        )
+        return canonical_post_name(
+            values.get("name", post.name), unit, previous_organisation=old_unit
+        )
+
     def _review_units(
-        review_case: Any, revision: RecruitmentCandidateRevision
+        self, review_case: Any, revision: RecruitmentCandidateRevision
     ) -> list[tuple[RecruitmentPost | None, list[Any]]]:
         item_groups: dict[str | None, list[Any]] = {}
         for item in review_case.items:

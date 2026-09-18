@@ -17,6 +17,31 @@
   </div>
 </div>
 
+{% if structure_builder %}
+<section class="card" id="post-builder">
+  <h2>Manual Post Builder</h2>
+  <p>{{ structure_builder.status|replace('_', ' ') }} — {{ structure_builder.reason or 'No safe deterministic structure found.' }}</p>
+  <p><a href="{{ candidate.source_document_url }}" target="_blank" rel="noopener noreferrer">View official source</a>. Only propose Posts whose title, unit and vacancies you can confirm. Leave unknown vacancies blank.</p>
+  <p class="muted">This creates an audited new interpretation, preserving the original parser result. Shared facts still require normal review; publication is a separate action. If structure is uncertain, retain the existing Advertisement fallback.</p>
+  <form method="post" action="/review/cases/{{ case_id }}/structure">
+    <div id="proposed-posts">
+    {% for row in proposed_posts or [{'title': '', 'organisation': '', 'vacancies': ''}] %}
+      <fieldset class="proposed-post"><legend>Proposed Post</legend>
+        <label>Post title<input name="post_title" required maxlength="250" value="{{ row.title }}"></label>
+        <label>Organisation / department / unit<input name="post_organisation" maxlength="200" value="{{ row.organisation }}"></label>
+        <label>Vacancies<input name="post_vacancies" type="number" min="0" max="999999999" value="{{ row.vacancies }}"></label>
+        <button type="button" class="secondary" onclick="if(this.closest('#proposed-posts').children.length>1)this.closest('fieldset').remove()">Remove Post</button>
+      </fieldset>
+    {% endfor %}
+    </div>
+    <button type="button" class="secondary" onclick="const rows=document.getElementById('proposed-posts');if(rows.children.length<50){const row=rows.firstElementChild.cloneNode(true);row.querySelectorAll('input').forEach(input=>input.value='');rows.appendChild(row)}">Add Post</button>
+    <label>Structure approval comment<textarea name="structure_comment" required maxlength="2000">{{ structure_comment or '' }}</textarea></label>
+    <button>Final Approve Structure</button>
+  </form>
+</section>
+{% endif %}
+{% if structure_audit %}<details class="card technical"><summary>Approved structure audit</summary><pre>{{ structure_audit }}</pre></details>{% endif %}
+
 {% if focused_post and publication %}
 <section class="card quick-review">
   <h2>Quick Review</h2>

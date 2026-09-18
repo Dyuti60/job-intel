@@ -32,6 +32,7 @@ from app.services.exceptions import (
     DuplicateResourceError,
     ResourceNotFoundError,
 )
+from app.services.post_identity import canonical_post_name
 
 
 class CandidateService:
@@ -148,6 +149,37 @@ class CandidateService:
                 "Candidate authority does not match source document authority"
             )
 
+        canonical_posts = []
+        for post in data.posts:
+            organisation = next(
+                (
+                    field.value
+                    for field in post.facts
+                    if field.field_path
+                    in {
+                        "organisation.name",
+                        "organization.name",
+                        "organization.unit",
+                        "department.name",
+                    }
+                ),
+                "",
+            )
+            name = canonical_post_name(post.name, organisation)
+            canonical_posts.append(
+                post.model_copy(
+                    update={
+                        "name": name,
+                        "facts": [
+                            field.model_copy(update={"value": name})
+                            if field.field_path == "name"
+                            else field
+                            for field in post.facts
+                        ],
+                    }
+                )
+            )
+        data = data.model_copy(update={"posts": canonical_posts})
         expanded_fields = list(data.fields)
         for post in data.posts:
             expanded_fields.extend(

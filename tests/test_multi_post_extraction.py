@@ -63,9 +63,9 @@ def test_multi_post_vacancy_table_is_explicit_and_preserves_shared_facts() -> No
 
     assert extraction.split_status == AdvertisementSplitStatus.EXPLICIT
     assert [post.name for post in extraction.posts] == [
-        "Grade IV Staff - Assam Police",
-        "Grade IV Staff - Assam Commando Battalions",
-        "Grade IV Staff - DGCD & CGHG",
+        "Grade IV Staff – Assam Police",
+        "Grade IV Staff – Assam Commando Battalions",
+        "Grade IV Staff – DGCD & CGHG",
     ]
     assert [
         next(fact.value for fact in post.facts if fact.field_path == "vacancies.total")
@@ -102,8 +102,8 @@ def test_rich_recruitment_sections_and_post_details_are_deterministic() -> None:
 
     assert extraction.split_status == AdvertisementSplitStatus.EXPLICIT
     assert [post.name for post in extraction.posts] == [
-        "Driver Constable",
-        "Driver Operator",
+        "Driver Constable – Assam Police",
+        "Driver Operator – Fire & Emergency Services",
     ]
     shared = {field.field_path: field.value for field in extraction.fields}
     assert shared["application.url"] == "https://slprbassam.in/apply"
@@ -159,8 +159,8 @@ def test_pypdf_whitespace_and_multiline_sections_are_post_isolated() -> None:
     assert extraction.split_status == AdvertisementSplitStatus.EXPLICIT
     assert extraction.warnings == ()
     assert [post.name for post in extraction.posts] == [
-        "Driver Constable",
-        "Driver Operator",
+        "Driver Constable – Assam Police",
+        "Driver Operator – Fire & Emergency Services",
     ]
     shared = {field.field_path: field.value for field in extraction.fields}
     assert shared["qualification.minimum"].startswith("HSLC or equivalent")
@@ -302,9 +302,9 @@ def test_grade_iv_pypdf_uses_atomic_trade_posts_and_clean_section_ownership() ->
     assert shared["qualification.minimum"].startswith("Minimum Class VIII")
     assert shared["qualification.maximum"].startswith("HSSLC or Class XII")
 
-    police_cook = facts_by_name["Cook - Assam Police"]
-    police_barber = facts_by_name["Barber - Assam Police"]
-    commando_plumber = facts_by_name["Plumber - Assam Commando Battalions"]
+    police_cook = facts_by_name["Cook – Assam Police"]
+    police_barber = facts_by_name["Barber – Assam Police"]
+    commando_plumber = facts_by_name["Plumber – Assam Commando Battalions"]
     assert "Cooking" in police_cook["experience.requirement"]
     assert "Saloon" not in str(police_cook)
     assert "Saloon" in police_barber["experience.requirement"]
@@ -424,9 +424,9 @@ def test_realistic_slprb_narrative_extracts_three_qualified_posts() -> None:
 
     assert extraction.split_status == AdvertisementSplitStatus.EXPLICIT
     assert [post.name for post in extraction.posts] == [
-        "Grade IV Staff - Assam Police",
-        "Grade IV Staff - Assam Commando Battalions",
-        "Grade IV Staff - DGCD & CGHG",
+        "Grade IV Staff – Assam Police",
+        "Grade IV Staff – Assam Commando Battalions",
+        "Grade IV Staff – DGCD & CGHG",
     ]
     assert [
         next(fact.value for fact in post.facts if fact.field_path == "vacancies.total")
@@ -459,17 +459,17 @@ def test_narrative_trailing_organisation_qualifiers_are_group_bounded() -> None:
             "14 posts of Constable (Dispatch Rider), 20 posts of Constable "
             "(Messenger) & 3 posts of Constable (Handymen) in APRO",
             [
-                ("Constable (Dispatch Rider) - APRO", "APRO", 14),
-                ("Constable (Messenger) - APRO", "APRO", 20),
-                ("Constable (Handymen) - APRO", "APRO", 3),
+                ("Constable (Dispatch Rider) – APRO", "APRO", 14),
+                ("Constable (Messenger) – APRO", "APRO", 20),
+                ("Constable (Handymen) – APRO", "APRO", 3),
             ],
         ),
         (
             "90 posts of Driver & 4 posts of Driver Operator in Fire & Emergency Services",
             [
-                ("Driver - Fire & Emergency Services", "Fire & Emergency Services", 90),
+                ("Driver – Fire & Emergency Services", "Fire & Emergency Services", 90),
                 (
-                    "Driver Operator - Fire & Emergency Services",
+                    "Driver Operator – Fire & Emergency Services",
                     "Fire & Emergency Services",
                     4,
                 ),
@@ -478,15 +478,15 @@ def test_narrative_trailing_organisation_qualifiers_are_group_bounded() -> None:
         (
             "7 posts of Driver Constable & 106 posts of Driver in Forest Department",
             [
-                ("Driver Constable - Forest Department", "Forest Department", 7),
-                ("Driver - Forest Department", "Forest Department", 106),
+                ("Driver Constable – Forest Department", "Forest Department", 7),
+                ("Driver – Forest Department", "Forest Department", 106),
             ],
         ),
         (
             "20 posts of Technical Assistant and 10 posts of Field Assistant in Unit X",
             [
-                ("Technical Assistant - Unit X", "Unit X", 20),
-                ("Field Assistant - Unit X", "Unit X", 10),
+                ("Technical Assistant – Unit X", "Unit X", 20),
+                ("Field Assistant – Unit X", "Unit X", 10),
             ],
         ),
     ]
@@ -526,14 +526,14 @@ def test_complete_grouped_narrative_extracts_eight_posts_and_aggregate() -> None
     )
 
     expected = [
-        ("Driver Constable - Assam Police", 127),
-        ("Constable (Dispatch Rider) - APRO", 14),
-        ("Constable (Messenger) - APRO", 20),
-        ("Constable (Handymen) - APRO", 3),
-        ("Driver - Fire & Emergency Services", 90),
-        ("Driver Operator - Fire & Emergency Services", 4),
-        ("Driver Constable - Forest Department", 7),
-        ("Driver - Forest Department", 106),
+        ("Driver Constable – Assam Police", 127),
+        ("Constable (Dispatch Rider) – APRO", 14),
+        ("Constable (Messenger) – APRO", 20),
+        ("Constable (Handymen) – APRO", 3),
+        ("Driver – Fire & Emergency Services", 90),
+        ("Driver Operator – Fire & Emergency Services", 4),
+        ("Driver Constable – Forest Department", 7),
+        ("Driver – Forest Department", 106),
     ]
     actual = [
         (
@@ -568,7 +568,7 @@ def test_simple_fully_qualified_narrative_names_remain_unchanged() -> None:
     text = "10 posts of Post A in Unit A and 5 posts of Post B under Unit B"
     posts, status, _note, _warnings = parse_narrative_vacancies(text, text)
     assert status == AdvertisementSplitStatus.EXPLICIT
-    assert [post.name for post in posts] == ["Post A", "Post B"]
+    assert [post.name for post in posts] == ["Post A – Unit A", "Post B – Unit B"]
 
 
 def test_malformed_vacancy_table_is_ambiguous_and_fabricates_no_posts() -> None:
@@ -733,8 +733,16 @@ def test_rich_multi_post_facts_reach_master_and_public_views(client, db_session,
 
     public = client.get("/api/public/v1/recruitments", params={"as_of": "2026-09-20"}).json()
     assert public["total"] == 2
-    driver = next(item for item in public["items"] if item["display_name"] == "Driver Constable")
-    operator = next(item for item in public["items"] if item["display_name"] == "Driver Operator")
+    driver = next(
+        item
+        for item in public["items"]
+        if item["display_name"] == "Driver Constable – Assam Police"
+    )
+    operator = next(
+        item
+        for item in public["items"]
+        if item["display_name"] == "Driver Operator – Fire & Emergency Services"
+    )
     assert driver["vacancies_total"] == 127
     assert operator["vacancies_total"] == 4
     assert driver["organisation"] == "Assam Police"
@@ -819,16 +827,23 @@ def test_pypdf_like_extraction_reaches_candidate_master_and_public_detail(
     revision = client.get(f"/api/v1/candidate-revisions/{revision_row.id}").json()
     assert db_session.scalar(select(func.count()).select_from(RecruitmentPost)) == 2
     document = client.get(f"/api/v1/source-documents/{revision_row.source_document_id}").json()
-    assert client.patch(
-        f"/api/v1/recruitment-candidates/{revision_row.recruitment_candidate_id}",
-        json={"status": "READY_FOR_VERIFICATION"},
-    ).status_code == 200
+    assert (
+        client.patch(
+            f"/api/v1/recruitment-candidates/{revision_row.recruitment_candidate_id}",
+            json={"status": "READY_FOR_VERIFICATION"},
+        ).status_code
+        == 200
+    )
     confidence = _verify_revision(client, document, revision)["confidence"]
     assert _publish(client, confidence["id"]).status_code == 201
 
     public = client.get("/api/public/v1/recruitments", params={"as_of": "2026-01-01"}).json()
     assert public["total"] == 2
-    driver = next(item for item in public["items"] if item["display_name"] == "Driver Constable")
+    driver = next(
+        item
+        for item in public["items"]
+        if item["display_name"] == "Driver Constable – Assam Police"
+    )
     detail = client.get(f"/api/public/v1/recruitments/{driver['id']}").json()
     values = {field["field_path"]: field["value"] for field in detail["fields"]}
     assert values["vacancies.total"] == 127
@@ -890,10 +905,13 @@ def test_atomic_grade_iv_posts_reach_master_and_public_jobs(client, db_session, 
     assert db_session.scalar(select(func.count()).select_from(RecruitmentPost)) == 13
     revision = client.get(f"/api/v1/candidate-revisions/{revision_row.id}").json()
     document = client.get(f"/api/v1/source-documents/{revision_row.source_document_id}").json()
-    assert client.patch(
-        f"/api/v1/recruitment-candidates/{revision_row.recruitment_candidate_id}",
-        json={"status": "READY_FOR_VERIFICATION"},
-    ).status_code == 200
+    assert (
+        client.patch(
+            f"/api/v1/recruitment-candidates/{revision_row.recruitment_candidate_id}",
+            json={"status": "READY_FOR_VERIFICATION"},
+        ).status_code
+        == 200
+    )
     confidence = _verify_revision(client, document, revision)["confidence"]
     assert _publish(client, confidence["id"]).status_code == 201
 
@@ -902,9 +920,7 @@ def test_atomic_grade_iv_posts_reach_master_and_public_jobs(client, db_session, 
     assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 13
     assert not any(item["display_name"].startswith("Grade IV Staff") for item in public["items"])
     dgcd_cook = next(
-        item
-        for item in public["items"]
-        if item["display_name"] == "Cook - DGCD & CGHG"
+        item for item in public["items"] if item["display_name"] == "Cook – DGCD & CGHG"
     )
     assert dgcd_cook["vacancies_total"] == 27
     detail = client.get(f"/api/public/v1/recruitments/{dgcd_cook['id']}").json()
@@ -983,9 +999,9 @@ def test_slprb_narrative_publishes_three_isolated_master_posts_and_public_jobs(
     assert len(master_posts) == public["total"] == 3
     assert len({post["public_id"] for post in master_posts}) == 3
     expected = {
-        "Grade IV Staff - Assam Police": 181,
-        "Grade IV Staff - Assam Commando Battalions": 6,
-        "Grade IV Staff - DGCD & CGHG": 69,
+        "Grade IV Staff – Assam Police": 181,
+        "Grade IV Staff – Assam Commando Battalions": 6,
+        "Grade IV Staff – DGCD & CGHG": 69,
     }
     assert {item["display_name"]: item["vacancies_total"] for item in public["items"]} == expected
 
@@ -1007,9 +1023,9 @@ def test_slprb_narrative_publishes_three_isolated_master_posts_and_public_jobs(
     summary = client.get(f"/jobs/advertisements/{advertisement_id}")
     assert summary.status_code == 200
     assert summary.text.count("View Job Details") == 3
-    assert "Grade IV Staff - Assam Police" in summary.text
-    assert "Grade IV Staff - Assam Commando Battalions" in summary.text
-    assert "Grade IV Staff - DGCD &amp; CGHG" in summary.text
+    assert "Grade IV Staff – Assam Police" in summary.text
+    assert "Grade IV Staff – Assam Commando Battalions" in summary.text
+    assert "Grade IV Staff – DGCD &amp; CGHG" in summary.text
     assert metadata.document_url in summary.text
     for item in public["items"]:
         assert f"/jobs/{item['id']}" in summary.text

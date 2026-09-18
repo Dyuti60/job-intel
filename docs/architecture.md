@@ -936,6 +936,18 @@ These operational layers never invoke pipeline, Review, or Publisher mutations a
 
 ## Post-grouped review and Post-aware Master
 
+Generic bounded vacancy-table and narrative grammar produces explicit single or multiple Posts
+before authority-specific rich-field extraction. Post display names use the single canonical form
+`<Post title> – <Organisation / Department / Unit>` when the unit is supported; deterministic Post
+keys remain independent of presentation punctuation and row order. Ambiguous ownership remains
+`AMBIGUOUS` or `LEGACY_UNSPLIT` rather than being forced into Posts.
+
+Human Review can replace an ambiguous/legacy interpretation with confirmed Post title, unit, and
+vacancy rows. This creates a new immutable Candidate revision, records reviewer identity, comment,
+timestamp, and predecessor IDs, then enters the existing Verification, Review, and Master Publisher
+path. It never mutates the parser revision or its evidence, and unresolved shared Advertisement
+facts continue to block publication. Equivalent structures reuse the same revision and review case.
+
 Routing V1 is the operational review contract for Confidence V2. A routing-driven ReviewCase links
 to its immutable `ReviewRoutingAssessment` and snapshots only the routed field risks plus any
 advertisement-wide reasons. The case, item set, confidence values, reasons, priorities, and routing

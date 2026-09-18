@@ -182,6 +182,10 @@ class VerificationWorkerService:
         )
         return latest_run is None or self._timestamp(latest_request) > self._timestamp(latest_run)
 
+    def process_revision(self, revision_id: uuid.UUID) -> VerificationWorkerItemResult:
+        """Verify one revision locally; the caller owns the transaction."""
+        return self._process_revision(revision_id)
+
     def _process_revision(self, revision_id: uuid.UUID) -> VerificationWorkerItemResult:
         revision = self.session.scalar(
             select(RecruitmentCandidateRevision)
