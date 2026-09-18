@@ -34,6 +34,7 @@ def test_catalog_covers_pipeline_sources_with_bounded_schedules() -> None:
         "APSC",
         "ASDMA_ASSAM",
         "DEE_ASSAM",
+        "DHS_ASSAM",
         "DME_ASSAM",
         "SLPRB_ASSAM",
     )
@@ -49,6 +50,7 @@ def test_selection_is_priority_then_code_and_supports_groups(db_session) -> None
         "APSC",
         "SLPRB_ASSAM",
         "DEE_ASSAM",
+        "DHS_ASSAM",
         "DME_ASSAM",
         "ASDMA_ASSAM",
     )
@@ -56,7 +58,7 @@ def test_selection_is_priority_then_code_and_supports_groups(db_session) -> None
         SchedulerSelection.GROUP,
         group=SourceScheduleGroup.HIGH_PRIORITY,
         evaluated_at=NOW,
-    ) == ("APSC", "SLPRB_ASSAM", "DEE_ASSAM")
+    ) == ("APSC", "SLPRB_ASSAM", "DEE_ASSAM", "DHS_ASSAM")
 
 
 def test_due_selection_uses_registry_attempt_time_and_disabled_state(client, db_session) -> None:
@@ -159,12 +161,13 @@ def test_fast_dry_run_previews_all_selection_modes_without_pipeline_side_effects
     all_enabled = service.run(SchedulerSelection.ALL, dry_run=True, evaluated_at=NOW)
 
     assert source.selected_sources == ("APSC",)
-    assert group.selected_sources == ("APSC", "SLPRB_ASSAM", "DEE_ASSAM")
+    assert group.selected_sources == ("APSC", "SLPRB_ASSAM", "DEE_ASSAM", "DHS_ASSAM")
     assert "APSC" not in due.selected_sources
     assert all_enabled.selected_sources == (
         "APSC",
         "SLPRB_ASSAM",
         "DEE_ASSAM",
+        "DHS_ASSAM",
         "DME_ASSAM",
         "ASDMA_ASSAM",
     )

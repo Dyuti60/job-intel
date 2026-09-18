@@ -1,44 +1,46 @@
-# Official Assam recruitment source inventory
+# Official Assam recruitment source coverage
 
-Inventory reviewed on 2026-09-14. “Implemented” means a deterministic adapter and scheduler entry
-exist; it does not mean every historical PDF can be structured without Human Review. Official
-authority pages are the only authoritative sources. The canonical historical window is the current
-Asia/Kolkata calendar year plus the two preceding calendar years, inclusive (2024–2026 today).
+Reviewed 18 September 2026. Only official authority pages are ingestion sources. Phase 1 keeps
+onboarding deliberately small: a source is enabled only after its listing shape produces bounded,
+classifiable recruitment documents through a tested adapter.
 
-## Implemented and enabled
+## Existing
 
-| Code | Official endpoint | Family | Group / interval | Live validation |
-| --- | --- | --- | --- | --- |
-| APSC | `https://apsc.nic.in/` | custom recruitment portal | HIGH_PRIORITY / 6h | HTTP gateway returned 502 on 2026-09-14; fixture/CI coverage remains green |
-| SLPRB_ASSAM | `https://slprbassam.in/` | authority-specific HTML table + PDF | HIGH_PRIORITY / 6h | HTTP gateway returned 502 on 2026-09-14; fixture/CI coverage remains green |
-| DEE_ASSAM | `https://dee.assam.gov.in/portlets/recruitment-under-dee-assam` | document-list CMS + PDF | HIGH_PRIORITY / 12h | HTTP 200 on 2026-09-14; parser selected 4 in-window advertisements |
-| DME_ASSAM | `https://dme.assam.gov.in/documents-detail/recruitment` | document-list CMS + PDF | NORMAL / 24h | HTTP 200 on 2026-09-14; parser selected 2 in-window advertisements |
-| ASDMA_ASSAM | `https://asdma.assam.gov.in/resource/recruitment` | structured resource table + download | NORMAL / 24h | HTTP 200 on 2026-09-14; parser selected 42 in-window vacancies after lifecycle exclusions |
+| Source | Official recruitment URL | Authority type | Frequency | Format / adapter | Priority | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| APSC | `https://apsc.nic.in/` | Commission | frequent | HTML/PDF, custom portal | high | EXISTING |
+| SLPRB Assam | `https://slprbassam.in/` | Police board | frequent | HTML table/PDF, official archive | high | EXISTING |
+| DEE Assam | `https://dee.assam.gov.in/portlets/recruitment-under-dee-assam` | Department | recurring | document table/PDF, official archive | high | EXISTING |
+| DME Assam | `https://dme.assam.gov.in/documents-detail/recruitment` | Department | recurring | document table/PDF, official archive | high | EXISTING |
+| ASDMA Assam | `https://asdma.assam.gov.in/resource/recruitment` | Autonomous authority | periodic | structured table/download, official archive | normal | EXISTING |
 
-All adapters use bounded response sizes, connect/read timeouts, retry only transient failures, a
-descriptive user agent, stable URL/hash identities, and conservative advertisement selection.
-Results, merit/selection lists, answer keys, verification/interview schedules, admit cards,
-appointments, cancellations, postponements, extensions, corrigenda, and addenda do not create new
-jobs.
+## Newly onboarded
 
-## Validated inventory awaiting a safe adapter extension
+| Source | Official recruitment URL | Authority type | Frequency | Format / adapter | Priority | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| DHS Assam | `https://dhs.assam.gov.in/documents-detail/recruitment` | Department | frequent | document table/PDF, official archive | high | READY_FOR_ONBOARDING |
 
-| Authority | Official endpoint | Likely family | Onboarding decision |
-| --- | --- | --- | --- |
-| NHM Assam | `https://nhm.assam.gov.in/latest/advertisement-for-various-posts-under-nhm-assam` | CMS detail page + PDF | defer until bounded archive enumeration is proven |
-| Samagra Shiksha Axom | `https://ssa.assam.gov.in/information-services/recruitment-notice` | CMS link list/detail + PDF | defer; current links need deterministic detail-page traversal |
-| P&RD / ASRLM | `https://asrlms.assam.gov.in/portlets/recruitment-career-1` | CMS link list/detail + PDF | defer; page mixes advertisements, results, and interview lists |
-| Directorate of Agriculture | `https://diragri.assam.gov.in/resource/recruitment-1` | paginated resource list | defer until bounded pagination and download resolution are fixture-covered |
-| FREMAA | `https://fremaa.assam.gov.in/portlets/recruitment-career` | document-list CMS + PDF | defer; many titles lack a reliable publication year |
-| P&RD documents | `https://pnrd.assam.gov.in/documents/recruitment` | paginated document CMS | defer; category/archive behavior needs source-specific validation |
-| Niyukti | `https://niyukti.assam.gov.in/` | recruitment portal | defer; application service is not a stable public advertisement index |
+DHS uses a conservative 12-month-style window (current and immediately preceding calendar year),
+12-hour polling, four requests per minute, and at most 20 advertisements per run. Results, lists,
+admit cards, verification/interview schedules, appointments, cancellations, postponements,
+extensions, corrigenda, and addenda are excluded as new jobs.
 
-District administration pages, power entities, boards, universities, courts, and remaining
-departments stay inventory candidates—not registered executable sources—until official ownership,
-stable archive behavior, historical reach, document classification, and respectful polling bounds
-are each confirmed. V2 may propose source candidates, but only an audited deterministic onboarding
-change may enable them.
+## Requires custom adapter
 
-The ASDMA live check also fetched one selected official PDF (HTTP 200, 1,058,569 bytes) and
-deterministically extracted four advertisement fields. It remained `LEGACY_UNSPLIT` because that
-document did not expose a safely supported Post table; no Post was invented.
+| Source | Official recruitment URL | Authority type | Frequency | Format / recommended family | Priority | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| DTE Assam | `https://dte.assam.gov.in/portlets/recruitment` | Department | recurring | mixed/undated archive; dated document resolver | high | REQUIRES_CUSTOM_ADAPTER |
+| Directorate of Agriculture | `https://diragri.assam.gov.in/resource/recruitment-1` | Department | recurring | listing to detail to PDF; bounded detail traversal | high | REQUIRES_CUSTOM_ADAPTER |
+| DSE Assam | `https://dse.assam.gov.in/` | Department | frequent | mixed CMS; recruitment-index adapter | high | REQUIRES_CUSTOM_ADAPTER |
+| NHM Assam | `https://nhm.assam.gov.in/latest/advertisement-for-various-posts-under-nhm-assam` | Mission | frequent | CMS detail/archive; bounded archive adapter | high | REQUIRES_CUSTOM_ADAPTER |
+| Gauhati High Court | `https://ghconline.gov.in/index.php/recruitment-notices/` | Constitutional court | frequent | custom HTML listing/PDF with Assam filtering | high | REQUIRES_CUSTOM_ADAPTER |
+| ASRLM | `https://asrlms.assam.gov.in/portlets/recruitment-career-1` | Mission | recurring | mixed listing/detail/PDF; lifecycle-aware traversal | normal | REQUIRES_CUSTOM_ADAPTER |
+| FREMAA | `https://fremaa.assam.gov.in/portlets/recruitment-career` | Autonomous agency | recurring | undated mixed document table; dated document resolver | specialized | REQUIRES_CUSTOM_ADAPTER |
+| DECT Assam | `https://dect.assam.gov.in/portlets/recruitment-career-0` | Department | periodic | undated mixed document table; dated document resolver | normal | REQUIRES_CUSTOM_ADAPTER |
+
+## Next high-priority batch
+
+Implement one bounded reusable CMS detail-traversal family and validate it first against Directorate
+of Agriculture and NHM. DTE/DSE and Gauhati High Court should follow only with their required dated
+archive and authority-scope rules. Until then these sources remain inventory entries, not executable
+scheduler registrations.

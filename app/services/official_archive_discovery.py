@@ -77,7 +77,10 @@ class OfficialArchiveDiscoveryWorkerService:
                 adapter = OfficialRecruitmentArchiveAdapter(
                     http,
                     self.source,
-                    earliest_year=datetime.now(ZoneInfo("Asia/Kolkata")).year - 2,
+                    earliest_year=(
+                        datetime.now(ZoneInfo("Asia/Kolkata")).year
+                        - self.source.history_lookback_years
+                    ),
                 )
             result = adapter.discover()
             summary = self._persist_result(

@@ -41,6 +41,7 @@ class OfficialArchiveSource:
     requests_per_minute: int = 6
     accepts_download_links: bool = False
     max_notices_per_run: int = 50
+    history_lookback_years: int = 2
 
 
 OFFICIAL_ARCHIVE_SOURCES = {
@@ -89,6 +90,21 @@ OFFICIAL_ARCHIVE_SOURCES = {
         priority=60,
         requests_per_minute=4,
         accepts_download_links=True,
+    ),
+    "DHS_ASSAM": OfficialArchiveSource(
+        source_code="DHS_ASSAM",
+        authority_code="DHS_ASSAM",
+        authority_name="Directorate of Health Services, Assam",
+        authority_type=AuthorityType.DEPARTMENT,
+        listing_url="https://dhs.assam.gov.in/documents-detail/recruitment",
+        adapter_key="official_archive_dhs",
+        organization_name="Directorate of Health Services, Assam",
+        schedule_group=SourceScheduleGroup.HIGH_PRIORITY,
+        poll_interval_minutes=720,
+        priority=35,
+        requests_per_minute=4,
+        max_notices_per_run=20,
+        history_lookback_years=1,
     ),
 }
 
@@ -307,30 +323,7 @@ def _metadata_from_row(row: _Row, source: OfficialArchiveSource) -> ArchiveNotic
     title = _clean_text(title)
     if not title:
         return None
-    lowered = title.casefold()
-    is_advertisement = any(word in lowered for word in ("advertisement", "recruitment", "vacancy"))
-    excluded = any(
-        word in lowered
-        for word in (
-            "result",
-            "merit list",
-            "select list",
-            "shortlist",
-            "verification",
-            "interview",
-            "admit card",
-            "withdrawal",
-            "cancellation",
-            "cancelled",
-            "appointment",
-            "answer key",
-            "postponement",
-            "extension",
-            "corrigendum",
-            "addendum",
-        )
-    )
-    if not is_advertisement or excluded:
+    if not _is_recruitment_advertisement(title):
         return None
     return ArchiveNoticeMetadata(
         title=title,
@@ -489,6 +482,43 @@ def parse_official_advertisement_text(
         split_note=split_note,
         warnings=warnings,
     )
+
+
+def _is_recruitment_advertisement(title: str) -> bool:
+    """Accept opening advertisements, never downstream recruitment lifecycle notices."""
+    lowered = _clean_text(title).casefold()
+    opening = re.search(
+        r"\b(?:advertisement|advt|recruitment notice|recruitment of|vacanc(?:y|ies)|"
+        r"engagement of|inviting applications?|walk[ -]in interview)\b",
+        lowered,
+    )
+    if opening is None:
+        return False
+    lifecycle = (
+        "result",
+        "merit list",
+        "select list",
+        "shortlist",
+        "shortlisted",
+        "document verification",
+        "admit card",
+        "answer key",
+        "appointment",
+        "withdrawal",
+        "cancellation",
+        "cancelled",
+        "postponement",
+        "extension",
+        "corrigendum",
+        "addendum",
+        "selection process",
+        "written examination",
+        "skill test",
+        "interview schedule",
+        "schedule of interview",
+        "rejected candidates",
+    )
+    return not any(term in lowered for term in lifecycle)
 
 
 def extraction_diagnostic_summary(
