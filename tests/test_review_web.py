@@ -996,13 +996,14 @@ def test_review_metrics_and_manual_publication_are_post_scoped_and_idempotent(
     assert "Publish Job" not in rejected_page.text
 
     dashboard = client.get("/review")
-    assert "Review required</span></div>" in dashboard.text
+    assert 'href="/review"' in dashboard.text
     metrics = (
         (1, "Review required"),
         (1, "In review"),
         (1, "Approved / resolved"),
         (1, "Rejected"),
-        (0, "Published"),
+        (0, "Auto published"),
+        (0, "Human published"),
     )
     for value, label in metrics:
         assert f"<strong>{value}</strong><span>{label}</span>" in dashboard.text
@@ -1035,7 +1036,7 @@ def test_review_metrics_and_manual_publication_are_post_scoped_and_idempotent(
     assert db_session.scalar(select(func.count(MasterPost.id))) == 1
     assert db_session.scalar(select(func.count(MasterPublicationEvent.id))) == 1
     dashboard = client.get("/review")
-    assert "<strong>1</strong><span>Published</span>" in dashboard.text
+    assert "<strong>1</strong><span>Human published</span>" in dashboard.text
 
 
 def test_incremental_post_publication_keeps_prior_post_and_complete_details(

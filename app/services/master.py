@@ -488,7 +488,7 @@ class MasterPublisherService:
                 raise DomainConflictError("Confidence V2 identity mismatch")
         else:
             field_assessments = ConfidenceService.validate_persisted_revision_assessment(
-                self.session, assessment
+                self.session, assessment, commit=self.commit
             )
         verifications = self.field_verifications.list_for_run(run.id)
         revision_field_ids = {field.id for field in revision.fields}

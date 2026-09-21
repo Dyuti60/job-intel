@@ -974,6 +974,15 @@ ACTIVE Master's current revision; explicit Posts become separate results and leg
 history remains a single compatibility result. Post detail combines approved advertisement-shared
 MasterFields with only the selected Post's MasterPostFacts and strips the internal Post path prefix.
 
+Published-job maintenance reads current Master revisions, not synthetic ReviewCases. The private
+portal separates auto-published (`VERIFIED_NO_REVIEW`) and human-published jobs and reports a
+deterministic completeness indicator without changing publication policy. An operator correction
+copies only currently published facts into a new immutable Candidate revision, runs Verification
+and Human Review, and invokes Master Publisher for a new Master revision. The reviewer comment and
+changed-field paths are audited; old Candidate/Master revisions and evidence remain intact. The
+same authority/Candidate Master and explicit Post key retain the stable public Post ID. Structural
+Post changes remain outside this attribute editor and use the Post-structuring workflow.
+
 Eligibility V1 is a stateless deterministic read/evaluation boundary. A JSON or HTML POST supplies
 a bounded transient applicant profile; no profile or evaluation is stored or echoed wholesale.
 The response identifies the durable job, current Master revision number, immutable rule version,

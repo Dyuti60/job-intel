@@ -23,6 +23,7 @@ from app.services.candidate_values import normalize_typed_value
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
 from app.services.master import MasterPublisherService
 from app.services.post_structure_review import PostStructureReviewService
+from app.services.published_maintenance import PublishedMaintenanceService
 from app.services.review import ReviewService
 
 router = APIRouter(prefix="/review", tags=["review-web"])
@@ -213,37 +214,78 @@ def review_queue(
     session: DatabaseSession,
     status: str | None = None,
     priority: str | None = None,
+    view: str | None = None,
+    outcome: str | None = None,
     q: str = "",
     page: int = 1,
     page_size: int = 25,
 ) -> HTMLResponse:
-    if len(q) > 100 or page < 1 or not 1 <= page_size <= 50:
+    if (
+        len(q) > 100
+        or page < 1
+        or not 1 <= page_size <= 50
+        or view not in {None, "AUTO_PUBLISHED", "HUMAN_PUBLISHED"}
+        or outcome not in {None, "APPROVED", "REJECTED"}
+    ):
         return _error_page(request, "Invalid queue search or page", 400)
     try:
         status_filter = ReviewCaseStatus(status) if status else None
         priority_filter = ReviewPriority(priority) if priority else None
     except ValueError:
         return _error_page(request, "Invalid review queue filter", 400)
-    view = ReviewCaseViewService(session).queue(status=status_filter, priority=priority_filter)
-    rows = view["cases"]
+    queue_view = ReviewCaseViewService(session).queue(
+        status=status_filter, priority=priority_filter
+    )
+    maintenance = PublishedMaintenanceService(session)
+    all_published = maintenance.rows()
+    queue_view["counts"]["auto_published"] = sum(
+        row["path"] == "AUTO_PUBLISHED" for row in all_published
+    )
+    queue_view["counts"]["human_published"] = sum(
+        row["path"] == "HUMAN_PUBLISHED" for row in all_published
+    )
+    if view is not None:
+        rows = [row for row in all_published if row["path"] == view]
+    else:
+        rows = queue_view["cases"]
+        if outcome == "APPROVED":
+            rows = [
+                row for row in rows if row["outcome"] in {"APPROVED", "APPROVED_WITH_CORRECTIONS"}
+            ]
+        elif outcome == "REJECTED":
+            rows = [row for row in rows if row["outcome"] == "REJECTED"]
     if q.strip():
         term = q.strip().casefold()
         rows = [
-            row for row in rows if term in " ".join(
-                str(row[key]) for key in (
-                    "post_name", "organization", "authority_name", "advertisement_title"
+            row
+            for row in rows
+            if term
+            in " ".join(
+                str(row.get(key, ""))
+                for key in (
+                    "post_name",
+                    "organization",
+                    "authority_name",
+                    "advertisement_title",
+                    "name",
+                    "organisation",
+                    "authority",
                 )
             ).casefold()
         ]
     pages = max(1, (len(rows) + page_size - 1) // page_size)
     page = min(page, pages)
-    view["cases"] = rows[(page - 1) * page_size:page * page_size]
+    visible = rows[(page - 1) * page_size : page * page_size]
+    queue_view["cases"] = visible if view is None else []
     return _template(
         request,
         "review/queue.html",
         {
             "title": "Human Review Queue",
-            **view,
+            **queue_view,
+            "published_rows": visible if view is not None else [],
+            "selected_view": view or "",
+            "selected_outcome": outcome or "",
             "selected_status": status or "",
             "selected_priority": priority or "",
             "search_query": q,
@@ -262,6 +304,59 @@ def review_queue(
     )
 
 
+@router.get("/published/{public_id}", response_class=HTMLResponse, name="review_published_job")
+def published_job(request: Request, public_id: uuid.UUID, session: DatabaseSession) -> HTMLResponse:
+    try:
+        detail = PublishedMaintenanceService(session).detail(public_id)
+    except ResourceNotFoundError as error:
+        return _error_page(request, str(error), 404)
+    return _template(
+        request,
+        "review/published_job.html",
+        {
+            "title": f"Maintain {detail['name']}",
+            **detail,
+            "message": request.query_params.get("message"),
+            "error": request.query_params.get("error"),
+        },
+    )
+
+
+@router.post("/published/{public_id}/republish")
+async def republish_job(
+    request: Request,
+    public_id: uuid.UUID,
+    session: DatabaseSession,
+    settings: ApplicationSettings,
+) -> RedirectResponse:
+    try:
+        form = await _read_form(request)
+        revision_id = uuid.UUID(form.get("master_revision_id", ""))
+        changes = {key[6:]: value for key, value in form.items() if key.startswith("field.")}
+        changed = PublishedMaintenanceService(session).republish(
+            public_id,
+            revision_id,
+            changes,
+            settings.review_web_reviewer_identifier,
+            form.get("comment", ""),
+        )
+        session.commit()
+        message = (
+            "Published correction through a new immutable revision"
+            if changed
+            else "No changes to publish"
+        )
+        return RedirectResponse(
+            f"/review/published/{public_id}?{urlencode({'message': message})}", status_code=303
+        )
+    except (ValueError, ValidationError, DomainConflictError, ResourceNotFoundError) as error:
+        session.rollback()
+        return RedirectResponse(
+            f"/review/published/{public_id}?{urlencode({'error': str(error)})}",
+            status_code=303,
+        )
+
+
 @router.get("/cases/{case_id}", response_class=HTMLResponse, name="review_case")
 def review_case(
     request: Request,
@@ -275,9 +370,7 @@ def review_case(
         return _error_page(request, str(error), 404)
     except DomainConflictError as error:
         return _error_page(request, str(error), 409)
-    focus_name = (view["focused_post"] or {}).get(
-        "name", view["candidate"]["candidate_key"]
-    )
+    focus_name = (view["focused_post"] or {}).get("name", view["candidate"]["candidate_key"])
     return _template(
         request,
         "review/case.html",
@@ -362,9 +455,7 @@ async def submit_review_scope(
                     else None
                 ),
                 corrected_value=(
-                    corrected_value
-                    if decision == ReviewDecisionType.CORRECT_AND_APPROVE
-                    else None
+                    corrected_value if decision == ReviewDecisionType.CORRECT_AND_APPROVE else None
                 ),
             )
         service.submit_review_scope(
@@ -402,9 +493,7 @@ async def publish_reviewed_post(
             review_case.revision_confidence_assessment_id,
             post,
         )
-        published_post = next(
-            (item for item in revision.posts if item.post_key == post), None
-        )
+        published_post = next((item for item in revision.posts if item.post_key == post), None)
         if published_post is None:
             raise DomainConflictError("Published Master revision does not contain this Post")
     except (ValueError, ResourceNotFoundError, DomainConflictError) as error:

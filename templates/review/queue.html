@@ -4,21 +4,26 @@
   <div>
     <p class="eyebrow">Operations</p>
     <h1>Human Review Queue</h1>
-    <p class="muted">Review-required Posts, ordered by priority and age, with parent Advertisement context.</p>
+    <p class="muted">Review work, decision history, and published-job maintenance.</p>
   </div>
 </div>
 
 <section class="metrics" aria-label="Queue counts">
-  <div class="metric"><strong>{{ counts.review_required }}</strong><span>Review required</span></div>
-  <div class="metric"><strong>{{ counts.in_review }}</strong><span>In review</span></div>
-  <div class="metric"><strong>{{ counts.approved }}</strong><span>Approved / resolved</span></div>
-  <div class="metric critical"><strong>{{ counts.rejected }}</strong><span>Rejected</span></div>
-  <div class="metric"><strong>{{ counts.published }}</strong><span>Published</span></div>
+  <a class="metric" href="/review"><strong>{{ counts.review_required }}</strong><span>Review required</span></a>
+  <a class="metric" href="/review?status=IN_REVIEW"><strong>{{ counts.in_review }}</strong><span>In review</span></a>
+  <a class="metric" href="/review?status=RESOLVED&amp;outcome=APPROVED"><strong>{{ counts.approved }}</strong><span>Approved / resolved</span></a>
+  <a class="metric critical" href="/review?status=RESOLVED&amp;outcome=REJECTED"><strong>{{ counts.rejected }}</strong><span>Rejected</span></a>
+  <a class="metric" href="/review?view=AUTO_PUBLISHED"><strong>{{ counts.auto_published }}</strong><span>Auto published</span></a>
+  <a class="metric" href="/review?view=HUMAN_PUBLISHED"><strong>{{ counts.human_published }}</strong><span>Human published</span></a>
 </section>
+<nav class="toolbar" aria-label="Review sections"><a href="/review">Review work</a><a href="/review?status=RESOLVED">Review history</a><a href="/review?view=AUTO_PUBLISHED">Auto published</a><a href="/review?view=HUMAN_PUBLISHED">Human published</a></nav>
 
 <form class="filters card" method="get" action="/review">
   <label>Search<input name="q" value="{{ search_query }}" maxlength="100" placeholder="Post, Advertisement, or authority"></label>
   <input type="hidden" name="page_size" value="{{ page_size }}">
+  {% if selected_view %}<input type="hidden" name="view" value="{{ selected_view }}">{% endif %}
+  {% if selected_outcome %}<input type="hidden" name="outcome" value="{{ selected_outcome }}">{% endif %}
+  {% if not selected_view %}
   <label>Status
     <select name="status">
       <option value="">Active cases</option>
@@ -35,9 +40,27 @@
       {% endfor %}
     </select>
   </label>
+  {% endif %}
   <button type="submit">Apply filters</button>
 </form>
 
+{% if selected_view %}
+<section class="card table-wrap">
+  {% if published_rows %}
+  <table>
+    <thead><tr><th scope="col">Published Post</th><th scope="col">Authority</th><th scope="col">Vacancies / closes</th><th scope="col">Completeness</th><th scope="col">Verification</th><th scope="col">Action</th></tr></thead>
+    <tbody>{% for job in published_rows %}<tr>
+      <td><strong>{{ job.name }}</strong><small>{{ job.organisation }}</small><small>{{ job.path | replace('_', ' ') }}</small></td>
+      <td>{{ job.authority }}</td>
+      <td>{{ job.vacancies if job.vacancies is not none else 'Not specified' }}<small>Closes: {{ job.closing_date or 'Not specified' }}</small></td>
+      <td><strong>{{ job.completeness }}</strong>{% if job.missing %}<small>Missing: {{ job.missing | join(', ') }}</small>{% endif %}</td>
+      <td>{{ job.verified_at.date() if job.verified_at else 'Unknown' }}</td>
+      <td><a href="/review/published/{{ job.public_id }}">Edit / Inspect</a></td>
+    </tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p class="empty">No published jobs match these filters.</p>{% endif %}
+</section>
+{% else %}
 <form method="post" action="/review/bulk-publish" id="bulk-review">
 <section class="card bulk-toolbar">
   <div class="toolbar"><button type="button" id="select-page" class="secondary">Select all eligible on this page</button><button type="button" id="clear-selection" class="secondary">Clear selection</button></div>
@@ -76,6 +99,7 @@
   {% endif %}
 </section>
 </form>
+{% endif %}
 <nav class="pagination" aria-label="Review pages">{% if previous_url %}<a href="{{ previous_url }}" rel="prev">← Previous</a>{% endif %}<span>Page {{ page }} of {{ pages }}</span>{% if next_url %}<a href="{{ next_url }}" rel="next">Next →</a>{% endif %}</nav>
 <script src="/static/review-bulk.js" defer></script>
 {% endblock %}

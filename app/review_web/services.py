@@ -84,55 +84,37 @@ class ReviewCaseViewService:
         status: ReviewCaseStatus | None,
         priority: ReviewPriority | None,
     ) -> dict[str, Any]:
+        def cases_for(
+            state: ReviewCaseStatus | None, selected_priority: ReviewPriority | None
+        ) -> list[Any]:
+            cases = []
+            while True:
+                batch = self.review.list_cases(
+                    status=state,
+                    priority=selected_priority,
+                    candidate_revision_id=None,
+                    verification_run_id=None,
+                    offset=len(cases),
+                    limit=500,
+                )
+                cases.extend(batch)
+                if len(batch) < 500:
+                    return cases
+
         if status is None:
             cases = [
-                *self.review.list_cases(
-                    status=ReviewCaseStatus.QUEUED,
-                    priority=priority,
-                    candidate_revision_id=None,
-                    verification_run_id=None,
-                    offset=0,
-                    limit=500,
-                ),
-                *self.review.list_cases(
-                    status=ReviewCaseStatus.IN_REVIEW,
-                    priority=priority,
-                    candidate_revision_id=None,
-                    verification_run_id=None,
-                    offset=0,
-                    limit=500,
-                ),
+                *cases_for(ReviewCaseStatus.QUEUED, priority),
+                *cases_for(ReviewCaseStatus.IN_REVIEW, priority),
             ]
             rank = {"CRITICAL": 0, "HIGH": 1, "NORMAL": 2, "NONE": 3}
             cases.sort(key=lambda case: (rank[case.priority.value], case.opened_at, str(case.id)))
         elif status == ReviewCaseStatus.RESOLVED:
             cases = [
-                *self.review.list_cases(
-                    status=ReviewCaseStatus.IN_REVIEW,
-                    priority=priority,
-                    candidate_revision_id=None,
-                    verification_run_id=None,
-                    offset=0,
-                    limit=500,
-                ),
-                *self.review.list_cases(
-                    status=ReviewCaseStatus.RESOLVED,
-                    priority=priority,
-                    candidate_revision_id=None,
-                    verification_run_id=None,
-                    offset=0,
-                    limit=500,
-                ),
+                *cases_for(ReviewCaseStatus.IN_REVIEW, priority),
+                *cases_for(ReviewCaseStatus.RESOLVED, priority),
             ]
         else:
-            cases = self.review.list_cases(
-                status=status,
-                priority=priority,
-                candidate_revision_id=None,
-                verification_run_id=None,
-                offset=0,
-                limit=500,
-            )
+            cases = cases_for(status, priority)
 
         entries = []
         for case in cases:
@@ -202,14 +184,7 @@ class ReviewCaseViewService:
                         ),
                     }
                 )
-        all_cases = self.review.list_cases(
-            status=None,
-            priority=None,
-            candidate_revision_id=None,
-            verification_run_id=None,
-            offset=0,
-            limit=500,
-        )
+        all_cases = cases_for(None, None)
         all_units = [
             (case, post, grouped_items, self._scope_outcome(grouped_items))
             for case in all_cases
@@ -230,12 +205,10 @@ class ReviewCaseViewService:
                     for case, _post, _items, outcome in all_units
                 ),
                 "approved": sum(
-                    outcome in approved_outcomes
-                    for _case, _post, _items, outcome in all_units
+                    outcome in approved_outcomes for _case, _post, _items, outcome in all_units
                 ),
                 "rejected": sum(
-                    outcome == "REJECTED"
-                    for _case, _post, _items, outcome in all_units
+                    outcome == "REJECTED" for _case, _post, _items, outcome in all_units
                 ),
                 "published": sum(
                     self._published_post(post) is not None
@@ -260,8 +233,7 @@ class ReviewCaseViewService:
         explicit_posts = (
             posts
             if revision.advertisement_revision is not None
-            and revision.advertisement_revision.split_status
-            == AdvertisementSplitStatus.EXPLICIT
+            and revision.advertisement_revision.split_status == AdvertisementSplitStatus.EXPLICIT
             else []
         )
         post_names = {post.post_key: self._post_name(post, review_case.items) for post in posts}
@@ -318,8 +290,7 @@ class ReviewCaseViewService:
                 "items": [item for item in items if item["post_key"] == post.post_key],
             }
             for post in explicit_posts
-            if advertisement_items
-            or any(item["post_key"] == post.post_key for item in items)
+            if advertisement_items or any(item["post_key"] == post.post_key for item in items)
         ]
         affected_post_keys = {group["key"] for group in post_groups}
         if focus_post_key is not None and focus_post_key not in affected_post_keys:
@@ -336,9 +307,7 @@ class ReviewCaseViewService:
                     "items": advertisement_items,
                 }
             )
-        review_groups.extend(
-            group for group in post_groups if group["key"] == focus_post_key
-        )
+        review_groups.extend(group for group in post_groups if group["key"] == focus_post_key)
         if not explicit_posts:
             review_groups.append(
                 {
@@ -348,14 +317,10 @@ class ReviewCaseViewService:
                     "items": items,
                 }
             )
-        focused_post = next(
-            (post for post in posts if post.post_key == focus_post_key), None
-        )
+        focused_post = next((post for post in posts if post.post_key == focus_post_key), None)
         focused_items = [item for group in review_groups for item in group["items"]]
         focused_outcome = self._scope_outcome_from_views(focused_items)
-        publication = self._publication_view(
-            review_case, focused_post, focused_outcome
-        )
+        publication = self._publication_view(review_case, focused_post, focused_outcome)
         item_by_field_id = {
             item["candidate_field_id"]: item
             for item in items
@@ -462,9 +427,7 @@ class ReviewCaseViewService:
                 if focused_post is not None
                 else None
             ),
-            "post_links": [
-                {"key": group["key"], "name": group["name"]} for group in post_groups
-            ],
+            "post_links": [{"key": group["key"], "name": group["name"]} for group in post_groups],
             "items": items,
             "review_groups": review_groups,
             "attribute_groups": attribute_groups,
@@ -482,12 +445,21 @@ class ReviewCaseViewService:
             links = result["post_links"]
             index = next(i for i, link in enumerate(links) if link["key"] == focused_post.post_key)
             result["post_navigation"] = {
-                "position": index + 1, "total": len(links),
+                "position": index + 1,
+                "total": len(links),
                 "previous": links[index - 1] if index > 0 else None,
                 "next": links[index + 1] if index + 1 < len(links) else None,
-                "next_unresolved": next((link for link in [*links[index + 1:], *links[:index]]
-                    if any(item["status"] != "RESOLVED" and item["post_key"] in {None, link["key"]}
-                           for item in items)), None),
+                "next_unresolved": next(
+                    (
+                        link
+                        for link in [*links[index + 1 :], *links[:index]]
+                        if any(
+                            item["status"] != "RESOLVED" and item["post_key"] in {None, link["key"]}
+                            for item in items
+                        )
+                    ),
+                    None,
+                ),
             }
         if review_case.status == ReviewCaseStatus.RESOLVED:
             projection = self.review.approved_projection(review_case.id)
@@ -679,9 +651,7 @@ class ReviewCaseViewService:
                 else None
             )
             breakdown = (
-                breakdown_rows(confidence.component_breakdown)
-                if confidence is not None
-                else []
+                breakdown_rows(confidence.component_breakdown) if confidence is not None else []
             )
             reasons = (
                 [
@@ -724,8 +694,7 @@ class ReviewCaseViewService:
             "criticality": confidence.criticality.value if confidence is not None else None,
             "review_required": review_item is not None,
             "actionable": (
-                review_item is not None
-                and review_item["status"] == ReviewItemStatus.PENDING.value
+                review_item is not None and review_item["status"] == ReviewItemStatus.PENDING.value
             ),
             "status": status,
             "decision": decision,
@@ -925,9 +894,7 @@ class ReviewCaseViewService:
         return {
             "id": field_verification.id,
             "outcome": (
-                field_verification.outcome.value
-                if field_verification.outcome is not None
-                else None
+                field_verification.outcome.value if field_verification.outcome is not None else None
             ),
             "reason": (
                 field_verification.reason_code.value

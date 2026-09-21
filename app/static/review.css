@@ -27,6 +27,8 @@ h1 { margin: .2rem 0; }
 .grid.three { grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); }
 .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; margin: 1.25rem 0; }
 .metric { padding: 1rem; border-radius: .6rem; background: white; border-left: 4px solid #667085; }
+.metrics a.metric { color: var(--ink); text-decoration: none; border-top: 1px solid var(--line); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.metrics a.metric:hover { background: #f0f9f4; }
 .metric strong, .metric span { display: block; }.metric strong { font-size: 1.7rem; }.metric.critical { border-color: #b42318; }.metric.high { border-color: #dc6803; }
 .filters { display: flex; align-items: end; gap: 1rem; }.filters label { min-width: 12rem; }
 label { display: grid; gap: .35rem; font-weight: 650; }
@@ -51,6 +53,8 @@ blockquote { margin: .8rem 0; padding: .7rem 1rem; border-left: 4px solid #98a2b
 .decision-summary { margin-top: 1rem; padding: 1rem; background: #ecfdf3; border-radius: .5rem; }.decision-controls { border-top: 1px solid var(--line); margin-top: 1.2rem; padding-top: 1rem; }.decision-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }.decision-form { display: grid; align-content: start; gap: .7rem; border: 1px solid var(--line); border-radius: .5rem; padding: 1rem; }.danger-zone { border-color: #fda29b; }.warning-zone { border-color: #fec84b; }
 .inline-decision { display: flex; gap: 1.5rem; margin-top: 1rem; padding: .8rem 1rem; border: 1px solid var(--line); border-radius: .5rem; }.inline-decision label { display: inline-flex; align-items: center; gap: .4rem; }.final-review-controls { display: grid; gap: .8rem; }.final-review-controls textarea { min-height: 7rem; }
 .attribute-editor { display: grid; gap: .8rem; margin-top: 1rem; }.attribute-editor > label { display: grid; gap: .35rem; }.attribute-editor textarea { min-height: 6rem; }
+.field-card { display: grid; gap: .35rem; padding: .8rem 0; border-bottom: 1px solid var(--line); }
+.field-card small { overflow-wrap: anywhere; }
 .quick-review, .bulk-toolbar { border-top:4px solid #079455; margin-bottom:1.5rem; }
 .quick-review form, .bulk-toolbar { display:grid; gap:.8rem; }
 #bulk-review input[type=checkbox] { width:1.2rem; height:1.2rem; }

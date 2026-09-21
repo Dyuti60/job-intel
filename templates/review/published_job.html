@@ -1,0 +1,37 @@
+{% extends "review/base.html" %}
+{% block content %}
+<div class="page-heading"><div>
+  <p class="eyebrow">Published job maintenance</p>
+  <h1>{{ name }}</h1>
+  <p>{{ publication_path | replace('_', ' ') }} · {{ completeness }}</p>
+  {% if missing %}<p class="muted">Missing important information: {{ missing | join(', ') }}</p>{% endif %}
+</div></div>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+{% if error %}<p class="notice error" role="alert">{{ error }}</p>{% endif %}
+<section class="card">
+  <h2>Official source and publication</h2>
+  <p><a href="{{ source_url }}" target="_blank" rel="noopener noreferrer">View official source</a></p>
+  <p class="muted">Source document {{ source_document_id }} · Candidate revision {{ candidate_revision_id }} · Current Master revision {{ master_revision_id }}</p>
+  <p><a href="/jobs/{{ public_id }}">View public job</a></p>
+  {% if structural_edit_url %}<p>Need to split or merge Posts? Use the <a href="{{ structural_edit_url }}">Post structure review</a>. This editor retains the current Post identity.</p>{% else %}<p>Splitting or merging requires a separate Manual Post Builder review. This editor cannot change Post structure.</p>{% endif %}
+</section>
+<form class="card" method="post" action="/review/published/{{ public_id }}/republish">
+  <h2>Edit Published Job</h2>
+  <p class="muted">Enter only values verified against the official source. Blank fields remain unchanged. Corrections create an immutable revision and pass through Verification, Human Review, and Master publication.</p>
+  <input type="hidden" name="master_revision_id" value="{{ master_revision_id }}">
+  {% for field in fields %}
+  <div class="field-card">
+    <label for="field-{{ loop.index }}"><strong>{{ field.label }}</strong></label>
+    {% if field.value_type == 'JSON' %}
+    <textarea id="field-{{ loop.index }}" name="field.{{ field.path }}" rows="4">{{ field.value }}</textarea>
+    {% else %}
+    <input id="field-{{ loop.index }}" name="field.{{ field.path }}" value="{{ field.value }}" {% if field.value_type == 'INTEGER' %}inputmode="numeric"{% elif field.value_type == 'DATE' %}type="date"{% endif %}>
+    {% endif %}
+    <small>{{ field.origin | replace('_', ' ') }}{% if field.original_value and field.original_value != field.value %} · Original extracted: {{ field.original_value }}{% endif %}{% if field.source_locator %} · Source: {{ field.source_locator }}{% endif %}</small>
+  </div>
+  {% endfor %}
+  <label for="maintenance-comment">Reviewer comment</label>
+  <textarea id="maintenance-comment" name="comment" required maxlength="8000" rows="3"></textarea>
+  <button type="submit">Verify and Republish</button>
+</form>
+{% endblock %}
