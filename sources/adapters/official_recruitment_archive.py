@@ -323,13 +323,13 @@ def _metadata_from_row(row: _Row, source: OfficialArchiveSource) -> ArchiveNotic
     title = _clean_text(title)
     if not title:
         return None
-    if not _is_recruitment_advertisement(title):
+    if not is_recruitment_advertisement(title):
         return None
     return ArchiveNoticeMetadata(
         title=title,
         document_url=urljoin(source.listing_url, title_link.url),
         notification_number=None,
-        notification_date=_date_from_title(title)
+        notification_date=notice_date_from_title(title)
         or next(
             (_parse_numeric_date(cell) for cell in row.cells if _parse_numeric_date(cell)),
             None,
@@ -484,7 +484,7 @@ def parse_official_advertisement_text(
     )
 
 
-def _is_recruitment_advertisement(title: str) -> bool:
+def is_recruitment_advertisement(title: str) -> bool:
     """Accept opening advertisements, never downstream recruitment lifecycle notices."""
     lowered = _clean_text(title).casefold()
     opening = re.search(
@@ -494,6 +494,11 @@ def _is_recruitment_advertisement(title: str) -> bool:
     )
     if opening is None:
         return False
+    return not is_recruitment_lifecycle_notice(lowered)
+
+
+def is_recruitment_lifecycle_notice(title: str) -> bool:
+    lowered = _clean_text(title).casefold()
     lifecycle = (
         "result",
         "merit list",
@@ -518,7 +523,7 @@ def _is_recruitment_advertisement(title: str) -> bool:
         "schedule of interview",
         "rejected candidates",
     )
-    return not any(term in lowered for term in lifecycle)
+    return any(term in lowered for term in lifecycle)
 
 
 def extraction_diagnostic_summary(
@@ -2435,7 +2440,7 @@ def _vacancy_total(title: str, text: str) -> int | None:
     return int(match.group(1).replace(",", "")) if match else None
 
 
-def _date_from_title(value: str) -> date | None:
+def notice_date_from_title(value: str) -> date | None:
     month_names = {
         "jan": 1,
         "feb": 2,

@@ -23,7 +23,10 @@ from app.services.verification_worker import (
     VerificationWorkerService,
     VerificationWorkerSummary,
 )
+from sources.adapters.cms_detail_recruitment import CMS_DETAIL_SOURCES
 from sources.adapters.official_recruitment_archive import OFFICIAL_ARCHIVE_SOURCES
+
+OFFICIAL_RECRUITMENT_SOURCES = {**OFFICIAL_ARCHIVE_SOURCES, **CMS_DETAIL_SOURCES}
 
 
 class PipelineStatus(enum.StrEnum):
@@ -42,7 +45,7 @@ PIPELINE_SOURCES = {
     "APSC": PipelineSourceConfig(source="APSC", authority_code="APSC"),
     **{
         code: PipelineSourceConfig(source=code, authority_code=config.authority_code)
-        for code, config in OFFICIAL_ARCHIVE_SOURCES.items()
+        for code, config in OFFICIAL_RECRUITMENT_SOURCES.items()
     },
 }
 
@@ -121,7 +124,7 @@ class PipelineOrchestratorService:
                     self.session,
                     self.settings,
                     self.logger,
-                    OFFICIAL_ARCHIVE_SOURCES[key],
+                    OFFICIAL_RECRUITMENT_SOURCES[key],
                 ).run(dry_run=dry_run, adapter=discovery_adapter)
         except Exception as error:
             self.session.rollback()

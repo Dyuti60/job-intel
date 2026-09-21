@@ -17,12 +17,12 @@ from app.models.source_registry import (
 from app.services.pipeline_history import PipelineHistoryService
 from app.services.pipeline_lock import PipelineAdvisoryLock
 from app.services.pipeline_orchestrator import (
+    OFFICIAL_RECRUITMENT_SOURCES,
     PIPELINE_SOURCES,
     PipelineOrchestratorService,
     PipelineStatus,
     PipelineSummary,
 )
-from sources.adapters.official_recruitment_archive import OFFICIAL_ARCHIVE_SOURCES
 
 
 class SchedulerSelection(enum.StrEnum):
@@ -86,7 +86,7 @@ def source_schedule_catalog() -> dict[str, SourceSchedule]:
                 config.priority,
                 config.requests_per_minute,
             )
-            for code, config in OFFICIAL_ARCHIVE_SOURCES.items()
+            for code, config in OFFICIAL_RECRUITMENT_SOURCES.items()
         }
     )
     if set(schedules) != set(PIPELINE_SOURCES):

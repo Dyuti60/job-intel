@@ -1,6 +1,6 @@
 # Official Assam recruitment source coverage
 
-Reviewed 18 September 2026. Only official authority pages are ingestion sources. Phase 1 keeps
+Reviewed 21 September 2026. Only official authority pages are ingestion sources. Onboarding stays
 onboarding deliberately small: a source is enabled only after its listing shape produces bounded,
 classifiable recruitment documents through a tested adapter.
 
@@ -30,9 +30,9 @@ extensions, corrigenda, and addenda are excluded as new jobs.
 | Source | Official recruitment URL | Authority type | Frequency | Format / recommended family | Priority | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | DTE Assam | `https://dte.assam.gov.in/portlets/recruitment` | Department | recurring | mixed/undated archive; dated document resolver | high | REQUIRES_CUSTOM_ADAPTER |
-| Directorate of Agriculture | `https://diragri.assam.gov.in/resource/recruitment-1` | Department | recurring | listing to detail to PDF; bounded detail traversal | high | REQUIRES_CUSTOM_ADAPTER |
+| Directorate of Agriculture | `https://diragri.assam.gov.in/resource/recruitment-1` | Department | recurring | CMS listing/detail/PDF family implemented; `/node/` live alias still needs validated activation | high | REQUIRES_CUSTOM_ADAPTER |
 | DSE Assam | `https://dse.assam.gov.in/` | Department | frequent | mixed CMS; recruitment-index adapter | high | REQUIRES_CUSTOM_ADAPTER |
-| NHM Assam | `https://nhm.assam.gov.in/latest/advertisement-for-various-posts-under-nhm-assam` | Mission | frequent | CMS detail/archive; bounded archive adapter | high | REQUIRES_CUSTOM_ADAPTER |
+| NHM Assam | `https://nhm.assam.gov.in/search?Apply=Apply&title=Advertisement` | Mission | frequent | CMS listing/detail/PDF family implemented; search listing yielded no traversable links in bounded validation | high | REQUIRES_CUSTOM_ADAPTER |
 | Gauhati High Court | `https://ghconline.gov.in/index.php/recruitment-notices/` | Constitutional court | frequent | custom HTML listing/PDF with Assam filtering | high | REQUIRES_CUSTOM_ADAPTER |
 | ASRLM | `https://asrlms.assam.gov.in/portlets/recruitment-career-1` | Mission | recurring | mixed listing/detail/PDF; lifecycle-aware traversal | normal | REQUIRES_CUSTOM_ADAPTER |
 | FREMAA | `https://fremaa.assam.gov.in/portlets/recruitment-career` | Autonomous agency | recurring | undated mixed document table; dated document resolver | specialized | REQUIRES_CUSTOM_ADAPTER |
@@ -40,7 +40,7 @@ extensions, corrigenda, and addenda are excluded as new jobs.
 
 ## Next high-priority batch
 
-Implement one bounded reusable CMS detail-traversal family and validate it first against Directorate
-of Agriculture and NHM. DTE/DSE and Gauhati High Court should follow only with their required dated
-archive and authority-scope rules. Until then these sources remain inventory entries, not executable
-scheduler registrations.
+Validate Agriculture's official `/node/` redirects and identify a stable official NHM advertisement
+listing that emits detail links to a non-browser client. Activate either source only after one bounded
+live run reaches a current official recruitment document. DTE/DSE and Gauhati High Court remain
+outside this phase.
