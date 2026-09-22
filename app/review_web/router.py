@@ -1,20 +1,24 @@
 import json
 import re
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import parse_qs, urlencode
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.candidates import CandidateValueType
 from app.models.confidence import ReviewPriority
+from app.models.discovery import DiscoveryObservation, DiscoveryRun, DiscoveryRunStatus
 from app.models.review import ReviewCaseStatus, ReviewDecisionType
 from app.review_web.actions import ReviewPublicationActions
 from app.review_web.services import ReviewCaseViewService
@@ -31,6 +35,16 @@ from app.services.review_enrichment import ReviewEnrichmentService
 
 router = APIRouter(prefix="/review", tags=["review-web"])
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[2] / "templates"))
+
+
+def _format_ist(value: datetime | None) -> str:
+    if value is None:
+        return "Unknown"
+    aware = value if value.tzinfo else value.replace(tzinfo=UTC)
+    return aware.astimezone(ZoneInfo("Asia/Kolkata")).strftime("%d %b %Y, %I:%M %p IST")
+
+
+templates.env.filters["ist"] = _format_ist
 DatabaseSession = Annotated[Session, Depends(get_db)]
 ApplicationSettings = Annotated[Settings, Depends(get_settings)]
 
@@ -268,6 +282,25 @@ def review_queue(
     active_rows = unique(active["cases"])
     resolved_rows = unique(resolved["cases"])
     published_rows = unique(all_published)
+    document_ids = {
+        row["source_document_id"]
+        for row in [*active_rows, *resolved_rows, *published_rows]
+        if row.get("source_document_id") is not None
+    }
+    dataset_refreshed_at = (
+        session.scalar(
+            select(func.max(DiscoveryRun.completed_at))
+            .join(DiscoveryObservation, DiscoveryObservation.discovery_run_id == DiscoveryRun.id)
+            .where(
+                DiscoveryObservation.source_document_id.in_(document_ids),
+                DiscoveryRun.status.in_(
+                    [DiscoveryRunStatus.SUCCEEDED, DiscoveryRunStatus.PARTIAL]
+                ),
+            )
+        )
+        if document_ids
+        else None
+    )
     counts = {
         "total_jobs": len(unique([*active_rows, *published_rows, *resolved_rows])),
         "review_required": sum(row["status"] == "QUEUED" for row in active_rows),
@@ -344,6 +377,7 @@ def review_queue(
             "cases": visible_review,
             "published_rows": visible_published,
             "counts": counts,
+            "dataset_refreshed_at": dataset_refreshed_at,
             "metric_urls": metric_urls,
             "selected_view": selected.value,
             "selected_outcome": outcome or "",

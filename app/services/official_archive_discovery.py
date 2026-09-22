@@ -86,9 +86,8 @@ class OfficialArchiveDiscoveryWorkerService:
                 adapter = adapter_class(
                     http,
                     self.source,
-                    earliest_year=(
-                        datetime.now(ZoneInfo("Asia/Kolkata")).year
-                        - self.source.history_lookback_years
+                    cutoff_date=self.settings.history_cutoff(
+                        datetime.now(ZoneInfo("Asia/Kolkata")).date()
                     ),
                 )
             result = adapter.discover()

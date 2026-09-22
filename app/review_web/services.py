@@ -175,6 +175,11 @@ class ReviewCaseViewService:
                         ),
                         "total_items": len(grouped_items),
                         "opened_at": case.opened_at,
+                        "source_refreshed_at": revision.source_document.retrieved_at,
+                        "source_document_id": revision.source_document_id,
+                        "verified_at": (
+                            case.revision_confidence_assessment.verification_run.completed_at
+                        ),
                         "published": self._published_post(post),
                         "quick_eligible": post is not None
                         and case.status

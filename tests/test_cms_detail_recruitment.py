@@ -118,7 +118,7 @@ def test_agriculture_listing_traverses_one_safe_detail_and_document() -> None:
     )
 
     result = CmsDetailRecruitmentAdapter(
-        http, source, earliest_year=2025, extractor=_extract_fixture
+        http, source, cutoff_date=date(2025, 1, 1), extractor=_extract_fixture
     ).discover()
 
     assert http.calls == [source.listing_url, detail_url, document_url]
@@ -152,7 +152,7 @@ def test_nhm_undated_listing_uses_official_document_date_and_shared_post_structu
     )
 
     result = CmsDetailRecruitmentAdapter(
-        http, source, earliest_year=2025, extractor=_extract_fixture
+        http, source, cutoff_date=date(2025, 1, 1), extractor=_extract_fixture
     ).discover()
 
     assert len(result.notices) == 1
@@ -182,7 +182,7 @@ def test_cms_listing_is_same_domain_bounded_and_malformed_detail_is_skipped() ->
     )
 
     result = CmsDetailRecruitmentAdapter(
-        http, source, earliest_year=2025, extractor=_extract_fixture
+        http, source, cutoff_date=date(2025, 1, 1), extractor=_extract_fixture
     ).discover()
 
     assert http.calls == [source.listing_url, detail_url]
@@ -201,7 +201,7 @@ def test_listing_excludes_lifecycle_old_and_unsupported_links() -> None:
     <a href="/about-us">Recruitment notice dated 01/09/2026</a>
     """
 
-    links = parse_cms_detail_listing(html, source, earliest_year=2025)
+    links = parse_cms_detail_listing(html, source, cutoff_date=date(2025, 1, 1))
 
     assert [link.url for link in links] == [
         urljoin(source.listing_url, "/resource/detail/open")
@@ -228,7 +228,7 @@ def test_cms_rediscovery_is_idempotent(db_session, tmp_path, source_code: str) -
                 }
             ),
             source,
-            earliest_year=2025,
+            cutoff_date=date(2025, 1, 1),
             extractor=_extract_fixture,
         )
 

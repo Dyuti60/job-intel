@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from functools import lru_cache
 from typing import Literal
 
@@ -33,6 +34,7 @@ class Settings(BaseSettings):
     discovery_connect_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
     discovery_read_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
     discovery_http_retries: int = Field(default=2, ge=0, le=5)
+    history_lookback_months: int = Field(default=12, ge=1, le=60)
     discovery_max_response_bytes: int = Field(default=10_000_000, ge=1024)
     monitor_running_stale_minutes: int = Field(default=60, ge=1, le=10_080)
     monitor_success_stale_hours: int = Field(default=26, ge=1, le=8_760)
@@ -45,6 +47,13 @@ class Settings(BaseSettings):
     public_rate_limit_window_seconds: int = Field(default=60, ge=1, le=3_600)
     public_cache_max_age_seconds: int = Field(default=60, ge=0, le=3_600)
     public_max_request_target_bytes: int = Field(default=4_096, ge=512, le=65_536)
+
+    def history_cutoff(self, today: date) -> date:
+        month_index = today.year * 12 + today.month - 1 - self.history_lookback_months
+        year, month_zero = divmod(month_index, 12)
+        first_next = date(year + (month_zero == 11), (month_zero + 1) % 12 + 1, 1)
+        last_day = (first_next - timedelta(days=1)).day
+        return date(year, month_zero + 1, min(today.day, last_day))
 
     @property
     def public_allowed_host_list(self) -> list[str]:

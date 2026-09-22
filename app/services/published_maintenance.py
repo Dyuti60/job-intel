@@ -171,6 +171,9 @@ class PublishedMaintenanceService:
             revision = master.current_revision
             if revision is None:
                 continue
+            source_revision = self.session.get(
+                RecruitmentCandidateRevision, revision.source_candidate_revision_id
+            )
             path = revision.publication_path
             category = (
                 "AUTO_PUBLISHED"
@@ -214,6 +217,15 @@ class PublishedMaintenanceService:
                         else None,
                         "path": category,
                         "verified_at": revision.verified_at,
+                        "source_refreshed_at": (
+                            source_revision.source_document.retrieved_at
+                            if source_revision
+                            else None
+                        ),
+                        "source_document_id": (
+                            source_revision.source_document_id if source_revision else None
+                        ),
+                        "published_at": revision.published_at,
                         "completeness": readiness.status.value,
                         "missing": missing,
                     }

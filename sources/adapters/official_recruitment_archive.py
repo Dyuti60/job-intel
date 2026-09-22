@@ -41,7 +41,6 @@ class OfficialArchiveSource:
     requests_per_minute: int = 6
     accepts_download_links: bool = False
     max_notices_per_run: int = 50
-    history_lookback_years: int = 2
 
 
 OFFICIAL_ARCHIVE_SOURCES = {
@@ -104,7 +103,6 @@ OFFICIAL_ARCHIVE_SOURCES = {
         priority=35,
         requests_per_minute=4,
         max_notices_per_run=20,
-        history_lookback_years=1,
     ),
 }
 
@@ -201,18 +199,18 @@ class OfficialRecruitmentArchiveAdapter:
         http: BoundedHttpClient,
         source: OfficialArchiveSource,
         *,
-        earliest_year: int,
+        cutoff_date: date,
     ) -> None:
         self.http = http
         self.source = source
-        self.earliest_year = earliest_year
+        self.cutoff_date = cutoff_date
 
     def discover(self) -> ArchiveAdapterResult:
         listing = self.http.fetch(self.source.listing_url, accepted_types=("text/html",))
         metadata = parse_archive_listing(
             listing.content,
             self.source,
-            earliest_year=self.earliest_year,
+            cutoff_date=self.cutoff_date,
         )
         notices: list[ArchiveNotice] = []
         warnings: list[str] = []
@@ -259,7 +257,7 @@ def parse_archive_listing(
     content: bytes,
     source: OfficialArchiveSource,
     *,
-    earliest_year: int,
+    cutoff_date: date,
 ) -> list[ArchiveNoticeMetadata]:
     parser = _TableParser()
     parser.feed(content.decode("utf-8", errors="replace"))
@@ -268,8 +266,7 @@ def parse_archive_listing(
         item = _metadata_from_row(row, source)
         if item is None:
             continue
-        year = item.notification_date.year if item.notification_date else _explicit_year(item.title)
-        if year is None or year < earliest_year:
+        if notice_before_cutoff(item.notification_date, item.title, cutoff_date):
             continue
         selected[item.document_url] = item
     return [selected[url] for url in sorted(selected)]
@@ -294,8 +291,6 @@ def _metadata_from_row(row: _Row, source: OfficialArchiveSource) -> ArchiveNotic
         if not advertisement_links or len(row.cells) < 3:
             return None
         parsed_date = _parse_numeric_date(row.cells[0])
-        if parsed_date is None:
-            return None
         title = re.sub(r"\s+Advertisement\s*$", "", row.cells[2], flags=re.I).strip()
         reference = re.sub(r"\s+", " ", row.cells[1]).strip() or None
         link = advertisement_links[0]
@@ -2441,32 +2436,27 @@ def _vacancy_total(title: str, text: str) -> int | None:
 
 
 def notice_date_from_title(value: str) -> date | None:
-    month_names = {
-        "jan": 1,
-        "feb": 2,
-        "mar": 3,
-        "apr": 4,
-        "may": 5,
-        "jun": 6,
-        "jul": 7,
-        "aug": 8,
-        "sep": 9,
-        "oct": 10,
-        "nov": 11,
-        "dec": 12,
-    }
     numeric = re.search(r"\b(\d{1,2})[./-](\d{1,2})[./-](20\d{2})\b", value)
     if numeric:
         return _parse_numeric_date(numeric.group(0))
+    # Month/year and year-only headings do not establish a day. Do not fabricate
+    # the first of the month merely to apply a rolling-day cutoff.
+    return None
+
+
+def notice_before_cutoff(notification_date: date | None, title: str, cutoff: date) -> bool:
+    if notification_date is not None:
+        return notification_date < cutoff
     named = re.search(
-        r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
-        r"[a-z]*[, ]+(20\d{2})\b",
-        value,
+        r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[, ]+(20\d{2})\b",
+        title,
         re.I,
     )
-    if named:
-        return date(int(named.group(2)), month_names[named.group(1)[:3].casefold()], 1)
-    return None
+    if named is None:
+        return False
+    months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+    year_month = (int(named.group(2)), months.index(named.group(1)[:3].casefold()) + 1)
+    return year_month < (cutoff.year, cutoff.month)
 
 
 def _parse_numeric_date(value: str) -> date | None:

@@ -10,6 +10,13 @@ from typing import Any
 from app.models.candidates import CandidateValueType
 
 
+def bound_raw_value(raw_value: str | None, *, limit: int = 10_000) -> str | None:
+    if raw_value is None or len(raw_value) <= limit:
+        return raw_value
+    suffix = "...[truncated]"
+    return raw_value[: limit - len(suffix)] + suffix
+
+
 def normalize_typed_value(value_type: CandidateValueType, value: Any) -> Any:
     if value_type == CandidateValueType.NULL:
         if value is not None:

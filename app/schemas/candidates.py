@@ -9,7 +9,7 @@ from app.models.candidates import (
     CandidateStatus,
     CandidateValueType,
 )
-from app.services.candidate_values import normalize_typed_value
+from app.services.candidate_values import bound_raw_value, normalize_typed_value
 
 
 class CandidateSchema(BaseModel):
@@ -69,6 +69,11 @@ class CandidateFieldCreate(CandidateSchema):
     @classmethod
     def strip_field_path(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("raw_value", mode="before")
+    @classmethod
+    def bound_extraction_excerpt(cls, value: str | None) -> str | None:
+        return bound_raw_value(value)
 
     @field_validator("source_locator")
     @classmethod

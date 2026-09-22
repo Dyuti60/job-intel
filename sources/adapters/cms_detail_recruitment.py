@@ -16,6 +16,7 @@ from sources.adapters.official_recruitment_archive import (
     archive_candidate_key,
     is_recruitment_advertisement,
     is_recruitment_lifecycle_notice,
+    notice_before_cutoff,
     notice_date_from_title,
     parse_official_advertisement_pdf,
 )
@@ -45,7 +46,6 @@ CMS_DETAIL_SOURCE_CANDIDATES = {
         priority=45,
         requests_per_minute=4,
         max_notices_per_run=10,
-        history_lookback_years=1,
         allowed_hosts=("diragri.assam.gov.in",),
         detail_path_prefixes=("/node/", "/resource/detail/"),
         max_detail_pages_per_run=10,
@@ -63,7 +63,6 @@ CMS_DETAIL_SOURCE_CANDIDATES = {
         priority=50,
         requests_per_minute=4,
         max_notices_per_run=10,
-        history_lookback_years=1,
         allowed_hosts=("nhm.assam.gov.in",),
         detail_path_prefixes=("/latest/",),
         max_detail_pages_per_run=10,
@@ -125,13 +124,12 @@ class CmsDetailRecruitmentAdapter:
         http: BoundedHttpClient,
         source: CmsDetailSource,
         *,
-        earliest_year: int,
-        extractor: Callable[[bytes, ArchiveNoticeMetadata, str], ParsedAdvertisement]
-        | None = None,
+        cutoff_date: date,
+        extractor: Callable[[bytes, ArchiveNoticeMetadata, str], ParsedAdvertisement] | None = None,
     ) -> None:
         self.http = http
         self.source = source
-        self.earliest_year = earliest_year
+        self.cutoff_date = cutoff_date
         self.extractor = extractor or parse_official_advertisement_pdf
 
     def discover(self) -> ArchiveAdapterResult:
@@ -139,7 +137,7 @@ class CmsDetailRecruitmentAdapter:
         details = parse_cms_detail_listing(
             listing.content,
             self.source,
-            earliest_year=self.earliest_year,
+            cutoff_date=self.cutoff_date,
         )
         warnings: list[str] = []
         notices: list[ArchiveNotice] = []
@@ -183,13 +181,11 @@ class CmsDetailRecruitmentAdapter:
                     self.source.organization_name,
                 )
                 metadata = _with_extracted_date(metadata, extraction)
-                if (
-                    metadata.notification_date is None
-                    or metadata.notification_date.year < self.earliest_year
+                if notice_before_cutoff(
+                    metadata.notification_date, metadata.title, self.cutoff_date
                 ):
                     warnings.append(
-                        f"Recruitment document outside bounded history window or undated: "
-                        f"{document_url}"
+                        f"Recruitment document outside bounded history window: {document_url}"
                     )
                     continue
                 warnings.extend(extraction.warnings)
@@ -206,8 +202,7 @@ class CmsDetailRecruitmentAdapter:
                 )
             except Exception as error:
                 warnings.append(
-                    f"Recruitment detail unavailable {detail.url}: "
-                    f"{type(error).__name__}: {error}"
+                    f"Recruitment detail unavailable {detail.url}: {type(error).__name__}: {error}"
                 )
         return ArchiveAdapterResult(
             listing_document=AdapterDocument(listing, DocumentType.HTML, "html"),
@@ -220,7 +215,7 @@ def parse_cms_detail_listing(
     content: bytes,
     source: CmsDetailSource,
     *,
-    earliest_year: int,
+    cutoff_date: date,
 ) -> list[DetailLink]:
     parser = _AnchorParser()
     parser.feed(content.decode("utf-8", errors="replace"))
@@ -233,9 +228,7 @@ def parse_cms_detail_listing(
         if not _is_allowed_url(url, source, path_prefixes=source.detail_path_prefixes):
             continue
         notification_date = notice_date_from_title(title)
-        if notification_date is None and not source.allow_undated_detail_links:
-            continue
-        if notification_date is not None and notification_date.year < earliest_year:
+        if notice_before_cutoff(notification_date, title, cutoff_date):
             continue
         selected[url] = DetailLink(_without_trailing_date(title), url, notification_date)
     return sorted(

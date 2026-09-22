@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -5,9 +6,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.candidates import CandidateField
+from app.models.candidates import CandidateField, RecruitmentCandidateRevision
+from app.models.discovery import DiscoveryRun, DiscoveryRunStatus
 from app.models.master import MasterPost, MasterPublicationEvent
 from app.models.review import ReviewCase, ReviewDecision, ReviewItem
+from app.review_web.router import _format_ist
 from tests.factories import (
     add_verification_assessment,
     complete_verification_run,
@@ -418,6 +421,39 @@ def test_queue_page_lists_counts_orders_and_filters(client: TestClient) -> None:
     )
     assert high["id"] in filtered.text
     assert normal["id"] not in filtered.text
+
+
+def test_review_freshness_uses_persisted_timestamps_and_ist(
+    client: TestClient, db_session: Session
+) -> None:
+    graph = _three_post_review_graph(client)
+    case = db_session.get(ReviewCase, UUID(graph["case"]["id"]))
+    source = db_session.get(
+        RecruitmentCandidateRevision, case.candidate_revision_id
+    ).source_document
+    verified_at = case.revision_confidence_assessment.verification_run.completed_at
+    assert "Dataset last refreshed: Unknown" in client.get("/review").text
+    run = db_session.get(DiscoveryRun, source.first_discovery_run_id)
+    run.status = DiscoveryRunStatus.SUCCEEDED
+    run.completed_at = datetime(2026, 9, 22, 10, tzinfo=UTC)
+    db_session.commit()
+    page = client.get("/review")
+    assert f"Dataset last refreshed: {_format_ist(run.completed_at)}" in page.text
+    assert f"Source refreshed: {_format_ist(source.retrieved_at)}" in page.text
+    assert f"Verified: {_format_ist(verified_at)}" in page.text
+    assert f"Review opened: {_format_ist(case.opened_at)}" in page.text
+    assert _format_ist(None) == "Unknown"
+    assert _format_ist(source.retrieved_at).endswith("IST")
+
+    response = client.post(
+        f"/review/cases/{case.id}/quick-publish",
+        data={"post": graph["posts"][0][0], "comment": "Checked official source"},
+    )
+    assert response.status_code == 200
+    published = client.get("/review?status=HUMAN_PUBLISHED").text
+    assert f"Source refreshed: {_format_ist(source.retrieved_at)}" in published
+    post = db_session.scalar(select(MasterPost))
+    assert f"Published / Updated: {_format_ist(post.master_revision.published_at)}" in published
 
 
 def test_review_search_pagination_and_post_navigation(client: TestClient) -> None:

@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC, date, datetime
+from pathlib import Path
 from urllib.parse import urljoin
 
 from sqlalchemy import func, select
@@ -15,6 +16,7 @@ from app.models.candidates import (
 from app.models.discovery import DocumentType, SourceDocument
 from app.models.evidence import CandidateFieldEvidence, Evidence
 from app.models.source_registry import RecruitingAuthority, SourceEndpoint
+from app.services.candidate_values import bound_raw_value
 from app.services.official_archive_discovery import OfficialArchiveDiscoveryWorkerService
 from app.services.pipeline_orchestrator import PIPELINE_SOURCES
 from sources.adapters.apsc_recruitment import AdapterDocument, ParsedField
@@ -58,7 +60,7 @@ def test_slprb_listing_selects_only_dated_advertisements_in_window() -> None:
     items = parse_archive_listing(
         html,
         OFFICIAL_ARCHIVE_SOURCES["SLPRB_ASSAM"],
-        earliest_year=2024,
+        cutoff_date=date(2024, 1, 1),
     )
 
     assert len(items) == 1
@@ -66,6 +68,19 @@ def test_slprb_listing_selects_only_dated_advertisements_in_window() -> None:
     assert items[0].notification_number == "SLPRB/REC/CONST/1/2026"
     assert items[0].notification_date == date(2026, 1, 16)
     assert items[0].document_url == "https://slprbassam.in/pdf/Notice2026/adv_constable.pdf"
+
+
+def test_undated_official_slprb_advertisement_is_not_silently_lost() -> None:
+    html = b"""
+    <table><tr><td>Date not supplied</td><td>SLPRB/REC/UNKNOWN</td>
+    <td>Advertisement for Constable
+    <a href="pdf/adv_constable.pdf">Advertisement</a></td></tr></table>
+    """
+    items = parse_archive_listing(
+        html, OFFICIAL_ARCHIVE_SOURCES["SLPRB_ASSAM"], cutoff_date=date(2025, 9, 22)
+    )
+    assert len(items) == 1
+    assert items[0].notification_date is None
 
 
 def test_standard_assam_archive_excludes_results_and_old_advertisements() -> None:
@@ -80,11 +95,11 @@ def test_standard_assam_archive_excludes_results_and_old_advertisements() -> Non
     items = parse_archive_listing(
         html,
         OFFICIAL_ARCHIVE_SOURCES["DEE_ASSAM"],
-        earliest_year=2024,
+        cutoff_date=date(2024, 1, 1),
     )
 
     assert [item.title for item in items] == ["Advertisement for Teachers (Aug, 2025)"]
-    assert items[0].notification_date == date(2025, 8, 1)
+    assert items[0].notification_date is None  # Month-only title cannot prove a day.
 
 
 def test_structured_resource_table_accepts_download_links_and_excludes_lifecycle_docs() -> None:
@@ -104,7 +119,7 @@ def test_structured_resource_table_accepts_download_links_and_excludes_lifecycle
     items = parse_archive_listing(
         html,
         OFFICIAL_ARCHIVE_SOURCES["ASDMA_ASSAM"],
-        earliest_year=2024,
+        cutoff_date=date(2024, 1, 1),
     )
 
     assert len(items) == 1
@@ -127,7 +142,7 @@ def test_dhs_archive_selects_openings_and_excludes_lifecycle_notices() -> None:
     """.encode()
 
     source = OFFICIAL_ARCHIVE_SOURCES[source_code]
-    items = parse_archive_listing(html, source, earliest_year=2025)
+    items = parse_archive_listing(html, source, cutoff_date=date(2025, 1, 1))
 
     assert [item.title for item in items] == [title]
     assert items[0].document_url == urljoin(source.listing_url, "files/opening.pdf")
@@ -144,7 +159,7 @@ def test_walk_in_opening_is_not_confused_with_an_interview_lifecycle_notice() ->
     </table>
     """
 
-    items = parse_archive_listing(html, source, earliest_year=2025)
+    items = parse_archive_listing(html, source, cutoff_date=date(2025, 1, 1))
 
     assert [item.title for item in items] == ["Advertisement for Walk-in Interview (Sep, 2026)"]
 
@@ -176,7 +191,6 @@ def test_dhs_is_registered_with_a_bounded_high_priority_schedule() -> None:
     assert source.poll_interval_minutes == 720
     assert source.requests_per_minute == 4
     assert source.max_notices_per_run == 20
-    assert source.history_lookback_years == 1
 
 
 class _FakeArchiveAdapter:
@@ -344,3 +358,105 @@ def test_archive_discovery_dry_run_persists_nothing(db_session, tmp_path) -> Non
     assert _count(db_session, RecruitingAuthority) == 0
     assert _count(db_session, RecruitmentCandidate) == 0
     assert not list(tmp_path.rglob("*"))
+
+
+def test_rolling_archive_cutoff_keeps_undated_and_filters_before_pdf_fetch() -> None:
+    from sources.adapters.official_recruitment_archive import OfficialRecruitmentArchiveAdapter
+
+    source = OFFICIAL_ARCHIVE_SOURCES["ASDMA_ASSAM"]
+    html = b"""
+    <table>
+      <tr><td>Vacancy for old post</td><td><a href="/download?id=old">Download</a></td>
+      <td>21-09-2025</td></tr>
+      <tr><td>Vacancy for cutoff post</td><td><a href="/download?id=new">Download</a></td>
+      <td>22-09-2025</td></tr>
+      <tr><td>Vacancy for undated post</td><td><a href="/download?id=unknown">Download</a></td></tr>
+    </table>
+    """
+    selected = parse_archive_listing(html, source, cutoff_date=date(2025, 9, 22))
+    assert {item.document_url.rsplit("=", 1)[-1] for item in selected} == {"new", "unknown"}
+
+    class RecordingHttp:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def fetch(self, url, *, accepted_types):
+            self.calls.append(url)
+            if url == source.listing_url:
+                return _resource(url, html, "text/html")
+            raise OSError("bounded fixture has no PDF")
+
+    http = RecordingHttp()
+    OfficialRecruitmentArchiveAdapter(http, source, cutoff_date=date(2025, 9, 22)).discover()
+    assert len(http.calls) == 3
+    assert not any("id=old" in url for url in http.calls)
+
+
+def test_month_only_heading_is_not_assumed_to_be_first_day() -> None:
+    source = OFFICIAL_ARCHIVE_SOURCES["DEE_ASSAM"]
+    html = (
+        b'<table><tr><td><a href="vacancy.pdf">'
+        b'Advertisement for posts (Sep, 2025)</a></td></tr></table>'
+    )
+    items = parse_archive_listing(html, source, cutoff_date=date(2025, 9, 22))
+    assert len(items) == 1
+    assert items[0].notification_date is None
+
+
+def test_long_asdma_excerpts_persist_for_shared_and_post_facts(db_session, tmp_path) -> None:
+    from dataclasses import replace
+
+    from sources.extraction import ParsedPost
+
+    result = _adapter_result()
+    notice = result.notices[0]
+    long_text = "Official eligibility detail " * 600
+    shared = ParsedField(
+        "description.summary",
+        CandidateValueType.STRING,
+        long_text,
+        long_text,
+        "pdf:page=1",
+        "Official excerpt",
+    )
+    fact = ParsedField(
+        "qualification.minimum",
+        CandidateValueType.STRING,
+        long_text,
+        long_text,
+        "pdf:page=2",
+        "Post excerpt",
+    )
+    post = ParsedPost("long_post", 1, "Long Post", "long post", "pdf:page=2", (fact,))
+    document_content = b"%PDF preserved source fixture"
+    notice = replace(
+        notice,
+        fields=(*notice.fields, shared),
+        posts=(post,),
+        split_status=AdvertisementSplitStatus.EXPLICIT,
+        document=AdapterDocument(
+            _resource(notice.metadata.document_url, document_content, "application/pdf"),
+            DocumentType.PDF,
+            "pdf",
+        ),
+    )
+    worker = OfficialArchiveDiscoveryWorkerService(
+        db_session,
+        Settings(raw_storage_root=str(tmp_path)),
+        logging.getLogger(__name__),
+        OFFICIAL_ARCHIVE_SOURCES["ASDMA_ASSAM"],
+    )
+    summary = worker.run(adapter=_FakeArchiveAdapter(replace(result, notices=(notice,))))
+    assert summary.revisions_created == 1
+    fields = db_session.scalars(select(CandidateField)).all()
+    for path in ("description.summary", "qualification.minimum"):
+        field = next(field for field in fields if field.field_path.endswith(path))
+        assert field.value == long_text
+        assert field.raw_value == bound_raw_value(long_text)
+    document = db_session.scalar(
+        select(SourceDocument).where(SourceDocument.document_type == DocumentType.PDF)
+    )
+    assert document.content_length == len(document_content)
+    assert (
+        tmp_path / Path(document.storage_uri.removeprefix("raw://"))
+    ).read_bytes() == document_content

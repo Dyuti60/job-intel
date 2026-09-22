@@ -89,10 +89,13 @@ uv run python -m workers.discovery --source DEE_ASSAM
 uv run python -m workers.discovery --source DME_ASSAM
 ```
 
-The archive adapters use official pages only and select explicit advertisements in the inclusive
-two-year calendar lookback. In 2026 that means 2024 through 2026. Closed/past advertisements remain
-in immutable history. Result lists, merit lists, and appointment notices are not mistaken for new
-recruitment identities. Repeated runs reuse stable advertisement PDFs and candidate revisions.
+Archive discovery uses `AJI_HISTORY_LOOKBACK_MONTHS=12` from `.env` by default: a rolling
+recruitment window measured from the current Assam date. Set 6 for the last six months, 12 for
+the last twelve months, or 24 for the last twenty-four months (supported range: 1–60).
+Reliably dated older notices are skipped before PDF fetch; undated recruitment is retained for
+conservative inspection. This controls future discovery/backfill selection only: it does not delete
+persisted older records or independently change public historical retention. Result lists, merit
+lists, and appointment notices remain excluded; repeated runs reuse stable identities.
 
 Raw captures are content-addressed under `data/raw` by default. Trusted scheduled execution uses
 the external `D:\ASSAM_JOB_DATA\raw` root so persistent data does not live inside an Actions
