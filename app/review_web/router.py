@@ -18,13 +18,16 @@ from app.models.confidence import ReviewPriority
 from app.models.review import ReviewCaseStatus, ReviewDecisionType
 from app.review_web.actions import ReviewPublicationActions
 from app.review_web.services import ReviewCaseViewService
+from app.review_web.status import ReviewPortalStatus
 from app.schemas.review import ReviewDecisionCreate
 from app.services.candidate_values import normalize_typed_value
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
 from app.services.master import MasterPublisherService
 from app.services.post_structure_review import PostStructureReviewService
+from app.services.public_readiness import JobCompletenessStatus
 from app.services.published_maintenance import PublishedMaintenanceService
 from app.services.review import ReviewService
+from app.services.review_enrichment import ReviewEnrichmentService
 
 router = APIRouter(prefix="/review", tags=["review-web"])
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[2] / "templates"))
@@ -212,8 +215,9 @@ def _typed_form_value(value_type: CandidateValueType, raw_value: str) -> Any:
 def review_queue(
     request: Request,
     session: DatabaseSession,
-    status: str | None = None,
-    priority: str | None = None,
+    status: str = "ALL",
+    priority: str = "ALL",
+    completeness: str = "ALL",
     view: str | None = None,
     outcome: str | None = None,
     q: str = "",
@@ -229,31 +233,78 @@ def review_queue(
     ):
         return _error_page(request, "Invalid queue search or page", 400)
     try:
-        status_filter = ReviewCaseStatus(status) if status else None
-        priority_filter = ReviewPriority(priority) if priority else None
+        selected = ReviewPortalStatus(
+            view or ("REVIEW_REQUIRED" if status == "QUEUED" else status or "ALL")
+        )
+        selected_priority = ReviewPriority(priority) if priority not in {"ALL", ""} else None
+        selected_completeness = (
+            JobCompletenessStatus(completeness) if completeness not in {"ALL", ""} else None
+        )
     except ValueError:
         return _error_page(request, "Invalid review queue filter", 400)
-    queue_view = ReviewCaseViewService(session).queue(
-        status=status_filter, priority=priority_filter
-    )
-    maintenance = PublishedMaintenanceService(session)
-    all_published = maintenance.rows()
-    queue_view["counts"]["auto_published"] = sum(
-        row["path"] == "AUTO_PUBLISHED" for row in all_published
-    )
-    queue_view["counts"]["human_published"] = sum(
-        row["path"] == "HUMAN_PUBLISHED" for row in all_published
-    )
-    if view is not None:
-        rows = [row for row in all_published if row["path"] == view]
+    review_views = ReviewCaseViewService(session)
+    active = review_views.queue(status=None, priority=None)
+    resolved = review_views.queue(status=ReviewCaseStatus.RESOLVED, priority=None)
+    all_published = PublishedMaintenanceService(session).rows()
+
+    def identity(row: dict[str, Any]) -> tuple[str, str, str | None]:
+        return (row["authority_code"], row["candidate_key"], row["post_key"])
+
+    explicit_ads = {
+        identity(row)[:2]
+        for row in [*active["cases"], *resolved["cases"], *all_published]
+        if row["post_key"] is not None
+    }
+
+    def unique(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        found: dict[tuple[str, str, str | None], dict[str, Any]] = {}
+        for row in rows:
+            key = identity(row)
+            if key[2] is None and key[:2] in explicit_ads:
+                continue
+            found.setdefault(key, row)
+        return list(found.values())
+
+    active_rows = unique(active["cases"])
+    resolved_rows = unique(resolved["cases"])
+    published_rows = unique(all_published)
+    counts = {
+        "total_jobs": len(unique([*active_rows, *published_rows, *resolved_rows])),
+        "review_required": sum(row["status"] == "QUEUED" for row in active_rows),
+        "in_review": sum(row["status"] == "IN_REVIEW" for row in active_rows),
+        "approved": sum(
+            row["outcome"] in {"APPROVED", "APPROVED_WITH_CORRECTIONS"} for row in resolved_rows
+        ),
+        "rejected": sum(row["outcome"] == "REJECTED" for row in resolved_rows),
+        "auto_published": sum(row["path"] == "AUTO_PUBLISHED" for row in published_rows),
+        "human_published": sum(row["path"] == "HUMAN_PUBLISHED" for row in published_rows),
+    }
+    if selected == ReviewPortalStatus.ALL:
+        rows = unique([*active_rows, *published_rows, *resolved_rows])
+    elif selected == ReviewPortalStatus.REVIEW_REQUIRED:
+        rows = [row for row in active_rows if row["status"] == "QUEUED"]
+    elif selected == ReviewPortalStatus.IN_REVIEW:
+        rows = [row for row in active_rows if row["status"] == "IN_REVIEW"]
+    elif selected == ReviewPortalStatus.RESOLVED:
+        rows = [
+            row
+            for row in resolved_rows
+            if row["outcome"] in {"APPROVED", "APPROVED_WITH_CORRECTIONS"}
+        ]
+    elif selected == ReviewPortalStatus.REJECTED:
+        rows = [row for row in resolved_rows if row["outcome"] == "REJECTED"]
     else:
-        rows = queue_view["cases"]
-        if outcome == "APPROVED":
-            rows = [
-                row for row in rows if row["outcome"] in {"APPROVED", "APPROVED_WITH_CORRECTIONS"}
-            ]
-        elif outcome == "REJECTED":
-            rows = [row for row in rows if row["outcome"] == "REJECTED"]
+        rows = [row for row in published_rows if row["path"] == selected.value]
+    if outcome == "APPROVED":
+        rows = [
+            row for row in rows if row.get("outcome") in {"APPROVED", "APPROVED_WITH_CORRECTIONS"}
+        ]
+    elif outcome == "REJECTED":
+        rows = [row for row in rows if row.get("outcome") == "REJECTED"]
+    if selected_priority is not None:
+        rows = [row for row in rows if row["priority"] == selected_priority.value]
+    if selected_completeness is not None:
+        rows = [row for row in rows if row["completeness"] == selected_completeness.value]
     if q.strip():
         term = q.strip().casefold()
         rows = [
@@ -276,18 +327,29 @@ def review_queue(
     pages = max(1, (len(rows) + page_size - 1) // page_size)
     page = min(page, pages)
     visible = rows[(page - 1) * page_size : page * page_size]
-    queue_view["cases"] = visible if view is None else []
+    visible_review = [row for row in visible if "id" in row]
+    visible_published = [row for row in visible if "public_id" in row]
+    metric_urls = {
+        item.value: "/review?"
+        + urlencode(
+            {"status": item.value, "q": q, "priority": priority, "completeness": completeness}
+        )
+        for item in ReviewPortalStatus
+    }
     return _template(
         request,
         "review/queue.html",
         {
             "title": "Human Review Queue",
-            **queue_view,
-            "published_rows": visible if view is not None else [],
-            "selected_view": view or "",
+            "cases": visible_review,
+            "published_rows": visible_published,
+            "counts": counts,
+            "metric_urls": metric_urls,
+            "selected_view": selected.value,
             "selected_outcome": outcome or "",
-            "selected_status": status or "",
-            "selected_priority": priority or "",
+            "selected_status": selected.value,
+            "selected_priority": priority,
+            "selected_completeness": completeness,
             "search_query": q,
             "page": page,
             "pages": pages,
@@ -298,8 +360,9 @@ def review_queue(
             "next_url": (
                 str(request.url.include_query_params(page=page + 1)) if page < pages else None
             ),
-            "statuses": [item.value for item in ReviewCaseStatus],
-            "priorities": [item.value for item in ReviewPriority],
+            "statuses": [item.value for item in ReviewPortalStatus],
+            "priorities": ["ALL", *(item.value for item in ReviewPriority)],
+            "completeness_options": ["ALL", *(item.value for item in JobCompletenessStatus)],
         },
     )
 
@@ -371,16 +434,48 @@ def review_case(
     except DomainConflictError as error:
         return _error_page(request, str(error), 409)
     focus_name = (view["focused_post"] or {}).get("name", view["candidate"]["candidate_key"])
+    catalogue = (
+        ReviewEnrichmentService(session).catalogue(case_id, (view["focused_post"] or {}).get("key"))
+        if view["status"] in {"QUEUED", "IN_REVIEW"}
+        else []
+    )
     return _template(
         request,
         "review/case.html",
         {
             "title": f"Review {focus_name}",
             **view,
+            "enrichment_catalogue": catalogue,
             "message": request.query_params.get("message"),
             "error": request.query_params.get("error"),
         },
     )
+
+
+@router.post("/cases/{case_id}/enrich")
+async def enrich_review(
+    request: Request, case_id: uuid.UUID, session: DatabaseSession, settings: ApplicationSettings
+) -> RedirectResponse:
+    post = None
+    try:
+        form = await _read_form(request)
+        post = form.get("post") or None
+        case = ReviewEnrichmentService(session).submit(
+            case_id,
+            post,
+            {key[6:]: value for key, value in form.items() if key.startswith("field.")},
+            settings.review_web_reviewer_identifier,
+            form.get("comment", ""),
+        )
+        session.commit()
+        return _case_redirect(
+            case.id,
+            post=post,
+            message="Added facts to an immutable revision; review the verified successor",
+        )
+    except (ValueError, ValidationError, DomainConflictError, ResourceNotFoundError) as error:
+        session.rollback()
+        return _case_redirect(case_id, post=post, error=str(error))
 
 
 @router.post("/cases/{case_id}/start")

@@ -26,7 +26,11 @@ def _published(
     end: str | None = "2026-09-30",
     vacancies: int | None = 10,
 ) -> dict:
-    fields = [{"field_path": "post.name", "value_type": "STRING", "value": f"Post {suffix}"}]
+    fields = [
+        {"field_path": "post.name", "value_type": "STRING", "value": f"Post {suffix}"},
+        {"field_path": "qualification.minimum", "value_type": "STRING", "value": "HSLC"},
+        {"field_path": "age.minimum", "value_type": "INTEGER", "value": 18},
+    ]
     if start is not None:
         fields.append(
             {"field_path": "application.start_date", "value_type": "DATE", "value": start}
@@ -67,9 +71,11 @@ def test_public_list_and_detail_expose_only_current_approved_contract(
     assert body["authority"]["code"] == graph["authority"]["code"]
     assert body["current_revision_number"] == 1
     assert [field["field_path"] for field in body["fields"]] == [
+        "age.minimum",
         "application.end_date",
         "application.start_date",
         "post.name",
+        "qualification.minimum",
         "vacancies.total",
     ]
     source = body["sources"][0]
@@ -135,7 +141,15 @@ def test_historical_noncurrent_revision_is_not_exposed(client: TestClient) -> No
         client,
         graph,
         "public-history-v2",
-        [{"field_path": "description.summary", "value_type": "STRING", "value": "Current"}],
+        [
+            {"field_path": "post.name", "value_type": "STRING", "value": "Current Post"},
+            {"field_path": "description.summary", "value_type": "STRING", "value": "Current"},
+            {"field_path": "vacancies.total", "value_type": "INTEGER", "value": 1},
+            {"field_path": "application.start_date", "value_type": "DATE", "value": "2026-09-01"},
+            {"field_path": "application.end_date", "value_type": "DATE", "value": "2026-09-30"},
+            {"field_path": "qualification.minimum", "value_type": "STRING", "value": "HSLC"},
+            {"field_path": "age.minimum", "value_type": "INTEGER", "value": 18},
+        ],
     )
     second = _publish(client, newer["confidence"]["id"])
     assert second.status_code == 201
@@ -143,14 +157,15 @@ def test_historical_noncurrent_revision_is_not_exposed(client: TestClient) -> No
     body = client.get(f"{PUBLIC_URL}/{first['master']['id']}").json()
 
     assert body["current_revision_number"] == 2
-    assert body["fields"] == [
-        {
-            "field_path": "description.summary",
-            "value_type": "STRING",
-            "value": "Current",
-            "source": body["sources"][0],
-        }
-    ]
+    assert {field["field_path"] for field in body["fields"]} == {
+        "age.minimum",
+        "application.end_date",
+        "application.start_date",
+        "description.summary",
+        "post.name",
+        "qualification.minimum",
+        "vacancies.total",
+    }
     assert "Post HISTORY" not in str(body)
 
 
@@ -231,12 +246,8 @@ def test_default_public_history_keeps_current_recent_and_unknown_but_hides_old_c
     client: TestClient,
 ) -> None:
     open_job = _published(client, "HISTORY_OPEN", start="2026-09-01", end="2026-09-30")
-    upcoming = _published(
-        client, "HISTORY_UPCOMING", start="2026-10-01", end="2026-10-31"
-    )
-    recent = _published(
-        client, "HISTORY_RECENT", start="2025-08-01", end="2025-09-14"
-    )
+    upcoming = _published(client, "HISTORY_UPCOMING", start="2026-10-01", end="2026-10-31")
+    recent = _published(client, "HISTORY_RECENT", start="2025-08-01", end="2025-09-14")
     old = _published(client, "HISTORY_OLD", start="2025-07-01", end="2025-09-13")
     unknown = _published(client, "HISTORY_UNKNOWN", start=None, end=None)
 
@@ -248,15 +259,12 @@ def test_default_public_history_keeps_current_recent_and_unknown_but_hides_old_c
         open_job["candidate"]["candidate_key"],
         upcoming["candidate"]["candidate_key"],
         recent["candidate"]["candidate_key"],
-        unknown["candidate"]["candidate_key"],
     }
     assert f"/jobs/{old['publication']['master']['id']}" not in web.text
-    assert f"/jobs/{unknown['publication']['master']['id']}" in web.text
+    assert f"/jobs/{unknown['publication']['master']['id']}" not in web.text
     old_master_id = old["publication"]["master"]["id"]
     assert client.get(f"/api/v1/recruitment-master/{old_master_id}").status_code == 200
-    historical_detail = client.get(
-        f"{PUBLIC_URL}/{old_master_id}", params={"as_of": "2026-09-14"}
-    )
+    historical_detail = client.get(f"{PUBLIC_URL}/{old_master_id}", params={"as_of": "2026-09-14"})
     assert historical_detail.status_code == 200
 
 

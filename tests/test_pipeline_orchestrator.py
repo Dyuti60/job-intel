@@ -88,6 +88,33 @@ def _adapter(
             "No of posts:-01 (One) no.",
         ),
     )
+    if not review_required:
+        fields += (
+            ParsedField(
+                "application.start_date",
+                CandidateValueType.DATE,
+                "2026-09-01",
+                "2026-09-01",
+                "fixture:start",
+                "Application Start Date: 01/09/2026",
+            ),
+            ParsedField(
+                "qualification.minimum",
+                CandidateValueType.STRING,
+                "Bachelor Degree",
+                "Bachelor Degree",
+                "fixture:qualification",
+                "Minimum qualification: Bachelor Degree",
+            ),
+            ParsedField(
+                "age.minimum",
+                CandidateValueType.INTEGER,
+                21,
+                "21",
+                "fixture:age",
+                "Minimum age: 21 years",
+            ),
+        )
     return FakeAdapter(
         AdapterResult(
             documents=(AdapterDocument(resource, DocumentType.PDF, "pdf"),),
@@ -135,7 +162,7 @@ def test_no_review_pipeline_publishes_and_replay_is_idempotent(db_session, tmp_p
     assert first.status == PipelineStatus.SUCCESS
     assert first.discovery.documents_new == 1
     assert first.verification.completed == 1
-    assert first.verification.fields_confirmed == 3
+    assert first.verification.fields_confirmed == 6
     assert first.publisher.master_created == 1
     assert first.active_review_cases == 0
     counts = tuple(
@@ -178,9 +205,7 @@ def test_review_required_is_success_and_publisher_skips(db_session, tmp_path) ->
     assert _count(db_session, RecruitmentMaster) == 0
 
 
-def test_human_correction_publishes_on_later_unchanged_run(
-    client, db_session, tmp_path
-) -> None:
+def test_human_correction_publishes_on_later_unchanged_run(client, db_session, tmp_path) -> None:
     first = _run(db_session, tmp_path, _adapter(review_required=True))
     case_id = str(db_session.scalar(select(ReviewCase.id)))
     _resolve(client, case_id, decision="APPROVE_AS_IS", corrected="2026-10-27")
@@ -301,15 +326,11 @@ def test_pipeline_command_prints_summary_and_returns_expected_exit(
     monkeypatch.setattr(pipeline_command, "SessionLocal", lambda: nullcontext(db_session))
     monkeypatch.setattr(pipeline_command, "PipelineOrchestratorService", StubPipeline)
     assert (
-        pipeline_command.main(
-            ["--source", "APSC", "--trigger", PipelineTriggerType.GITHUB_ACTION]
-        )
+        pipeline_command.main(["--source", "APSC", "--trigger", PipelineTriggerType.GITHUB_ACTION])
         == 0
     )
     assert "Status: SUCCESS" in capsys.readouterr().out
-    recorded_run = db_session.scalar(
-        select(PipelineRun).order_by(PipelineRun.started_at.desc())
-    )
+    recorded_run = db_session.scalar(select(PipelineRun).order_by(PipelineRun.started_at.desc()))
     assert recorded_run.trigger_type == PipelineTriggerType.GITHUB_ACTION
 
     expected.status = PipelineStatus.FAILED

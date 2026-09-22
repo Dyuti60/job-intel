@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime
 from sqlalchemy.orm import Session
 
 from app.models.candidates import CandidateValueType
-from app.models.master import MasterField
+from app.models.master import MasterField, PublicationPath
 from app.repositories.public_recruitments import (
     PublicFieldSource,
     PublicMasterRecord,
@@ -26,6 +26,7 @@ from app.schemas.public_recruitments import (
     PublicSourceRead,
 )
 from app.services.exceptions import ResourceNotFoundError
+from app.services.public_readiness import JobCompletenessStatus, master_post_readiness
 
 _AUTHORITY_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 _CANDIDATE_KEY = re.compile(r"^[A-Z][A-Z0-9_]{1,127}$")
@@ -60,7 +61,15 @@ class _DerivedRecord:
 
 class PublicRecruitmentService:
     def __init__(self, session: Session) -> None:
+        self.session = session
         self.repository = PublicRecruitmentRepository(session)
+
+    def _publicly_ready(self, record: PublicMasterRecord) -> bool:
+        return (
+            record.revision.publication_path != PublicationPath.VERIFIED_NO_REVIEW
+            or master_post_readiness(self.session, record.revision, record.post).status
+            == JobCompletenessStatus.COMPLETE
+        )
 
     def list_recruitments(
         self,
@@ -85,7 +94,9 @@ class PublicRecruitmentService:
             candidate_key=candidate_key,
             query=query,
         )
-        derived = [self._derive(record, evaluated_on) for record in records]
+        derived = [
+            self._derive(record, evaluated_on) for record in records if self._publicly_ready(record)
+        ]
         filtered = [
             item
             for item in derived
@@ -135,7 +146,7 @@ class PublicRecruitmentService:
         self, public_id: uuid.UUID, *, as_of: date | None = None
     ) -> PublicRecruitmentDetail:
         record = self.repository.get_current_active(public_id)
-        if record is None:
+        if record is None or not self._publicly_ready(record):
             raise ResourceNotFoundError("Public recruitment not found")
         derived = self._derive(record, as_of or datetime.now(UTC).date())
         visible_fields = self._visible_fields(record)

@@ -179,7 +179,9 @@ class MasterPublisherWorkerService:
     def _classify_routing(self, assessment) -> PublicationCandidateKind:
         from app.models.review_routing import ReviewRoutingPolicyVersion
 
-        routing = self.routing.get_for_policy(assessment.id, ReviewRoutingPolicyVersion.V1)
+        routing = self.routing.get_for_policy(assessment.id, ReviewRoutingPolicyVersion.V2)
+        if routing is None:
+            routing = self.routing.get_for_policy(assessment.id, ReviewRoutingPolicyVersion.V1)
         if routing is None:
             return PublicationCandidateKind.REVIEW_MISSING
         if not routing.review_required:

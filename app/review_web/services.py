@@ -35,6 +35,7 @@ from app.repositories.confidence import FieldConfidenceRepository
 from app.services.exceptions import DomainConflictError
 from app.services.master import MasterPublisherService
 from app.services.post_identity import canonical_post_name
+from app.services.public_readiness import candidate_post_readiness
 from app.services.review import ReviewService
 
 
@@ -145,14 +146,18 @@ class ReviewCaseViewService:
                     for item in grouped_items
                     if item.confidence_score_snapshot is not None
                 ]
+                readiness = candidate_post_readiness(revision, post)
                 entries.append(
                     {
+                        "authority_code": candidate.recruiting_authority.code,
                         "id": case.id,
                         "short_id": str(case.id).split("-")[0],
                         "candidate_name": candidate.display_name,
                         "candidate_key": candidate.candidate_key,
                         "advertisement_title": candidate.display_name,
                         "post_key": post_key,
+                        "completeness": readiness.status.value,
+                        "missing": list(readiness.missing),
                         "post_name": self._post_name(post, case.items)
                         if post is not None
                         else candidate.display_name,
@@ -197,7 +202,7 @@ class ReviewCaseViewService:
             "cases": entries,
             "counts": {
                 "review_required": sum(
-                    outcome is None and case.status != ReviewCaseStatus.CANCELLED
+                    outcome is None and case.status == ReviewCaseStatus.QUEUED
                     for case, _post, _items, outcome in all_units
                 ),
                 "in_review": sum(

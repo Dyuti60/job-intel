@@ -948,7 +948,10 @@ timestamp, and predecessor IDs, then enters the existing Verification, Review, a
 path. It never mutates the parser revision or its evidence, and unresolved shared Advertisement
 facts continue to block publication. Equivalent structures reuse the same revision and review case.
 
-Routing V1 is the operational review contract for Confidence V2. A routing-driven ReviewCase links
+Routing V2 is the operational review contract for new Confidence V2 assessments; persisted Routing
+V1 assessments retain their immutable historical behavior. V2 adds the revision-level
+`MISSING_PUBLIC_REQUIRED_FIELDS` reason without inventing CandidateFields or changing confidence.
+A routing-driven ReviewCase links
 to its immutable `ReviewRoutingAssessment` and snapshots only the routed field risks plus any
 advertisement-wide reasons. The case, item set, confidence values, reasons, priorities, and routing
 components are re-derived and integrity-checked before publication. Historical Confidence V1 cases
@@ -976,7 +979,11 @@ MasterFields with only the selected Post's MasterPostFacts and strips the intern
 
 Published-job maintenance reads current Master revisions, not synthetic ReviewCases. The private
 portal separates auto-published (`VERIFIED_NO_REVIEW`) and human-published jobs and reports a
-deterministic completeness indicator without changing publication policy. An operator correction
+shared deterministic `COMPLETE`/`PARTIAL` result. Complete Posts require identity, official
+provenance, Post vacancies, opening and closing dates, qualification, and age criteria. New partial
+records route to enrichment instead of automatic publication; historical partial auto-publications
+remain maintainable but are hidden from public list/detail reads. Human-approved partial records
+retain their explicit approval semantics. An operator correction
 copies only currently published facts into a new immutable Candidate revision, runs Verification
 and Human Review, and invokes Master Publisher for a new Master revision. The reviewer comment and
 changed-field paths are audited; old Candidate/Master revisions and evidence remain intact. The

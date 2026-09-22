@@ -65,6 +65,7 @@ def _publish_three_posts(client) -> dict:
                         "value_type": "STRING",
                         "value": qualification,
                     },
+                    {"field_path": "age.minimum", "value_type": "INTEGER", "value": 18},
                     {
                         "field_path": "pay.scale",
                         "value_type": "STRING",
@@ -109,9 +110,7 @@ def test_three_explicit_posts_are_independent_public_jobs_with_shared_context(cl
     assert {item["advertisement_title"] for item in listing["items"]} == {
         "Combined Services Advertisement"
     }
-    assert {item["authority"]["code"] for item in listing["items"]} == {
-        graph["authority"]["code"]
-    }
+    assert {item["authority"]["code"] for item in listing["items"]} == {graph["authority"]["code"]}
     assert cards.count('class="job-card"') == 3
 
     expected_qualifications = {
@@ -128,7 +127,7 @@ def test_three_explicit_posts_are_independent_public_jobs_with_shared_context(cl
         assert "pay.scale" in values
         assert values["application.start_date"] == "2026-09-20"
         assert values["application.end_date"] == "2026-10-20"
-        assert f'/jobs/{item["id"]}' in cards
+        assert f"/jobs/{item['id']}" in cards
 
     first = listing["items"][0]
     html = client.get(f"/jobs/{first['id']}").text
@@ -189,7 +188,9 @@ def _publish_updated_valid_post(client, first_publication: dict) -> dict:
                 "field_path": "recruitment_name",
                 "value_type": "STRING",
                 "value": "Two Post Recruitment",
-            }
+            },
+            {"field_path": "application.start_date", "value_type": "DATE", "value": "2026-09-01"},
+            {"field_path": "application.end_date", "value_type": "DATE", "value": "2026-09-30"},
         ],
         posts=[
             {
@@ -263,6 +264,8 @@ def test_public_contract_uses_approved_post_as_result_unit(client) -> None:
         "name",
         "qualification.minimum",
         "recruitment_name",
+        "application.start_date",
+        "application.end_date",
         "vacancies.total",
     }
     assert all("conflicted_post" not in str(field) for field in detail.json()["fields"])

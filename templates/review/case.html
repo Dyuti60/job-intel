@@ -42,6 +42,21 @@
 {% endif %}
 {% if structure_audit %}<details class="card technical"><summary>Approved structure audit</summary><pre>{{ structure_audit }}</pre></details>{% endif %}
 
+{% if enrichment_catalogue %}
+<section class="card" id="public-enrichment">
+  <h2>Add missing public information</h2>
+  <p class="muted">Enter only facts confirmed from the <a href="{{ candidate.source_document_url }}" target="_blank" rel="noopener noreferrer">official source</a>. This creates a new immutable Candidate revision for verification and review; it does not publish immediately.</p>
+  <form method="post" action="/review/cases/{{ case_id }}/enrich">
+    {% if focused_post %}<input type="hidden" name="post" value="{{ focused_post.key }}">{% endif %}
+    {% for field in enrichment_catalogue %}
+    <label>{{ field.label }}<input name="field.{{ field.key }}" {% if field.value_type == 'INTEGER' %}type="number" min="0"{% elif field.value_type == 'DATE' %}type="date"{% endif %}></label>
+    {% endfor %}
+    <label>Reviewer comment<textarea name="comment" required maxlength="8000"></textarea></label>
+    <button>Add verified facts for review</button>
+  </form>
+</section>
+{% endif %}
+
 {% if focused_post and publication %}
 <section class="card quick-review">
   <h2>Quick Review</h2>

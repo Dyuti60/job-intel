@@ -41,9 +41,9 @@ def test_auto_published_view_and_immutable_republish(client, db_session):
     assert db_session.scalar(select(func.count()).select_from(ReviewCase)) == 0
 
     queue = client.get("/review")
-    assert 'href="/review?view=AUTO_PUBLISHED"' in queue.text
-    assert 'href="/review?view=HUMAN_PUBLISHED"' in queue.text
-    auto = client.get("/review?view=AUTO_PUBLISHED")
+    assert "status=AUTO_PUBLISHED" in queue.text
+    assert "status=HUMAN_PUBLISHED" in queue.text
+    auto = client.get("/review?status=AUTO_PUBLISHED")
     assert auto.status_code == 200
     assert graph["candidate"]["display_name"] in auto.text
     assert "Edit / Inspect" in auto.text
@@ -97,8 +97,8 @@ def test_auto_published_view_and_immutable_republish(client, db_session):
     assert (
         "30 November 2026" in client.get(f"/jobs/{master_id}", params={"as_of": "2026-10-01"}).text
     )
-    assert "Human published" in client.get("/review?view=HUMAN_PUBLISHED").text
-    assert "No published jobs" in client.get("/review?view=AUTO_PUBLISHED").text
+    assert "Human Published" in client.get("/review?status=HUMAN_PUBLISHED").text
+    assert "No published jobs" in client.get("/review?status=AUTO_PUBLISHED").text
 
 
 def test_human_published_post_edit_preserves_public_identity_and_siblings(client, db_session):
@@ -116,8 +116,8 @@ def test_human_published_post_edit_preserves_public_identity_and_siblings(client
     assert original is not None
     public_id = original.public_id
     current = db_session.get(RecruitmentMasterRevision, original.master_revision_id)
-    assert "Human published" in client.get("/review?view=HUMAN_PUBLISHED").text
-    assert str(public_id) in client.get("/review?view=HUMAN_PUBLISHED").text
+    assert "Human Published" in client.get("/review?status=HUMAN_PUBLISHED").text
+    assert str(public_id) in client.get("/review?status=HUMAN_PUBLISHED").text
     editor = client.get(f"/review/published/{public_id}")
     assert editor.status_code == 200
     assert 'value="181"' in editor.text
@@ -184,6 +184,8 @@ def test_missing_supported_facts_can_be_added_to_unsplit_publication(client, db_
     assert "PARTIAL" in editor.text
     assert 'name="field.vacancies.total"' in editor.text
     assert 'name="field.qualification.minimum"' in editor.text
+    assert client.get("/api/public/v1/recruitments").json()["total"] == 0
+    assert client.get(f"/jobs/{master_id}").status_code == 404
     result = client.post(
         f"/review/published/{master_id}/republish",
         data={
@@ -233,7 +235,11 @@ def test_auto_published_explicit_advertisement_has_post_rows_without_parent(clie
                 "field_path": "recruitment_name",
                 "value_type": "STRING",
                 "value": "Two-role official advertisement",
-            }
+            },
+            {"field_path": "application.start_date", "value_type": "DATE", "value": "2026-09-01"},
+            {"field_path": "application.end_date", "value_type": "DATE", "value": "2026-09-30"},
+            {"field_path": "qualification.minimum", "value_type": "STRING", "value": "Class VIII"},
+            {"field_path": "age.minimum", "value_type": "INTEGER", "value": 18},
         ],
         posts=[
             {
@@ -284,11 +290,11 @@ def test_auto_published_explicit_advertisement_has_post_rows_without_parent(clie
     )
     assert publication.status_code == 201, publication.text
     assert db_session.scalar(select(func.count()).select_from(ReviewCase)) == 0
-    auto = client.get("/review?view=AUTO_PUBLISHED")
+    auto = client.get("/review?status=AUTO_PUBLISHED")
     assert "Cook - Assam Police" in auto.text
     assert "Cook - DGCD" in auto.text
     assert auto.text.count("Edit / Inspect") == 2
-    assert "2</strong><span>Auto published" in auto.text
+    assert "2</strong><span>Auto Published" in auto.text
     assert "Two-role official advertisement</strong>" not in auto.text
 
 

@@ -24,6 +24,7 @@ from app.models.source_registry import constrained_enum
 
 class ReviewRoutingPolicyVersion(enum.StrEnum):
     V1 = "V1"
+    V2 = "V2"
 
 
 class ReviewRoutingReasonCode(enum.StrEnum):
@@ -36,6 +37,7 @@ class ReviewRoutingReasonCode(enum.StrEnum):
     UNCLEAR_CRITICAL_MEANING = "UNCLEAR_CRITICAL_MEANING"
     UNCERTAIN_VACANCY_MAPPING = "UNCERTAIN_VACANCY_MAPPING"
     POSSIBLE_WRONG_POST_OWNERSHIP = "POSSIBLE_WRONG_POST_OWNERSHIP"
+    MISSING_PUBLIC_REQUIRED_FIELDS = "MISSING_PUBLIC_REQUIRED_FIELDS"
 
 
 class ReviewRoutingAssessment(Base):

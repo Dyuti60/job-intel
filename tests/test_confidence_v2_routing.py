@@ -88,7 +88,7 @@ def test_v2_confidence_is_explainable_neutral_and_idempotent(client: TestClient)
     assert result["component_breakdown"]["aggregation"]["optional_absence_penalty"] == 0
 
 
-def test_review_routing_does_not_use_score_or_missing_optional_fields(
+def test_review_routing_routes_missing_public_required_fields_without_changing_confidence(
     client: TestClient,
 ) -> None:
     run, _ = _completed_case(
@@ -105,9 +105,19 @@ def test_review_routing_does_not_use_score_or_missing_optional_fields(
     assert replay.status_code == 200
     assert replay.json()["id"] == first.json()["id"]
     routing = first.json()
-    assert routing["review_required"] is False
-    assert routing["priority"] == "NONE"
-    assert routing["reason_codes"] == []
+    assert routing["review_required"] is True
+    assert routing["priority"] == "NORMAL"
+    assert routing["reason_codes"] == ["MISSING_PUBLIC_REQUIRED_FIELDS"]
+    assert routing["field_routes"] == []
+    assert routing["component_breakdown"]["missing_public_required_fields"] == {
+        "ADVERTISEMENT": [
+            "Post vacancies",
+            "Opening date",
+            "Closing date",
+            "Qualification",
+            "Age criteria",
+        ]
+    }
     assert routing["component_breakdown"]["policy"]["numeric_score_threshold_used"] is False
     assert routing["component_breakdown"]["policy"]["optional_field_absence_routes"] is False
     assert routing["component_breakdown"]["policy"]["publication_decision"] is False
@@ -115,8 +125,7 @@ def test_review_routing_does_not_use_score_or_missing_optional_fields(
         "/api/v1/recruitment-master/publish",
         json={"revision_confidence_assessment_id": confidence["id"]},
     )
-    assert publish.status_code == 201
-    assert publish.json()["master_revision"]["posts"] == []
+    assert publish.status_code == 409
 
 
 def test_authoritative_conflict_routes_independently_of_v2_score(client: TestClient) -> None:
@@ -193,4 +202,5 @@ def test_ambiguous_post_split_routes_without_fabricating_posts(client: TestClien
     assert routing["reason_codes"] == [
         "AMBIGUOUS_POST_SPLIT",
         "UNCERTAIN_VACANCY_MAPPING",
+        "MISSING_PUBLIC_REQUIRED_FIELDS",
     ]

@@ -34,9 +34,7 @@ def _web_graph(client: TestClient, suffix: str) -> dict:
     )
     field = graph["revision"]["fields"][0]
     extraction = graph["evidence"][0]
-    linked = client.post(
-        f"/api/v1/candidate-fields/{field['id']}/evidence/{extraction['id']}"
-    )
+    linked = client.post(f"/api/v1/candidate-fields/{field['id']}/evidence/{extraction['id']}")
     assert linked.status_code == 201, linked.text
     return graph
 
@@ -157,9 +155,7 @@ def _three_post_review_graph(client: TestClient) -> dict:
         finalize_field_verification(client, verification["id"])
     complete_verification_run(client, run["id"])
     confidence = client.post(f"/api/v1/verification-runs/{run['id']}/confidence-v2").json()
-    routing = client.post(
-        f"/api/v1/revision-confidence/{confidence['id']}/review-routing"
-    )
+    routing = client.post(f"/api/v1/revision-confidence/{confidence['id']}/review-routing")
     assert routing.status_code == 201
     case = client.post(
         "/api/v1/review-cases",
@@ -214,14 +210,27 @@ def test_quick_review_and_bulk_publication_preserve_post_isolation(
         },
     )
     assert "1 published; 1 already published; 1 blocked" in result.text
-    shared = next(item for item in graph["case"]["items"]
-                  if item["field_path_snapshot"] == "application.end_date")
-    assert db_session.scalar(select(func.count()).select_from(ReviewDecision).where(
-        ReviewDecision.review_item_id == UUID(shared["id"])
-    )) == 1
-    assert db_session.scalar(select(func.count()).select_from(ReviewDecision).where(
-        ReviewDecision.decision_note == "Common bulk comment"
-    )) == 1
+    shared = next(
+        item
+        for item in graph["case"]["items"]
+        if item["field_path_snapshot"] == "application.end_date"
+    )
+    assert (
+        db_session.scalar(
+            select(func.count())
+            .select_from(ReviewDecision)
+            .where(ReviewDecision.review_item_id == UUID(shared["id"]))
+        )
+        == 1
+    )
+    assert (
+        db_session.scalar(
+            select(func.count())
+            .select_from(ReviewDecision)
+            .where(ReviewDecision.decision_note == "Common bulk comment")
+        )
+        == 1
+    )
     assert (
         db_session.scalar(select(func.count()).select_from(MasterPost)) == 3
     )  # immutable revisions
@@ -402,8 +411,8 @@ def test_queue_page_lists_counts_orders_and_filters(client: TestClient) -> None:
     assert page.status_code == 200
     assert page.headers["content-type"].startswith("text/html")
     assert "Human Review Queue" in page.text
-    assert "Review required" in page.text
-    assert "Approved / resolved" in page.text and "In review" in page.text
+    assert "Review Required" in page.text
+    assert "Resolved" in page.text and "In Review" in page.text
     assert page.text.index("WEB_QUEUE_HIGH_RECRUITMENT") < page.text.index(
         "WEB_QUEUE_NORMAL_RECRUITMENT"
     )
@@ -414,37 +423,79 @@ def test_queue_page_lists_counts_orders_and_filters(client: TestClient) -> None:
 def test_review_search_pagination_and_post_navigation(client: TestClient) -> None:
     graph = _three_post_review_graph(client)
     case_id = graph["case"]["id"]
-    page = client.get('/review', params={
-        'q': 'SLPRB Grade IV', 'status': 'QUEUED', 'page_size': 1,
-    })
+    page = client.get(
+        "/review",
+        params={
+            "q": "SLPRB Grade IV",
+            "status": "QUEUED",
+            "page_size": 1,
+        },
+    )
     assert page.status_code == 200
     assert page.text.count('class="case-link"') == 1
     assert page.text.count('name="selected"') == 1
-    assert 'Page 1 of 3' in page.text and 'page=2' in page.text
-    assert 'status=QUEUED' in page.text and 'q=SLPRB' in page.text
-    second = client.get('/review', params={'q': 'SLPRB Grade IV', 'page_size': 1, 'page': 2})
-    assert 'Page 2 of 3' in second.text
-    specific = client.get('/review', params={'q': 'Commando'})
+    assert "Page 1 of 3" in page.text and "page=2" in page.text
+    assert "status=QUEUED" in page.text and "q=SLPRB" in page.text
+    second = client.get("/review", params={"q": "SLPRB Grade IV", "page_size": 1, "page": 2})
+    assert "Page 2 of 3" in second.text
+    specific = client.get("/review", params={"q": "Commando"})
     assert specific.text.count('class="case-link"') == 1
-    assert 'Select all eligible on this page' in specific.text
-    assert 'clear-selection' in specific.text
-    assert client.get('/review', params={'page': 0}).status_code == 400
-    assert 'No review cases' in client.get('/review', params={'q': 'no-match'}).text
-    middle = client.get(f'/review/cases/{case_id}?post=assam_commando_battalions')
-    assert 'Post 2 of 3' in middle.text
-    assert 'Previous Post' in middle.text and 'Next Post' in middle.text
-    assert 'post=assam_police' in middle.text and 'post=dgcd_cghg' in middle.text
-    assert 'Start Detailed Review' in middle.text
-    assert 'Needs Review' in middle.text
+    assert "Select all eligible on this page" in specific.text
+    assert "clear-selection" in specific.text
+    assert client.get("/review", params={"page": 0}).status_code == 400
+    assert "No review cases" in client.get("/review", params={"q": "no-match"}).text
+    middle = client.get(f"/review/cases/{case_id}?post=assam_commando_battalions")
+    assert "Post 2 of 3" in middle.text
+    assert "Previous Post" in middle.text and "Next Post" in middle.text
+    assert "post=assam_police" in middle.text and "post=dgcd_cghg" in middle.text
+    assert "Start Detailed Review" in middle.text
+    assert "Needs Review" in middle.text
     assert '<details class="card trusted-attributes">' in middle.text
     assert '<details class="technical">' in middle.text
-    assert middle.text.index('Quick Review') < middle.text.index('Needs Review')
-    client.post(f'/review/cases/{case_id}/quick-publish', data={
-        'post': 'assam_commando_battalions', 'comment': 'Checked official source',
-    })
-    published = client.get(f'/review/cases/{case_id}?post=assam_commando_battalions')
-    assert 'Review Next Post' in published.text
-    assert 'post=dgcd_cghg' in published.text
+    assert middle.text.index("Quick Review") < middle.text.index("Needs Review")
+    client.post(
+        f"/review/cases/{case_id}/quick-publish",
+        data={
+            "post": "assam_commando_battalions",
+            "comment": "Checked official source",
+        },
+    )
+    published = client.get(f"/review/cases/{case_id}?post=assam_commando_battalions")
+    assert "Review Next Post" in published.text
+    assert "post=dgcd_cghg" in published.text
+
+
+def test_portal_filters_share_enums_and_preserve_combined_selection(client: TestClient) -> None:
+    _three_post_review_graph(client)
+    page = client.get(
+        "/review",
+        params={
+            "status": "REVIEW_REQUIRED",
+            "priority": "CRITICAL",
+            "completeness": "PARTIAL",
+            "q": "Grade IV",
+            "page_size": 1,
+        },
+    )
+    assert page.status_code == 200
+    for value in (
+        "ALL",
+        "REVIEW_REQUIRED",
+        "IN_REVIEW",
+        "RESOLVED",
+        "REJECTED",
+        "AUTO_PUBLISHED",
+        "HUMAN_PUBLISHED",
+    ):
+        assert f'value="{value}"' in page.text
+        assert f"status={value}" in page.text
+    assert page.text.count('name="status"') == 1
+    assert page.text.count('name="priority"') == 1
+    assert page.text.count('name="completeness"') == 1
+    assert '<option value="PARTIAL" selected>' in page.text
+    assert '<option value="CRITICAL" selected>' in page.text
+    assert "priority=CRITICAL" in page.text
+    assert "completeness=PARTIAL" in page.text
 
 
 def test_case_page_composes_candidate_confidence_and_evidence_safely(
@@ -484,9 +535,9 @@ def test_case_page_composes_candidate_confidence_and_evidence_safely(
     assert "&lt;script&gt;alert" in page.text
     assert 'target="_blank"' in page.text
     assert 'rel="noopener noreferrer"' in page.text
-    assert "<details class=\"evidence-section\">" in page.text
+    assert '<details class="evidence-section">' in page.text
     assert "<summary>View source evidence</summary>" in page.text
-    assert "<section class=\"evidence-section\">" not in page.text
+    assert '<section class="evidence-section">' not in page.text
 
 
 def test_review_queue_and_detail_focus_on_exact_post(client: TestClient) -> None:
@@ -534,9 +585,7 @@ def test_explicit_three_post_review_is_post_first_when_active_and_resolved(
         assert f"</strong> {vacancies}</small>" in entry
         assert "Advertisement details" in entry
 
-    police = client.get(
-        f"/review/cases/{case['id']}", params={"post": "assam_police"}
-    )
+    police = client.get(f"/review/cases/{case['id']}", params={"post": "assam_police"})
     assert "<h1>Grade IV Staff - Assam Police</h1>" in police.text
     assert "Shared Advertisement attributes" in police.text
     assert "application.end_date" in police.text
@@ -566,9 +615,7 @@ def test_explicit_three_post_review_is_post_first_when_active_and_resolved(
         assert response.status_code == 201
 
     resolved = client.get("/review", params={"status": "RESOLVED"})
-    resolved_police = client.get(
-        f"/review/cases/{case['id']}", params={"post": "assam_police"}
-    )
+    resolved_police = client.get(f"/review/cases/{case['id']}", params={"post": "assam_police"})
     assert resolved.text.count('class="case-link"') == 3
     assert "Advertisement-wide review" not in resolved.text
     assert all(
@@ -610,9 +657,7 @@ def test_post_review_composes_all_supported_attributes_by_scope(
     assert "posts.assam_commando_battalions.vacancies.total" not in police.text
     assert "posts.assam_police.vacancies.total" not in commando.text
 
-    trusted_start_date = police.text.split("application.start_date", 1)[1].split(
-        "</article>", 1
-    )[0]
+    trusted_start_date = police.text.split("application.start_date", 1)[1].split("</article>", 1)[0]
     assert "TRUSTED / AUTO-ACCEPTED" in trusted_start_date
     assert 'type="radio"' not in trusted_start_date
     assert "View source evidence" in trusted_start_date
@@ -645,18 +690,14 @@ def test_grouped_review_corrections_preserve_extraction_and_reach_public_master(
     assert corrected.status_code == 303
 
     after_police = client.get(f"/api/v1/review-cases/{case_id}").json()
-    resolved_by_path = {
-        item["field_path_snapshot"]: item for item in after_police["items"]
-    }
+    resolved_by_path = {item["field_path_snapshot"]: item for item in after_police["items"]}
     assert resolved_by_path["application.end_date"]["decision"]["decision"] == (
         "CORRECT_AND_APPROVE"
     )
-    assert resolved_by_path["application.end_date"]["decision"]["corrected_value"] == (
-        "2026-10-22"
+    assert resolved_by_path["application.end_date"]["decision"]["corrected_value"] == ("2026-10-22")
+    assert (
+        resolved_by_path["posts.assam_police.vacancies.total"]["decision"]["corrected_value"] == 186
     )
-    assert resolved_by_path["posts.assam_police.vacancies.total"]["decision"][
-        "corrected_value"
-    ] == 186
     assert resolved_by_path["application.end_date"]["decision"]["decision_note"] == (
         correction_comment
     )
@@ -672,9 +713,7 @@ def test_grouped_review_corrections_preserve_extraction_and_reach_public_master(
         f"/review/cases/{case_id}",
         params={"post": "assam_commando_battalions"},
     )
-    shared_section = sibling.text.split("application.end_date", 1)[1].split(
-        "</article>", 1
-    )[0]
+    shared_section = sibling.text.split("application.end_date", 1)[1].split("</article>", 1)[0]
     assert "2026-10-20" in shared_section
     assert "2026-10-22" in shared_section
     assert "CORRECT AND APPROVE" in shared_section
@@ -708,13 +747,9 @@ def test_grouped_review_corrections_preserve_extraction_and_reach_public_master(
     assert listing["total"] == 3
     public_by_name = {item["display_name"]: item for item in listing["items"]}
     assert public_by_name["Grade IV Staff - Assam Police"]["vacancies_total"] == 186
-    assert public_by_name["Grade IV Staff - Assam Commando Battalions"][
-        "vacancies_total"
-    ] == 6
+    assert public_by_name["Grade IV Staff - Assam Commando Battalions"]["vacancies_total"] == 6
     for public_post in public_by_name.values():
-        detail = client.get(
-            f"/api/public/v1/recruitments/{public_post['id']}"
-        ).json()
+        detail = client.get(f"/api/public/v1/recruitments/{public_post['id']}").json()
         effective = {field["field_path"]: field["value"] for field in detail["fields"]}
         assert effective["application.end_date"] == "2026-10-22"
         assert effective["advertisement.vacancies.total"] == 256
@@ -803,7 +838,7 @@ def test_started_case_shows_only_approve_reject_and_comment(client: TestClient) 
 
     assert 'type="radio"' in page.text
     assert "Reviewer Comment" in page.text
-    assert page.text.count('name="comment"') == 1
+    assert page.text.count('name="comment"') == 2  # detailed review and readiness enrichment
     assert "Final Approve Advertisement" in page.text
     assert "Final Reject Advertisement" in page.text
     assert "Reviewer identifier" not in page.text
@@ -881,9 +916,7 @@ def test_grouped_post_submission_approves_and_rejects_posts_independently(
     _start_web_case(client, case_id)
     case = client.get(f"/api/v1/review-cases/{case_id}").json()
 
-    police_page = client.get(
-        f"/review/cases/{case['id']}", params={"post": "assam_police"}
-    )
+    police_page = client.get(f"/review/cases/{case['id']}", params={"post": "assam_police"})
     relevant_pending = [
         item
         for item in case["items"]
@@ -894,9 +927,7 @@ def test_grouped_post_submission_approves_and_rejects_posts_independently(
     assert police_page.text.count('type="radio"') == len(relevant_pending) * 2
     assert police_page.text.count('name="comment"') == 2  # quick and detailed forms
 
-    approved = _submit_post(
-        client, case, "assam_police", final_action="APPROVE_POST"
-    )
+    approved = _submit_post(client, case, "assam_police", final_action="APPROVE_POST")
     assert approved.status_code == 303
     assert "post=assam_police" in approved.headers["location"]
     after_police = client.get(f"/api/v1/review-cases/{case['id']}").json()
@@ -909,7 +940,7 @@ def test_grouped_post_submission_approves_and_rejects_posts_independently(
     assert db_session.scalar(select(func.count(ReviewItem.id))) == len(case["items"])
     assert db_session.scalar(select(func.count(ReviewDecision.id))) == 2
 
-    active_queue = client.get("/review")
+    active_queue = client.get("/review", params={"status": "REVIEW_REQUIRED"})
     resolved_queue = client.get("/review", params={"status": "RESOLVED"})
     police_link = f"/review/cases/{case['id']}?post=assam_police"
     assert police_link not in active_queue.text
@@ -938,20 +969,17 @@ def test_grouped_post_submission_approves_and_rejects_posts_independently(
     assert rejected.status_code == 303
     after_commando = client.get(f"/api/v1/review-cases/{case['id']}").json()
     by_path = {item["field_path_snapshot"]: item for item in after_commando["items"]}
-    assert by_path["posts.assam_commando_battalions.vacancies.total"]["decision"][
-        "decision"
-    ] == "REJECT"
+    assert (
+        by_path["posts.assam_commando_battalions.vacancies.total"]["decision"]["decision"]
+        == "REJECT"
+    )
     assert by_path["posts.dgcd_cghg.vacancies.total"]["status"] == "PENDING"
     assert after_commando["status"] == "IN_REVIEW"
 
-    finished = _submit_post(
-        client, after_commando, "dgcd_cghg", final_action="APPROVE_POST"
-    )
+    finished = _submit_post(client, after_commando, "dgcd_cghg", final_action="APPROVE_POST")
     assert finished.status_code == 303
     resolved = client.get(f"/api/v1/review-cases/{case['id']}").json()
-    projection = client.get(
-        f"/api/v1/review-cases/{case['id']}/approved-projection"
-    ).json()
+    projection = client.get(f"/api/v1/review-cases/{case['id']}/approved-projection").json()
     assert resolved["status"] == "RESOLVED"
     assert resolved["outcome"] == "REJECTED"
     assert projection["approved_post_keys"] == ["assam_police", "dgcd_cghg"]
@@ -967,9 +995,7 @@ def test_review_metrics_and_manual_publication_are_post_scoped_and_idempotent(
     _start_web_case(client, case_id)
     case = client.get(f"/api/v1/review-cases/{case_id}").json()
 
-    approved = _submit_post(
-        client, case, "assam_police", final_action="APPROVE_POST"
-    )
+    approved = _submit_post(client, case, "assam_police", final_action="APPROVE_POST")
     after_approved = client.get(f"/api/v1/review-cases/{case_id}").json()
     rejected = _submit_post(
         client,
@@ -980,12 +1006,8 @@ def test_review_metrics_and_manual_publication_are_post_scoped_and_idempotent(
     )
     assert approved.status_code == 303 and rejected.status_code == 303
 
-    approved_page = client.get(
-        f"/review/cases/{case_id}", params={"post": "assam_police"}
-    )
-    pending_page = client.get(
-        f"/review/cases/{case_id}", params={"post": "dgcd_cghg"}
-    )
+    approved_page = client.get(f"/review/cases/{case_id}", params={"post": "assam_police"})
+    pending_page = client.get(f"/review/cases/{case_id}", params={"post": "dgcd_cghg"})
     rejected_page = client.get(
         f"/review/cases/{case_id}",
         params={"post": "assam_commando_battalions"},
@@ -996,14 +1018,15 @@ def test_review_metrics_and_manual_publication_are_post_scoped_and_idempotent(
     assert "Publish Job" not in rejected_page.text
 
     dashboard = client.get("/review")
-    assert 'href="/review"' in dashboard.text
+    assert "status=ALL" in dashboard.text
     metrics = (
-        (1, "Review required"),
-        (1, "In review"),
-        (1, "Approved / resolved"),
+        (3, "Total Jobs"),
+        (0, "Review Required"),
+        (1, "In Review"),
+        (1, "Resolved"),
         (1, "Rejected"),
-        (0, "Auto published"),
-        (0, "Human published"),
+        (0, "Auto Published"),
+        (0, "Human Published"),
     )
     for value, label in metrics:
         assert f"<strong>{value}</strong><span>{label}</span>" in dashboard.text
@@ -1036,7 +1059,7 @@ def test_review_metrics_and_manual_publication_are_post_scoped_and_idempotent(
     assert db_session.scalar(select(func.count(MasterPost.id))) == 1
     assert db_session.scalar(select(func.count(MasterPublicationEvent.id))) == 1
     dashboard = client.get("/review")
-    assert "<strong>1</strong><span>Human published</span>" in dashboard.text
+    assert "<strong>1</strong><span>Human Published</span>" in dashboard.text
 
 
 def test_incremental_post_publication_keeps_prior_post_and_complete_details(
@@ -1048,12 +1071,8 @@ def test_incremental_post_publication_keeps_prior_post_and_complete_details(
     case = client.get(f"/api/v1/review-cases/{case_id}").json()
     _submit_post(client, case, "assam_police", final_action="APPROVE_POST")
     after_police = client.get(f"/api/v1/review-cases/{case_id}").json()
-    client.post(
-        f"/review/cases/{case_id}/publish", data={"post": "assam_police"}
-    )
-    first_listing = client.get(
-        "/api/public/v1/recruitments", params={"page_size": 10}
-    ).json()
+    client.post(f"/review/cases/{case_id}/publish", data={"post": "assam_police"})
+    first_listing = client.get("/api/public/v1/recruitments", params={"page_size": 10}).json()
     police_public_id = first_listing["items"][0]["id"]
     _submit_post(
         client,
@@ -1074,17 +1093,17 @@ def test_incremental_post_publication_keeps_prior_post_and_complete_details(
         "Grade IV Staff - Assam Commando Battalions",
     }
     assert {item["vacancies_total"] for item in listing["items"]} == {181, 6}
-    assert next(
-        item["id"]
-        for item in listing["items"]
-        if item["display_name"] == "Grade IV Staff - Assam Police"
-    ) == police_public_id
+    assert (
+        next(
+            item["id"]
+            for item in listing["items"]
+            if item["display_name"] == "Grade IV Staff - Assam Police"
+        )
+        == police_public_id
+    )
     for item in listing["items"]:
         detail_response = client.get(f"/api/public/v1/recruitments/{item['id']}")
-        fields = {
-            field["field_path"]: field["value"]
-            for field in detail_response.json()["fields"]
-        }
+        fields = {field["field_path"]: field["value"] for field in detail_response.json()["fields"]}
         assert fields["advertisement.vacancies.total"] == 256
         assert fields["application.fee"] == "Rs. 250"
         assert fields["selection.process"] == "Written Test and Physical Test"
@@ -1185,9 +1204,7 @@ def test_decision_form_errors_are_clear_and_do_not_resolve_item(client: TestClie
 
 def test_cancel_and_html_errors_are_user_friendly(client: TestClient) -> None:
     graph = _web_graph(client, "WEB_CANCEL")
-    cancelled = client.post(
-        f"/review/cases/{graph['case']['id']}/cancel", follow_redirects=False
-    )
+    cancelled = client.post(f"/review/cases/{graph['case']['id']}/cancel", follow_redirects=False)
     missing = client.get(f"/review/cases/{uuid4()}")
     invalid_filter = client.get("/review", params={"status": "NOT_A_STATUS"})
 

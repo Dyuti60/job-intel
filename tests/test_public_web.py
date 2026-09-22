@@ -85,27 +85,37 @@ def test_public_cards_and_detail_use_candidate_focused_hierarchy(client: TestCli
     from tests.test_review_web import _three_post_review_graph
 
     graph = _three_post_review_graph(client)
-    case_id = graph['case']['id']
-    client.post(f'/review/cases/{case_id}/quick-publish', data={
-        'post': 'assam_police', 'comment': 'Checked official source',
-    })
-    cards = client.get('/jobs', params={'authority': graph['candidate'].get('authority_code', ''),
-                                      'minimum_vacancies': 1, 'as_of': '2026-09-22'})
-    assert 'candidate-key' not in cards.text
-    assert 'REVIEW_THREE_POSTS' not in cards.text
-    assert 'SLPRB Grade IV Advertisement' not in cards.text
-    assert 'Parent Advertisement' in cards.text
-    assert '181' in cards.text and '20 Oct 2026' in cards.text
-    assert 'Advanced filters' in cards.text and 'name="minimum_vacancies" value="1"' in cards.text
-    listing = client.get('/api/public/v1/recruitments').json()
+    case_id = graph["case"]["id"]
+    client.post(
+        f"/review/cases/{case_id}/quick-publish",
+        data={
+            "post": "assam_police",
+            "comment": "Checked official source",
+        },
+    )
+    cards = client.get(
+        "/jobs",
+        params={
+            "authority": graph["candidate"].get("authority_code", ""),
+            "minimum_vacancies": 1,
+            "as_of": "2026-09-22",
+        },
+    )
+    assert "candidate-key" not in cards.text
+    assert "REVIEW_THREE_POSTS" not in cards.text
+    assert "SLPRB Grade IV Advertisement" not in cards.text
+    assert "Parent Advertisement" in cards.text
+    assert "181" in cards.text and "20 Oct 2026" in cards.text
+    assert "Advanced filters" in cards.text and 'name="minimum_vacancies" value="1"' in cards.text
+    listing = client.get("/api/public/v1/recruitments").json()
     detail = client.get(f"/jobs/{listing['items'][0]['id']}")
-    assert 'Job sections' in detail.text
+    assert "Job sections" in detail.text
     assert 'href="#section-age"' in detail.text
     assert 'href="#section-physical-medical"' not in detail.text
     assert 'href="#sources-heading"' in detail.text
-    assert '<h3>Post Name</h3>' not in detail.text
-    assert '<h3>Total Vacancies</h3>' not in detail.text
-    assert 'Official source' in detail.text
+    assert "<h3>Post Name</h3>" not in detail.text
+    assert "<h3>Total Vacancies</h3>" not in detail.text
+    assert "Official source" in detail.text
 
 
 def test_public_job_detail_shows_approved_fields_and_safe_source_links(
@@ -143,6 +153,9 @@ def test_public_detail_renders_rich_master_fields_before_eligibility_and_officia
                 "value_type": "STRING",
                 "value": "Driver Recruitment",
             },
+            {"field_path": "vacancies.total", "value_type": "INTEGER", "value": 12},
+            {"field_path": "application.start_date", "value_type": "DATE", "value": "2026-09-01"},
+            {"field_path": "application.end_date", "value_type": "DATE", "value": "2026-09-30"},
             {
                 "field_path": "qualification.essential",
                 "value_type": "STRING",
@@ -210,10 +223,10 @@ def test_public_detail_renders_rich_master_fields_before_eligibility_and_officia
     assert '<ol class="recruitment-list">' in detail.text
     assert '<ul class="recruitment-list">' in detail.text
     assert '<dl class="structured-facts">' in detail.text
-    assert '5 years' in detail.text
-    assert 'Male Cm' in detail.text and '<td>160</td>' in detail.text
-    assert 'Normal Cm' in detail.text and 'Proportionate to height and age' in detail.text
-    assert '<pre>' not in detail.text
+    assert "5 years" in detail.text
+    assert "Male Cm" in detail.text and "<td>160</td>" in detail.text
+    assert "Normal Cm" in detail.text and "Proportionate to height and age" in detail.text
+    assert "<pre>" not in detail.text
     assert "Documents Required" in detail.text
     assert "Recruitment Phases" in detail.text
     assert "Exam Pattern / Syllabus" in detail.text
@@ -262,7 +275,15 @@ def test_public_web_escapes_master_and_source_content(
     graph = _direct_graph(
         client,
         "WEB_ESCAPE",
-        [{"field_path": "description.summary", "value_type": "STRING", "value": "<b>value</b>"}],
+        [
+            {"field_path": "post.name", "value_type": "STRING", "value": "Escaped Post"},
+            {"field_path": "description.summary", "value_type": "STRING", "value": "<b>value</b>"},
+            {"field_path": "vacancies.total", "value_type": "INTEGER", "value": 1},
+            {"field_path": "application.start_date", "value_type": "DATE", "value": "2026-09-01"},
+            {"field_path": "application.end_date", "value_type": "DATE", "value": "2026-09-30"},
+            {"field_path": "qualification.minimum", "value_type": "STRING", "value": "HSLC"},
+            {"field_path": "age.minimum", "value_type": "INTEGER", "value": 18},
+        ],
     )
     publication = _publish(client, graph["confidence"]["id"]).json()
     master = db_session.get(RecruitmentMaster, UUID(publication["master"]["id"]))

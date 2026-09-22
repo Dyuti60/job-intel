@@ -10,6 +10,7 @@ from app.core.config import Settings
 from app.models.candidates import (
     AdvertisementRevision,
     AdvertisementSplitStatus,
+    CandidateValueType,
     PostFact,
     RecruitmentCandidateRevision,
     RecruitmentPost,
@@ -18,6 +19,7 @@ from app.models.discovery import DocumentType
 from app.models.evidence import CandidateFieldEvidence, Evidence
 from app.models.master import MasterPost
 from app.services.official_archive_discovery import OfficialArchiveDiscoveryWorkerService
+from app.services.published_maintenance import PublishedMaintenanceService
 from sources.adapters.apsc_recruitment import AdapterDocument
 from sources.adapters.official_recruitment_archive import (
     OFFICIAL_ARCHIVE_SOURCES,
@@ -29,6 +31,7 @@ from sources.adapters.official_recruitment_archive import (
     parse_narrative_vacancies,
     parse_official_advertisement_text,
 )
+from sources.extraction import ParsedField
 from sources.http import FetchedResource
 from tests.factories import (
     create_ready_candidate_revision,
@@ -196,17 +199,13 @@ def test_pypdf_whitespace_and_multiline_sections_are_post_isolated() -> None:
     assert facts[0]["vacancies.ex_servicemen"] == 2
     assert facts[0]["age.maximum"] == 25
     assert facts[0]["pay.grade_pay"] == "Rs. 5600/-"
-    assert facts[0]["qualification.essential"] == (
-        "HSLC passed from recognised Board or Council"
-    )
+    assert facts[0]["qualification.essential"] == ("HSLC passed from recognised Board or Council")
     assert facts[0]["qualification.desirable"] == "Heavy vehicle driving experience"
     assert facts[0]["qualification.registration_or_licence"].endswith("LMV or MMV or HMV")
     assert facts[1]["vacancies.total"] == 4
     assert facts[1]["age.minimum"] == 20
     assert facts[1]["age.maximum"] == 30
-    assert facts[1]["qualification.essential"] == (
-        "HSSLC passed from recognised Board or Council"
-    )
+    assert facts[1]["qualification.essential"] == ("HSSLC passed from recognised Board or Council")
     assert facts[1]["qualification.desirable"] == "Fire appliance driving experience"
     assert facts[1]["qualification.registration_or_licence"].endswith("for HMV")
     assert "Heavy vehicle driving experience" not in str(facts[1])
@@ -249,8 +248,7 @@ def test_pypdf_post_fact_without_exact_organisation_is_left_ambiguous() -> None:
     assert extraction.split_status == AdvertisementSplitStatus.EXPLICIT
     assert any("licence clause" in warning for warning in extraction.warnings)
     assert all(
-        "qualification.registration_or_licence"
-        not in {fact.field_path for fact in post.facts}
+        "qualification.registration_or_licence" not in {fact.field_path for fact in post.facts}
         for post in extraction.posts
     )
 
@@ -964,7 +962,25 @@ def test_slprb_narrative_publishes_three_isolated_master_posts_and_public_jobs(
                     "pdf",
                 ),
                 candidate_key=archive_candidate_key("SLPRB_ASSAM", metadata),
-                fields=extraction.fields,
+                fields=(
+                    *extraction.fields,
+                    ParsedField(
+                        field_path="qualification.minimum",
+                        value_type=CandidateValueType.STRING,
+                        value="Class VIII",
+                        raw_value="Class VIII",
+                        source_locator="fixture:eligibility",
+                        excerpt="Minimum qualification: Class VIII",
+                    ),
+                    ParsedField(
+                        field_path="age.minimum",
+                        value_type=CandidateValueType.INTEGER,
+                        value=18,
+                        raw_value="18",
+                        source_locator="fixture:eligibility",
+                        excerpt="Minimum age: 18 years",
+                    ),
+                ),
                 posts=extraction.posts,
                 split_status=extraction.split_status,
                 split_note=extraction.split_note,
@@ -996,7 +1012,9 @@ def test_slprb_narrative_publishes_three_isolated_master_posts_and_public_jobs(
     master_posts = publication.json()["master_revision"]["posts"]
     public = client.get("/api/public/v1/recruitments", params={"as_of": "2026-09-20"}).json()
     assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 3
-    assert len(master_posts) == public["total"] == 3
+    assert len(master_posts) == public["total"] == 3, [
+        row["missing"] for row in PublishedMaintenanceService(db_session).rows()
+    ]
     assert len({post["public_id"] for post in master_posts}) == 3
     expected = {
         "Grade IV Staff – Assam Police": 181,
@@ -1089,6 +1107,10 @@ def test_explicit_revision_supersedes_unsplit_public_view_without_deleting_histo
                 "value": field.value,
             }
             for field in extraction.fields
+        ]
+        + [
+            {"field_path": "qualification.minimum", "value_type": "STRING", "value": "Class VIII"},
+            {"field_path": "age.minimum", "value_type": "INTEGER", "value": 18},
         ],
         split_status="EXPLICIT",
         posts=[

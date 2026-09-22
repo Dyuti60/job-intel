@@ -43,7 +43,9 @@ def _explicit_two_post_run(client) -> dict:
                 "value_type": "STRING",
                 "value": "Two Post Recruitment",
                 "source_locator": "pdf:page=1",
-            }
+            },
+            {"field_path": "application.start_date", "value_type": "DATE", "value": "2026-09-01"},
+            {"field_path": "application.end_date", "value_type": "DATE", "value": "2026-09-30"},
         ],
         posts=[
             {
@@ -90,6 +92,12 @@ def _explicit_two_post_run(client) -> dict:
                         "value": "Conflicted Post",
                     },
                     {"field_path": "vacancies.total", "value_type": "INTEGER", "value": 20},
+                    {"field_path": "age.minimum", "value_type": "INTEGER", "value": 21},
+                    {
+                        "field_path": "qualification.minimum",
+                        "value_type": "STRING",
+                        "value": "Bachelor Degree",
+                    },
                 ],
             },
         ],
@@ -176,6 +184,8 @@ def test_rejected_post_does_not_block_valid_sibling_master(client, db_session) -
     assert {fact["fact_key"] for fact in revision["posts"][0]["facts"]} == expected_post_facts
     assert {field["field_path"] for field in revision["fields"]} == {
         "recruitment_name",
+        "application.start_date",
+        "application.end_date",
     } | {f"posts.valid_post.{fact}" for fact in expected_post_facts}
     assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 1
     assert db_session.scalar(select(func.count()).select_from(MasterPostFact)) == 8

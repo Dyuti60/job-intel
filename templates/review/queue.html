@@ -9,24 +9,20 @@
 </div>
 
 <section class="metrics" aria-label="Queue counts">
-  <a class="metric" href="/review"><strong>{{ counts.review_required }}</strong><span>Review required</span></a>
-  <a class="metric" href="/review?status=IN_REVIEW"><strong>{{ counts.in_review }}</strong><span>In review</span></a>
-  <a class="metric" href="/review?status=RESOLVED&amp;outcome=APPROVED"><strong>{{ counts.approved }}</strong><span>Approved / resolved</span></a>
-  <a class="metric critical" href="/review?status=RESOLVED&amp;outcome=REJECTED"><strong>{{ counts.rejected }}</strong><span>Rejected</span></a>
-  <a class="metric" href="/review?view=AUTO_PUBLISHED"><strong>{{ counts.auto_published }}</strong><span>Auto published</span></a>
-  <a class="metric" href="/review?view=HUMAN_PUBLISHED"><strong>{{ counts.human_published }}</strong><span>Human published</span></a>
+  <a class="metric" href="{{ metric_urls.ALL }}"><strong>{{ counts.total_jobs }}</strong><span>Total Jobs</span></a>
+  <a class="metric" href="{{ metric_urls.REVIEW_REQUIRED }}"><strong>{{ counts.review_required }}</strong><span>Review Required</span></a>
+  <a class="metric" href="{{ metric_urls.IN_REVIEW }}"><strong>{{ counts.in_review }}</strong><span>In Review</span></a>
+  <a class="metric" href="{{ metric_urls.RESOLVED }}"><strong>{{ counts.approved }}</strong><span>Resolved</span></a>
+  <a class="metric critical" href="{{ metric_urls.REJECTED }}"><strong>{{ counts.rejected }}</strong><span>Rejected</span></a>
+  <a class="metric" href="{{ metric_urls.AUTO_PUBLISHED }}"><strong>{{ counts.auto_published }}</strong><span>Auto Published</span></a>
+  <a class="metric" href="{{ metric_urls.HUMAN_PUBLISHED }}"><strong>{{ counts.human_published }}</strong><span>Human Published</span></a>
 </section>
-<nav class="toolbar" aria-label="Review sections"><a href="/review">Review work</a><a href="/review?status=RESOLVED">Review history</a><a href="/review?view=AUTO_PUBLISHED">Auto published</a><a href="/review?view=HUMAN_PUBLISHED">Human published</a></nav>
 
 <form class="filters card" method="get" action="/review">
   <label>Search<input name="q" value="{{ search_query }}" maxlength="100" placeholder="Post, Advertisement, or authority"></label>
   <input type="hidden" name="page_size" value="{{ page_size }}">
-  {% if selected_view %}<input type="hidden" name="view" value="{{ selected_view }}">{% endif %}
-  {% if selected_outcome %}<input type="hidden" name="outcome" value="{{ selected_outcome }}">{% endif %}
-  {% if not selected_view %}
   <label>Status
     <select name="status">
-      <option value="">Active cases</option>
       {% for option in statuses %}
       <option value="{{ option }}" {% if selected_status == option %}selected{% endif %}>{{ option | replace('_', ' ') | title }}</option>
       {% endfor %}
@@ -34,17 +30,22 @@
   </label>
   <label>Priority
     <select name="priority">
-      <option value="">All priorities</option>
       {% for option in priorities %}
       <option value="{{ option }}" {% if selected_priority == option %}selected{% endif %}>{{ option | title }}</option>
       {% endfor %}
     </select>
   </label>
-  {% endif %}
+  <label>Completeness
+    <select name="completeness">
+      {% for option in completeness_options %}
+      <option value="{{ option }}" {% if selected_completeness == option %}selected{% endif %}>{{ option | title }}</option>
+      {% endfor %}
+    </select>
+  </label>
   <button type="submit">Apply filters</button>
 </form>
 
-{% if selected_view %}
+{% if published_rows or selected_view in ('AUTO_PUBLISHED', 'HUMAN_PUBLISHED') %}
 <section class="card table-wrap">
   {% if published_rows %}
   <table>
@@ -60,7 +61,8 @@
   </table>
   {% else %}<p class="empty">No published jobs match these filters.</p>{% endif %}
 </section>
-{% else %}
+{% endif %}
+{% if cases or selected_view not in ('AUTO_PUBLISHED', 'HUMAN_PUBLISHED') %}
 <form method="post" action="/review/bulk-publish" id="bulk-review">
 <section class="card bulk-toolbar">
   <div class="toolbar"><button type="button" id="select-page" class="secondary">Select all eligible on this page</button><button type="button" id="clear-selection" class="secondary">Clear selection</button></div>
@@ -87,7 +89,7 @@
           <details class="technical"><summary>Technical details</summary>{{ case.advertisement_title }}<br>{{ case.authority_name }}<br>{{ case.candidate_key }}<br>Case {{ case.short_id }}</details>
         </td>
         <td>{% for field in case.important_fields if 'Vacancies' in field.label %}<small><strong>{{ field.label }}:</strong> {{ field.value }}</small>{% else %}Not specified{% endfor %}</td>
-        <td><strong>{{ (case.outcome or case.status) | replace('_', ' ') }}</strong><small>{{ case.pending_items }} pending / {{ case.total_items }} total</small><span class="badge priority-{{ case.priority|lower }}">{{ case.priority }}</span></td>
+        <td><strong>{{ (case.outcome or case.status) | replace('_', ' ') }}</strong><small>{{ case.pending_items }} pending / {{ case.total_items }} total</small><small>{{ case.completeness }}{% if case.missing %} · Missing: {{ case.missing | join(', ') }}{% endif %}</small><span class="badge priority-{{ case.priority|lower }}">{{ case.priority }}</span></td>
         <td>{{ case.score if case.score is not none else 'N/A' }} / 100 <small>{% for reason in case.review_reasons %}{{ reason }}{% if not loop.last %}<br>{% endif %}{% endfor %}</small></td>
         <td><a href="/review/cases/{{ case.id }}{% if case.post_key %}?post={{ case.post_key|urlencode }}{% endif %}">Review →</a></td>
       </tr>

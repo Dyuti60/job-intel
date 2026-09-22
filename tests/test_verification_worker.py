@@ -132,6 +132,7 @@ def _seed_candidate(client, *, code: str = "APSC", key: str = "APSC_ADVT_12_2026
     )["document"]
     candidate = create_candidate(client, authority["id"], candidate_key=key)
     fields = [
+        {"field_path": "application.start_date", "value_type": "DATE", "value": "2026-08-10"},
         {
             "field_path": "application.end_date",
             "value_type": "DATE",
@@ -143,12 +144,17 @@ def _seed_candidate(client, *, code: str = "APSC", key: str = "APSC_ADVT_12_2026
             "value_type": "STRING",
             "value": "Research Assistant",
         },
+        {"field_path": "qualification.minimum", "value_type": "STRING", "value": "Bachelor Degree"},
+        {"field_path": "age.minimum", "value_type": "INTEGER", "value": 21},
     ]
     revision = create_revision(client, candidate["id"], document["id"], fields=fields)
     excerpts = {
+        "application.start_date": "Applications open on 10/08/2026",
         "application.end_date": "Application End Date : 10/09/2026 Midnight",
         "vacancies.total": "No of posts:-01 (One) no.",
         "recruitment_name": "Research Assistant under Labour Welfare Department",
+        "qualification.minimum": "Minimum qualification: Bachelor Degree",
+        "age.minimum": "Minimum age: 21 years",
     }
     for field in revision["fields"]:
         evidence = create_evidence(
@@ -157,9 +163,7 @@ def _seed_candidate(client, *, code: str = "APSC", key: str = "APSC_ADVT_12_2026
             excerpt=excerpts[field["field_path"]],
             source_locator=f"fixture:{field['field_path']}",
         )
-        response = client.post(
-            f"/api/v1/candidate-fields/{field['id']}/evidence/{evidence['id']}"
-        )
+        response = client.post(f"/api/v1/candidate-fields/{field['id']}/evidence/{evidence['id']}")
         assert response.status_code == 201, response.text
     return candidate, revision
 
@@ -180,14 +184,12 @@ def test_worker_transitions_draft_verifies_scores_and_is_idempotent(
 
     monkeypatch.setattr(httpx.Client, "request", fail_network)
     worker = VerificationWorkerService(db_session, logging.getLogger(__name__))
-    first = worker.run(
-        authority="APSC", candidate_key=None, batch_size=100, dry_run=False
-    )
+    first = worker.run(authority="APSC", candidate_key=None, batch_size=100, dry_run=False)
     assert first.completed == 1
-    assert first.fields_confirmed == 3
-    assert first.fields_insufficient == 0
-    assert first.no_review_required == 1
-    assert first.review_cases_queued == 0
+    assert first.fields_confirmed == 5
+    assert first.fields_insufficient == 1
+    assert first.no_review_required == 0
+    assert first.review_cases_queued == 1
     db_session.expire_all()
     from app.models.candidates import RecruitmentCandidate
 
@@ -196,8 +198,8 @@ def test_worker_transitions_draft_verifies_scores_and_is_idempotent(
         == CandidateStatus.READY_FOR_VERIFICATION
     )
     assert _count(db_session, VerificationRun) == 1
-    assert _count(db_session, FieldVerification) == 3
-    assert _count(db_session, FieldConfidenceAssessment) == 6
+    assert _count(db_session, FieldVerification) == 6
+    assert _count(db_session, FieldConfidenceAssessment) == 12
     assert _count(db_session, RevisionConfidenceAssessment) == 2
     assert _count(db_session, ReviewRoutingAssessment) == 1
     assert {
@@ -205,9 +207,7 @@ def test_worker_transitions_draft_verifies_scores_and_is_idempotent(
         for item in db_session.scalars(select(RevisionConfidenceAssessment)).all()
     } == {ConfidencePolicyVersion.V1, ConfidencePolicyVersion.V2}
 
-    second = worker.run(
-        authority="APSC", candidate_key=None, batch_size=100, dry_run=False
-    )
+    second = worker.run(authority="APSC", candidate_key=None, batch_size=100, dry_run=False)
     assert second.revisions_scanned == 0
     assert _count(db_session, VerificationRun) == 1
     assert _count(db_session, ReviewRoutingAssessment) == 1
@@ -242,8 +242,7 @@ def test_worker_routes_insufficient_evidence_once(client, db_session) -> None:
     assert "UNCLEAR_CRITICAL_MEANING" in routing.reason_codes
     verification = db_session.scalar(
         select(FieldVerification).where(
-            FieldVerification.candidate_field_id
-            == uuid.UUID(no_evidence["fields"][0]["id"])
+            FieldVerification.candidate_field_id == uuid.UUID(no_evidence["fields"][0]["id"])
         )
     )
     assert verification.outcome == FieldVerificationOutcome.INSUFFICIENT_EVIDENCE
@@ -279,9 +278,7 @@ def test_dry_run_and_batch_selection_leave_no_mutation(client, db_session) -> No
     first_candidate, _ = _seed_candidate(client)
     _seed_candidate(client, code="APSC2", key="APSC2_ADVT_1_2026")
     worker = VerificationWorkerService(db_session)
-    selected = worker.select_eligible_revisions(
-        authority=None, candidate_key=None, batch_size=1
-    )
+    selected = worker.select_eligible_revisions(authority=None, candidate_key=None, batch_size=1)
     expected = db_session.scalar(
         select(RecruitmentCandidateRevision.id).order_by(
             RecruitmentCandidateRevision.created_at,
@@ -289,9 +286,7 @@ def test_dry_run_and_batch_selection_leave_no_mutation(client, db_session) -> No
         )
     )
     assert selected == [expected]
-    summary = worker.run(
-        authority="APSC", candidate_key=None, batch_size=100, dry_run=True
-    )
+    summary = worker.run(authority="APSC", candidate_key=None, batch_size=100, dry_run=True)
     assert summary.completed == 1
     assert _count(db_session, VerificationRun) == 0
     from app.models.candidates import RecruitmentCandidate

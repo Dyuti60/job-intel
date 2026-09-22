@@ -29,7 +29,15 @@ class CandidateFieldEvidenceVerifier:
             r"(?:not\s+(?:be\s+)?less\s+than|minimum\s+age)"
             r"\s*[:=\-]?\s*(\d+)\s*years?\b",
         ),
+        "age.minimum": (
+            r"(?:not\s+(?:be\s+)?less\s+than|minimum\s+age)"
+            r"\s*[:=\-]?\s*(\d+)\s*years?\b",
+        ),
         "eligibility.maximum_age": (
+            r"(?:not\s+(?:be\s+)?more\s+than|maximum\s+age)"
+            r"\s*[:=\-]?\s*(\d+)\s*years?\b",
+        ),
+        "age.maximum": (
             r"(?:not\s+(?:be\s+)?more\s+than|maximum\s+age)"
             r"\s*[:=\-]?\s*(\d+)\s*years?\b",
         ),
@@ -51,9 +59,7 @@ class CandidateFieldEvidenceVerifier:
     }
     _DATE_TOKEN = r"(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}-\d{2}-\d{2})"
 
-    def evaluate(
-        self, field: CandidateField, evidence: Evidence
-    ) -> EvidenceInterpretation:
+    def evaluate(self, field: CandidateField, evidence: Evidence) -> EvidenceInterpretation:
         text = self._comparison_text(evidence)
         if field.value_type == CandidateValueType.STRING:
             return self._string(field.value, text)

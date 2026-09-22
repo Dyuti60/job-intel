@@ -34,6 +34,7 @@ from app.services.candidates import CandidateService
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
 from app.services.master import MasterPublisherService
 from app.services.post_identity import canonical_post_name
+from app.services.public_readiness import master_post_readiness
 from app.services.review import ReviewService
 from app.services.verification_worker import VerificationWorkerService
 
@@ -140,24 +141,6 @@ class PublishedMaintenanceService:
         by_id = {field.id: field for field in revision.fields}
         return {**shared, **{fact.fact_key: by_id[fact.master_field_id] for fact in post.facts}}
 
-    @staticmethod
-    def _missing(fields: dict[str, MasterField]) -> list[str]:
-        def has(*paths: str) -> bool:
-            return any(
-                path in fields and fields[path].value not in (None, "", []) for path in paths
-            )
-
-        missing = []
-        if not has("vacancies.total"):
-            missing.append("Vacancies")
-        if not has("application.end_date"):
-            missing.append("Closing date")
-        if not has("qualification.minimum", "qualification.essential"):
-            missing.append("Qualification")
-        if not has("age.minimum", "age.maximum"):
-            missing.append("Age criteria")
-        return missing
-
     def rows(self, view: str | None = None) -> list[dict[str, Any]]:
         masters = self.session.scalars(
             select(RecruitmentMaster)
@@ -175,7 +158,7 @@ class PublishedMaintenanceService:
         authority_ids = {master.recruiting_authority_id for master in masters}
         authorities = (
             {
-                item.id: item.name
+                item.id: item
                 for item in self.session.scalars(
                     select(RecruitingAuthority).where(RecruitingAuthority.id.in_(authority_ids))
                 )
@@ -198,7 +181,8 @@ class PublishedMaintenanceService:
                 continue
             for post in revision.posts or [None]:
                 fields = self._fields(master, post)
-                missing = self._missing(fields)
+                readiness = master_post_readiness(self.session, revision, post)
+                missing = list(readiness.missing)
                 organisation = next(
                     (
                         fields[key].value
@@ -215,9 +199,13 @@ class PublishedMaintenanceService:
                 rows.append(
                     {
                         "public_id": post.public_id if post else master.id,
+                        "authority_code": authorities[master.recruiting_authority_id].code,
+                        "candidate_key": master.candidate_key,
+                        "post_key": post.post_key if post else None,
+                        "priority": "NONE",
                         "name": post.name if post else master.display_name,
                         "organisation": organisation or "Not specified",
-                        "authority": authorities.get(master.recruiting_authority_id, ""),
+                        "authority": authorities[master.recruiting_authority_id].name,
                         "vacancies": fields["vacancies.total"].value
                         if "vacancies.total" in fields
                         else None,
@@ -226,7 +214,7 @@ class PublishedMaintenanceService:
                         else None,
                         "path": category,
                         "verified_at": revision.verified_at,
-                        "completeness": "PARTIAL" if missing else "COMPLETE",
+                        "completeness": readiness.status.value,
                         "missing": missing,
                     }
                 )
@@ -273,7 +261,8 @@ class PublishedMaintenanceService:
                     "origin": field.value_origin.value if field else "MISSING",
                 }
             )
-        missing = self._missing(fields)
+        readiness = master_post_readiness(self.session, revision, post)
+        missing = list(readiness.missing)
         return {
             "public_id": public_id,
             "master_id": master.id,
@@ -283,7 +272,7 @@ class PublishedMaintenanceService:
             "source_url": source_revision.source_document.document_url,
             "source_document_id": source_revision.source_document_id,
             "candidate_revision_id": source_revision.id,
-            "completeness": "PARTIAL" if missing else "COMPLETE",
+            "completeness": readiness.status.value,
             "missing": missing,
             "fields": catalogue,
             "structural_edit_url": f"/review/cases/{revision.review_case_id}"

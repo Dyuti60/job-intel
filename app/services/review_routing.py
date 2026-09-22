@@ -24,6 +24,7 @@ from app.repositories.review_routing import ReviewRoutingRepository
 from app.repositories.verification import FieldVerificationRepository, VerificationRunRepository
 from app.services.confidence_v2 import ConfidenceV2Service
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
+from app.services.public_readiness import JobCompletenessStatus, candidate_post_readiness
 
 PRIORITY_RANK = {
     ReviewPriority.NONE: 0,
@@ -58,8 +59,10 @@ class ReviewRoutingService:
         )
         if validated.id != confidence.id:
             raise DomainConflictError("Confidence V2 identity mismatch")
-        data = self._result(confidence, field_confidences)
-        existing = self.routing.get_for_policy(confidence.id, ReviewRoutingPolicyVersion.V1)
+        historical = self.routing.get_for_policy(confidence.id, ReviewRoutingPolicyVersion.V1)
+        policy = ReviewRoutingPolicyVersion.V1 if historical else ReviewRoutingPolicyVersion.V2
+        data = self._result(confidence, field_confidences, policy)
+        existing = self.routing.get_for_policy(confidence.id, policy)
         if existing is not None:
             self._assert_matches(existing, data)
             if self.commit:
@@ -72,7 +75,7 @@ class ReviewRoutingService:
         except IntegrityError as error:
             if self.commit:
                 self.session.rollback()
-            existing = self.routing.get_for_policy(confidence.id, ReviewRoutingPolicyVersion.V1)
+            existing = self.routing.get_for_policy(confidence.id, policy)
             if existing is not None:
                 self._assert_matches(existing, data)
                 return existing, False
@@ -81,13 +84,22 @@ class ReviewRoutingService:
 
     def get(self, revision_confidence_assessment_id: uuid.UUID) -> ReviewRoutingAssessment:
         assessment = self.routing.get_for_policy(
-            revision_confidence_assessment_id, ReviewRoutingPolicyVersion.V1
+            revision_confidence_assessment_id, ReviewRoutingPolicyVersion.V2
         )
+        if assessment is None:
+            assessment = self.routing.get_for_policy(
+                revision_confidence_assessment_id, ReviewRoutingPolicyVersion.V1
+            )
         if assessment is None:
             raise ResourceNotFoundError("Review-routing assessment not found")
         return assessment
 
-    def _result(self, confidence, field_confidences) -> dict[str, Any]:
+    def _result(
+        self,
+        confidence,
+        field_confidences,
+        policy: ReviewRoutingPolicyVersion = ReviewRoutingPolicyVersion.V2,
+    ) -> dict[str, Any]:
         run = self.runs.get(confidence.verification_run_id)
         revision = self.revisions.get(confidence.candidate_revision_id)
         if run is None or revision is None:
@@ -155,11 +167,25 @@ class ReviewRoutingService:
             overall_priority = max(
                 overall_priority, ReviewPriority.NORMAL, key=lambda item: PRIORITY_RANK[item]
             )
+        missing_by_post: dict[str, list[str]] = {}
+        if policy == ReviewRoutingPolicyVersion.V2:
+            posts = revision.advertisement_revision.posts if revision.advertisement_revision else []
+            for post in posts or [None]:
+                readiness = candidate_post_readiness(revision, post)
+                if readiness.status == JobCompletenessStatus.PARTIAL:
+                    missing_by_post[post.post_key if post else "ADVERTISEMENT"] = list(
+                        readiness.missing
+                    )
+            if missing_by_post:
+                all_reasons.add(ReviewRoutingReasonCode.MISSING_PUBLIC_REQUIRED_FIELDS)
+                overall_priority = max(
+                    overall_priority, ReviewPriority.NORMAL, key=lambda item: PRIORITY_RANK[item]
+                )
         field_routes.sort(key=lambda item: (item["field_path"], item["field_verification_id"]))
         reasons = self._ordered(all_reasons)
         breakdown = {
             "policy": {
-                "policy_version": ReviewRoutingPolicyVersion.V1.value,
+                "policy_version": policy.value,
                 "numeric_score_threshold_used": False,
                 "optional_field_absence_routes": False,
                 "publication_decision": False,
@@ -168,6 +194,8 @@ class ReviewRoutingService:
             "field_route_count": len(field_routes),
             "confidence_policy": confidence.policy_version.value,
         }
+        if policy == ReviewRoutingPolicyVersion.V2:
+            breakdown["missing_public_required_fields"] = missing_by_post
         fingerprint = self._hash(
             {
                 "policy": breakdown["policy"],
@@ -183,7 +211,7 @@ class ReviewRoutingService:
             "revision_confidence_assessment_id": confidence.id,
             "verification_run_id": run.id,
             "candidate_revision_id": revision.id,
-            "policy_version": ReviewRoutingPolicyVersion.V1,
+            "policy_version": policy,
             "input_hash": fingerprint,
             "review_required": bool(reasons),
             "priority": overall_priority,

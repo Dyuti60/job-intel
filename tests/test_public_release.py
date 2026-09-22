@@ -69,14 +69,14 @@ def test_public_security_headers_host_guard_and_hsts(test_engine) -> None:
         public_allowed_hosts="public.example.test",
     )
     with TestClient(create_public_app(settings), base_url="https://public.example.test") as client:
-        assert client.get("/healthz").headers["strict-transport-security"].startswith(
-            "max-age=31536000"
+        assert (
+            client.get("/healthz")
+            .headers["strict-transport-security"]
+            .startswith("max-age=31536000")
         )
 
 
-def test_public_etag_revalidates_against_current_master(
-    client: TestClient, test_engine
-) -> None:
+def test_public_etag_revalidates_against_current_master(client: TestClient, test_engine) -> None:
     graph = _published(client, "RELEASE_ETAG", end="2026-10-20", vacancies=10)
     master_id = graph["publication"]["master"]["id"]
     with _public_client(test_engine) as public_client:
@@ -93,12 +93,20 @@ def test_public_etag_revalidates_against_current_master(
             graph,
             "release-etag-v2",
             [
+                {"field_path": "post.name", "value_type": "STRING", "value": "Post RELEASE_ETAG"},
+                {
+                    "field_path": "application.start_date",
+                    "value_type": "DATE",
+                    "value": "2026-09-01",
+                },
                 {
                     "field_path": "application.end_date",
                     "value_type": "DATE",
                     "value": "2026-10-27",
                 },
                 {"field_path": "vacancies.total", "value_type": "INTEGER", "value": 10},
+                {"field_path": "qualification.minimum", "value_type": "STRING", "value": "HSLC"},
+                {"field_path": "age.minimum", "value_type": "INTEGER", "value": 18},
             ],
         )
         second_publication = _publish(client, newer["confidence"]["id"])
@@ -174,7 +182,7 @@ def test_release_artifacts_keep_public_runtime_bounded() -> None:
     assert "USER appuser" in dockerfile
     assert "HEALTHCHECK" in dockerfile and "/readyz" in dockerfile
     assert "read_only: true" in compose
-    assert '127.0.0.1:${AJI_PUBLIC_BIND_PORT:-8001}:8000' in compose
+    assert "127.0.0.1:${AJI_PUBLIC_BIND_PORT:-8001}:8000" in compose
     assert "no-new-privileges:true" in compose
     assert "cap_drop:" in compose and "- ALL" in compose
     assert ".env" in ignore and "data" in ignore and "tests" in ignore

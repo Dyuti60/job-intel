@@ -52,6 +52,7 @@ from app.services.confidence import ConfidenceService
 from app.services.confidence_v2 import ConfidenceV2Service
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
 from app.services.post_identity import canonical_post_name
+from app.services.public_readiness import JobCompletenessStatus, candidate_post_readiness
 from app.services.review import ReviewService
 from app.services.review_routing import ReviewRoutingService
 
@@ -129,9 +130,7 @@ class MasterPublisherService:
             ],
         )
 
-        existing_event = self.events.get_by_confidence_assessment(
-            assessment.id, post_key=post_key
-        )
+        existing_event = self.events.get_by_confidence_assessment(assessment.id, post_key=post_key)
         if existing_event is not None:
             master_revision = self.master_revisions.get(existing_event.master_revision_id)
             master = self.masters.get(existing_event.recruitment_master_id)
@@ -240,9 +239,7 @@ class MasterPublisherService:
                     "Publication conflicted with concurrent publishing; retry"
                 ) from error
             self.session.rollback()
-            replay = self.events.get_by_confidence_assessment(
-                assessment.id, post_key=post_key
-            )
+            replay = self.events.get_by_confidence_assessment(assessment.id, post_key=post_key)
             if replay is not None:
                 master = self.masters.get(replay.recruitment_master_id)
                 master_revision = self.master_revisions.get(replay.master_revision_id)
@@ -312,9 +309,7 @@ class MasterPublisherService:
                 and self.master_revisions.get_by_hash(master.id, projection_hash) is not None
             ),
             already_processed=(
-                self.events.get_by_confidence_assessment(
-                    assessment.id, post_key=post_key
-                )
+                self.events.get_by_confidence_assessment(assessment.id, post_key=post_key)
                 is not None
             ),
         )
@@ -322,9 +317,7 @@ class MasterPublisherService:
     def _publication_post_keys(self, revision: Any, post_key: str) -> set[str]:
         advertisement = revision.advertisement_revision
         available = (
-            {post.post_key for post in advertisement.posts}
-            if advertisement is not None
-            else set()
+            {post.post_key for post in advertisement.posts} if advertisement is not None else set()
         )
         if post_key not in available:
             raise DomainConflictError("The selected explicit Post is unavailable")
@@ -521,9 +514,7 @@ class MasterPublisherService:
         post_keys: set[str] | None = None,
     ) -> tuple[list[dict[str, Any]], PublicationPath, ReviewCase | None]:
         if assessment.policy_version == ConfidencePolicyVersion.V2:
-            return self._effective_routing_projection(
-                assessment, revision, post_keys=post_keys
-            )
+            return self._effective_routing_projection(assessment, revision, post_keys=post_keys)
         if post_keys is not None:
             raise DomainConflictError("Post-scoped publication requires Confidence V2 routing")
         if not assessment.review_required:
@@ -602,6 +593,14 @@ class MasterPublisherService:
     ) -> tuple[list[dict[str, Any]], PublicationPath, ReviewCase | None]:
         routing, _ = ReviewRoutingService(self.session, commit=False).assess(assessment.id)
         if not routing.review_required:
+            posts = revision.advertisement_revision.posts if revision.advertisement_revision else []
+            if any(
+                candidate_post_readiness(revision, post).status == JobCompletenessStatus.PARTIAL
+                for post in posts or [None]
+            ):
+                raise DomainConflictError(
+                    "Public-required fields are missing; Human Review is required"
+                )
             return (
                 [
                     self._effective_field(
@@ -651,9 +650,7 @@ class MasterPublisherService:
         projection = (
             ReviewService(self.session).approved_projection(review_case.id)
             if post_keys is None
-            else ReviewService(self.session).approved_post_projection(
-                review_case.id, post_keys
-            )
+            else ReviewService(self.session).approved_post_projection(review_case.id, post_keys)
         )
         if not projection["master_eligible"]:
             raise DomainConflictError("Routing review has no publishable Advertisement or Post")
