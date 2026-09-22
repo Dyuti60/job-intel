@@ -166,36 +166,6 @@ async def bulk_publish(
         for value in selected:
             case, post = value.split(":", 1)
             selections.append((uuid.UUID(case), post))
-        section = form.get("section", [""])[-1]
-        if section:
-            if section not in {"OPEN_ACTIVE", "CLOSED"}:
-                raise ValueError("Invalid bulk section")
-            views = ReviewCaseViewService(session)
-            eligible_rows = [
-                *views.queue(status=None, priority=None)["cases"],
-                *views.queue(status=ReviewCaseStatus.RESOLVED, priority=None)["cases"],
-            ]
-            eligible = {
-                (row["id"], row["post_key"]): row
-                for row in eligible_rows
-                if row["quick_eligible"] and row["post_key"] is not None
-            }
-            today = assam_today()
-            for selection in selections:
-                row = eligible.get(selection)
-                if row is None:
-                    raise ValueError("Selected Post is not eligible for this section")
-                lifecycle = classify_job(
-                    row["opening_date"], row["closing_date"], today=today,
-                    recently_closed_days=settings.recently_closed_days,
-                )
-                row_section = (
-                    "CLOSED"
-                    if lifecycle in {JobLifecycle.RECENTLY_CLOSED, JobLifecycle.CLOSED}
-                    else "OPEN_ACTIVE"
-                )
-                if row_section != section:
-                    raise ValueError("Selected Post belongs to another lifecycle section")
         result = ReviewPublicationActions(session).bulk(
             selections,
             settings.review_web_reviewer_identifier,
@@ -383,8 +353,6 @@ def review_queue(
         rows = [row for row in rows if row["priority"] == selected_priority.value]
     if selected_completeness is not None:
         rows = [row for row in rows if row["completeness"] == selected_completeness.value]
-    if selected_lifecycle is not None:
-        rows = [row for row in rows if row["lifecycle"] == selected_lifecycle]
     if q.strip():
         term = q.strip().casefold()
         rows = [
@@ -404,6 +372,13 @@ def review_queue(
                 )
             ).casefold()
         ]
+    lifecycle_counts = {
+        item.value: sum(row["lifecycle"] == item for row in rows)
+        for item in JobLifecycle
+    }
+    lifecycle_counts["ALL"] = len(rows)
+    if selected_lifecycle is not None:
+        rows = [row for row in rows if row["lifecycle"] == selected_lifecycle]
     rows.sort(
         key=lambda row: lifecycle_sort_key(
             row["lifecycle"], start=row.get("opening_date"), end=row.get("closing_date"),
@@ -411,24 +386,9 @@ def review_queue(
             stable_id=f"{row['authority_code']}:{row['candidate_key']}:{row['post_key']}",
         )
     )
-    review_rows = [row for row in rows if "id" in row]
-    lifecycle_counts = {
-        item.value: sum(row["lifecycle"] == item for row in review_rows)
-        for item in JobLifecycle
-    }
     pages = max(1, (len(rows) + page_size - 1) // page_size)
     page = min(page, pages)
     visible = rows[(page - 1) * page_size : page * page_size]
-    visible_review = [row for row in visible if "id" in row]
-    open_cases = [
-        row for row in visible_review
-        if row["lifecycle"] in {JobLifecycle.OPEN, JobLifecycle.UPCOMING, JobLifecycle.UNKNOWN}
-    ]
-    closed_cases = [
-        row for row in visible_review
-        if row["lifecycle"] in {JobLifecycle.RECENTLY_CLOSED, JobLifecycle.CLOSED}
-    ]
-    visible_published = [row for row in visible if "public_id" in row]
     metric_urls = {
         item.value: "/review?"
         + urlencode(
@@ -437,16 +397,28 @@ def review_queue(
         )
         for item in ReviewPortalStatus
     }
+    lifecycle_urls = {
+        option: "/review?"
+        + urlencode(
+            {
+                "status": selected.value,
+                "q": q,
+                "priority": priority,
+                "completeness": completeness,
+                "lifecycle": option,
+                "page_size": page_size,
+            }
+        )
+        for option in ["ALL", *(item.value for item in JobLifecycle)]
+    }
     return _template(
         request,
         "review/queue.html",
         {
             "title": "Human Review Queue",
-            "cases": visible_review,
-            "open_cases": open_cases,
-            "closed_cases": closed_cases,
+            "rows": visible,
             "lifecycle_counts": lifecycle_counts,
-            "published_rows": visible_published,
+            "lifecycle_urls": lifecycle_urls,
             "counts": counts,
             "dataset_refreshed_at": dataset_refreshed_at,
             "metric_urls": metric_urls,

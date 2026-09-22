@@ -98,7 +98,7 @@ def test_auto_published_view_and_immutable_republish(client, db_session):
         "30 November 2026" in client.get(f"/jobs/{master_id}", params={"as_of": "2026-10-01"}).text
     )
     assert "Human Published" in client.get("/review?status=HUMAN_PUBLISHED").text
-    assert "No published jobs" in client.get("/review?status=AUTO_PUBLISHED").text
+    assert "No jobs match these filters" in client.get("/review?status=AUTO_PUBLISHED").text
 
 
 def test_human_published_post_edit_preserves_public_identity_and_siblings(client, db_session):

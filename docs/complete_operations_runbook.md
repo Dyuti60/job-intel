@@ -100,8 +100,8 @@ lists, and appointment notices remain excluded; repeated runs reuse stable ident
 `AJI_RECENTLY_CLOSED_DAYS=30` (supported range: 1-180) controls only job lifecycle
 prioritization. `/jobs` and the review portal rank open jobs by soonest closing date, then
 recently closed jobs, upcoming jobs, older closed jobs, and jobs with unknown dates. The review
-portal separates active/unknown work from closed work, with independent bulk selections and
-comments; approving a closed Post does not override public history retention.
+portal keeps one lifecycle-ordered table and one page-scoped bulk action, with lifecycle quick
+navigation and filtering. Approving a closed Post does not override public history retention.
 
 Raw captures are content-addressed under `data/raw` by default. Trusted scheduled execution uses
 the external `D:\ASSAM_JOB_DATA\raw` root so persistent data does not live inside an Actions

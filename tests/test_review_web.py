@@ -47,8 +47,8 @@ def _three_post_review_graph(
     client: TestClient,
     *,
     suffix: str = "",
-    start: str = "2026-09-20",
-    end: str = "2026-10-20",
+    start: str | None = "2026-09-20",
+    end: str | None = "2026-10-20",
 ) -> dict:
     authority, endpoint = create_discovery_source(
         client,
@@ -85,16 +85,16 @@ def _three_post_review_graph(
                 "value_type": "STRING",
                 "value": "SLPRB Grade IV Advertisement",
             },
-            {
+            *([{
                 "field_path": "application.start_date",
                 "value_type": "DATE",
                 "value": start,
-            },
-            {
+            }] if start is not None else []),
+            *([{
                 "field_path": "application.end_date",
                 "value_type": "DATE",
                 "value": end,
-            },
+            }] if end is not None else []),
             {"field_path": "vacancies.total", "value_type": "INTEGER", "value": 256},
             {
                 "field_path": "application.fee",
@@ -489,10 +489,10 @@ def test_review_search_pagination_and_post_navigation(client: TestClient) -> Non
     assert "Page 2 of 3" in second.text
     specific = client.get("/review", params={"q": "Commando"})
     assert specific.text.count('class="case-link"') == 1
-    assert "Select all eligible Open/Active" in specific.text
+    assert "Select all eligible" in specific.text
     assert "data-clear-selection" in specific.text
     assert client.get("/review", params={"page": 0}).status_code == 400
-    assert "No review Posts" in client.get("/review", params={"q": "no-match"}).text
+    assert "No jobs match these filters" in client.get("/review", params={"q": "no-match"}).text
     middle = client.get(f"/review/cases/{case_id}?post=assam_commando_battalions")
     assert "Post 2 of 3" in middle.text
     assert "Previous Post" in middle.text and "Next Post" in middle.text
@@ -1264,7 +1264,7 @@ def test_cancel_and_html_errors_are_user_friendly(client: TestClient) -> None:
     assert "Invalid review queue filter" in invalid_filter.text
 
 
-def test_lifecycle_sections_keep_bulk_selection_and_comments_isolated(
+def test_review_uses_one_lifecycle_ordered_table_and_bulk_workflow(
     client: TestClient, db_session: Session
 ) -> None:
     today = assam_today()
@@ -1274,42 +1274,61 @@ def test_lifecycle_sections_keep_bulk_selection_and_comments_isolated(
         end=(today + timedelta(days=3)).isoformat(),
     )
     closed_graph = _three_post_review_graph(
-        client, suffix="CLOSED_SECTION",
+        client, suffix="RECENT_SECTION",
         start=(today - timedelta(days=50)).isoformat(),
         end=(today - timedelta(days=2)).isoformat(),
+    )
+    closed_graph = _three_post_review_graph(
+        client, suffix="CLOSED_SECTION",
+        start=(today - timedelta(days=80)).isoformat(),
+        end=(today - timedelta(days=50)).isoformat(),
+    )
+    _three_post_review_graph(
+        client, suffix="UPCOMING_SECTION",
+        start=(today + timedelta(days=3)).isoformat(),
+        end=(today + timedelta(days=20)).isoformat(),
+    )
+    _three_post_review_graph(
+        client, suffix="UNKNOWN_SECTION", start=None, end=None,
     )
     open_value = f"{open_graph['case']['id']}:{open_graph['posts'][0][0]}"
     closed_value = f"{closed_graph['case']['id']}:{closed_graph['posts'][0][0]}"
 
     page = client.get("/review").text
-    assert page.count('action="/review/bulk-publish"') == 2
-    open_form = page.split('data-bulk-review="open"', 1)[1].split("</form>", 1)[0]
-    closed_form = page.split('data-bulk-review="closed"', 1)[1].split("</form>", 1)[0]
-    assert open_value in open_form and closed_value not in open_form
-    assert closed_value in closed_form and open_value not in closed_form
-    for form, section in ((open_form, "OPEN_ACTIVE"), (closed_form, "CLOSED")):
-        assert 'name="comment"' in form
-        assert 'data-selected-count>0</output>' in form
-        assert "data-select-page" in form and "data-clear-selection" in form
-        assert f'name="section" value="{section}"' in form
-        assert "Source refreshed:" in form and "Verified:" in form
-
-    invalid = client.post(
-        "/review/bulk-publish",
-        data={"section": "OPEN_ACTIVE", "selected": closed_value, "comment": "Checked source"},
-        follow_redirects=False,
-    )
-    assert invalid.status_code == 400
-    assert "another lifecycle section" in invalid.text
-    assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 0
-    for section, selected in (("OPEN_ACTIVE", open_value), ("CLOSED", closed_value)):
-        response = client.post(
-            "/review/bulk-publish",
-            data={"section": section, "selected": selected, "comment": f"Checked {section}"},
-            follow_redirects=False,
+    assert page.count('action="/review/bulk-publish"') == 1
+    assert page.count('name="comment"') == 1
+    assert page.count('data-selected-count>0</output>') == 1
+    assert page.count("data-select-page") == 1 and page.count("data-clear-selection") == 1
+    assert page.count('<table>') == 1
+    assert "Open / Active Job Review" not in page
+    assert "Closed Job Review / Edit" not in page
+    positions = [
+        page.index(f"REVIEW_THREE_POSTS{suffix}")
+        for suffix in (
+            "OPEN_SECTION", "RECENT_SECTION", "UPCOMING_SECTION",
+            "CLOSED_SECTION", "UNKNOWN_SECTION",
         )
-        assert response.status_code == 200
-        assert "1 published" in response.text
+    ]
+    assert positions == sorted(positions)
+    for lifecycle in ("ALL", "OPEN", "RECENTLY_CLOSED", "UPCOMING", "CLOSED", "UNKNOWN"):
+        assert f"lifecycle={lifecycle}" in page
+    for expected in ("<strong>15</strong><span>All</span>",
+                     "<strong>3</strong><span>Open</span>",
+                     "<strong>3</strong><span>Recently Closed</span>",
+                     "<strong>3</strong><span>Upcoming</span>",
+                     "<strong>3</strong><span>Closed</span>",
+                     "<strong>3</strong><span>Unknown</span>"):
+        assert expected in page
+
+    open_page = client.get("/review", params={"lifecycle": "OPEN"}).text
+    assert open_value in open_page and closed_value not in open_page
+    assert '<option value="OPEN" selected>' in open_page
+    response = client.post(
+        "/review/bulk-publish",
+        data={"selected": [open_value, closed_value], "comment": "Checked unified workflow"},
+    )
+    assert response.status_code == 200
+    assert "2 published" in response.text
     assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 2
 
 
@@ -1322,8 +1341,8 @@ def test_lifecycle_filter_combines_with_queue_filters(client: TestClient) -> Non
     )
     _three_post_review_graph(
         client, suffix="FILTER_CLOSED",
-        start=(today - timedelta(days=50)).isoformat(),
-        end=(today - timedelta(days=2)).isoformat(),
+        start=(today - timedelta(days=80)).isoformat(),
+        end=(today - timedelta(days=50)).isoformat(),
     )
     page = client.get(
         "/review", params={"status": "REVIEW_REQUIRED", "priority": "ALL",
@@ -1333,6 +1352,7 @@ def test_lifecycle_filter_combines_with_queue_filters(client: TestClient) -> Non
     assert '<option value="CLOSED" selected>' in page
     assert 'name="status"' in page and 'name="priority"' in page
     assert 'name="completeness"' in page
-    assert "Closed Job Review / Edit" in page
-    assert "Open / Active Job Review" in page
+    assert page.count("<table>") == 1
+    assert 'aria-current="page"' in page
+    assert "REVIEW_THREE_POSTSFILTER_CLOSED" in page
     assert "FILTER_OPEN" not in page
