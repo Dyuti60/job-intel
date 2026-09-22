@@ -215,6 +215,9 @@ class PublishedMaintenanceService:
                         "closing_date": fields["application.end_date"].value
                         if "application.end_date" in fields
                         else None,
+                        "opening_date": fields["application.start_date"].value
+                        if "application.start_date" in fields
+                        else None,
                         "path": category,
                         "verified_at": revision.verified_at,
                         "source_refreshed_at": (

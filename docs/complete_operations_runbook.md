@@ -97,6 +97,12 @@ conservative inspection. This controls future discovery/backfill selection only:
 persisted older records or independently change public historical retention. Result lists, merit
 lists, and appointment notices remain excluded; repeated runs reuse stable identities.
 
+`AJI_RECENTLY_CLOSED_DAYS=30` (supported range: 1-180) controls only job lifecycle
+prioritization. `/jobs` and the review portal rank open jobs by soonest closing date, then
+recently closed jobs, upcoming jobs, older closed jobs, and jobs with unknown dates. The review
+portal separates active/unknown work from closed work, with independent bulk selections and
+comments; approving a closed Post does not override public history retention.
+
 Raw captures are content-addressed under `data/raw` by default. Trusted scheduled execution uses
 the external `D:\ASSAM_JOB_DATA\raw` root so persistent data does not live inside an Actions
 checkout.

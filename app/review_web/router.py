@@ -26,6 +26,12 @@ from app.review_web.status import ReviewPortalStatus
 from app.schemas.review import ReviewDecisionCreate
 from app.services.candidate_values import normalize_typed_value
 from app.services.exceptions import DomainConflictError, ResourceNotFoundError
+from app.services.job_lifecycle import (
+    JobLifecycle,
+    assam_today,
+    classify_job,
+    lifecycle_sort_key,
+)
 from app.services.master import MasterPublisherService
 from app.services.post_structure_review import PostStructureReviewService
 from app.services.public_readiness import JobCompletenessStatus
@@ -160,6 +166,36 @@ async def bulk_publish(
         for value in selected:
             case, post = value.split(":", 1)
             selections.append((uuid.UUID(case), post))
+        section = form.get("section", [""])[-1]
+        if section:
+            if section not in {"OPEN_ACTIVE", "CLOSED"}:
+                raise ValueError("Invalid bulk section")
+            views = ReviewCaseViewService(session)
+            eligible_rows = [
+                *views.queue(status=None, priority=None)["cases"],
+                *views.queue(status=ReviewCaseStatus.RESOLVED, priority=None)["cases"],
+            ]
+            eligible = {
+                (row["id"], row["post_key"]): row
+                for row in eligible_rows
+                if row["quick_eligible"] and row["post_key"] is not None
+            }
+            today = assam_today()
+            for selection in selections:
+                row = eligible.get(selection)
+                if row is None:
+                    raise ValueError("Selected Post is not eligible for this section")
+                lifecycle = classify_job(
+                    row["opening_date"], row["closing_date"], today=today,
+                    recently_closed_days=settings.recently_closed_days,
+                )
+                row_section = (
+                    "CLOSED"
+                    if lifecycle in {JobLifecycle.RECENTLY_CLOSED, JobLifecycle.CLOSED}
+                    else "OPEN_ACTIVE"
+                )
+                if row_section != section:
+                    raise ValueError("Selected Post belongs to another lifecycle section")
         result = ReviewPublicationActions(session).bulk(
             selections,
             settings.review_web_reviewer_identifier,
@@ -229,9 +265,11 @@ def _typed_form_value(value_type: CandidateValueType, raw_value: str) -> Any:
 def review_queue(
     request: Request,
     session: DatabaseSession,
+    settings: ApplicationSettings,
     status: str = "ALL",
     priority: str = "ALL",
     completeness: str = "ALL",
+    lifecycle: str = "ALL",
     view: str | None = None,
     outcome: str | None = None,
     q: str = "",
@@ -254,6 +292,7 @@ def review_queue(
         selected_completeness = (
             JobCompletenessStatus(completeness) if completeness not in {"ALL", ""} else None
         )
+        selected_lifecycle = JobLifecycle(lifecycle) if lifecycle not in {"ALL", ""} else None
     except ValueError:
         return _error_page(request, "Invalid review queue filter", 400)
     review_views = ReviewCaseViewService(session)
@@ -282,6 +321,12 @@ def review_queue(
     active_rows = unique(active["cases"])
     resolved_rows = unique(resolved["cases"])
     published_rows = unique(all_published)
+    today = assam_today()
+    for row in [*active_rows, *resolved_rows, *published_rows]:
+        row["lifecycle"] = classify_job(
+            row.get("opening_date"), row.get("closing_date"), today=today,
+            recently_closed_days=settings.recently_closed_days,
+        )
     document_ids = {
         row["source_document_id"]
         for row in [*active_rows, *resolved_rows, *published_rows]
@@ -338,6 +383,8 @@ def review_queue(
         rows = [row for row in rows if row["priority"] == selected_priority.value]
     if selected_completeness is not None:
         rows = [row for row in rows if row["completeness"] == selected_completeness.value]
+    if selected_lifecycle is not None:
+        rows = [row for row in rows if row["lifecycle"] == selected_lifecycle]
     if q.strip():
         term = q.strip().casefold()
         rows = [
@@ -357,15 +404,36 @@ def review_queue(
                 )
             ).casefold()
         ]
+    rows.sort(
+        key=lambda row: lifecycle_sort_key(
+            row["lifecycle"], start=row.get("opening_date"), end=row.get("closing_date"),
+            refreshed_at=row.get("source_refreshed_at"),
+            stable_id=f"{row['authority_code']}:{row['candidate_key']}:{row['post_key']}",
+        )
+    )
+    review_rows = [row for row in rows if "id" in row]
+    lifecycle_counts = {
+        item.value: sum(row["lifecycle"] == item for row in review_rows)
+        for item in JobLifecycle
+    }
     pages = max(1, (len(rows) + page_size - 1) // page_size)
     page = min(page, pages)
     visible = rows[(page - 1) * page_size : page * page_size]
     visible_review = [row for row in visible if "id" in row]
+    open_cases = [
+        row for row in visible_review
+        if row["lifecycle"] in {JobLifecycle.OPEN, JobLifecycle.UPCOMING, JobLifecycle.UNKNOWN}
+    ]
+    closed_cases = [
+        row for row in visible_review
+        if row["lifecycle"] in {JobLifecycle.RECENTLY_CLOSED, JobLifecycle.CLOSED}
+    ]
     visible_published = [row for row in visible if "public_id" in row]
     metric_urls = {
         item.value: "/review?"
         + urlencode(
-            {"status": item.value, "q": q, "priority": priority, "completeness": completeness}
+            {"status": item.value, "q": q, "priority": priority,
+             "completeness": completeness, "lifecycle": lifecycle}
         )
         for item in ReviewPortalStatus
     }
@@ -375,6 +443,9 @@ def review_queue(
         {
             "title": "Human Review Queue",
             "cases": visible_review,
+            "open_cases": open_cases,
+            "closed_cases": closed_cases,
+            "lifecycle_counts": lifecycle_counts,
             "published_rows": visible_published,
             "counts": counts,
             "dataset_refreshed_at": dataset_refreshed_at,
@@ -384,6 +455,7 @@ def review_queue(
             "selected_status": selected.value,
             "selected_priority": priority,
             "selected_completeness": completeness,
+            "selected_lifecycle": lifecycle,
             "search_query": q,
             "page": page,
             "pages": pages,
@@ -397,6 +469,7 @@ def review_queue(
             "statuses": [item.value for item in ReviewPortalStatus],
             "priorities": ["ALL", *(item.value for item in ReviewPriority)],
             "completeness_options": ["ALL", *(item.value for item in JobCompletenessStatus)],
+            "lifecycle_options": ["ALL", *(item.value for item in JobLifecycle)],
         },
     )
 

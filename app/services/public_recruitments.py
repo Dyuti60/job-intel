@@ -2,10 +2,11 @@ import math
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import date
 
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.models.candidates import CandidateValueType
 from app.models.master import MasterField, PublicationPath
 from app.repositories.public_recruitments import (
@@ -26,6 +27,12 @@ from app.schemas.public_recruitments import (
     PublicSourceRead,
 )
 from app.services.exceptions import ResourceNotFoundError
+from app.services.job_lifecycle import (
+    JobLifecycle,
+    assam_today,
+    classify_job,
+    lifecycle_sort_key,
+)
 from app.services.public_readiness import JobCompletenessStatus, master_post_readiness
 
 _AUTHORITY_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
@@ -53,6 +60,7 @@ class PublicRecruitmentFilters:
 class _DerivedRecord:
     record: PublicMasterRecord
     application: PublicApplicationWindowRead
+    lifecycle: JobLifecycle
     vacancies_total: int | None
     post_name: str | None
     department: str | None
@@ -60,8 +68,9 @@ class _DerivedRecord:
 
 
 class PublicRecruitmentService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, settings: Settings | None = None) -> None:
         self.session = session
+        self.settings = settings or Settings()
         self.repository = PublicRecruitmentRepository(session)
 
     def _publicly_ready(self, record: PublicMasterRecord) -> bool:
@@ -80,7 +89,7 @@ class PublicRecruitmentService:
         page_size: int,
         as_of: date | None = None,
     ) -> PublicRecruitmentPage:
-        evaluated_on = as_of or datetime.now(UTC).date()
+        evaluated_on = as_of or assam_today()
         self._validate_filters(filters)
         authority_code = self._normalize_identifier(
             filters.authority_code, "authority_code", _AUTHORITY_CODE
@@ -148,7 +157,7 @@ class PublicRecruitmentService:
         record = self.repository.get_current_active(public_id)
         if record is None or not self._publicly_ready(record):
             raise ResourceNotFoundError("Public recruitment not found")
-        derived = self._derive(record, as_of or datetime.now(UTC).date())
+        derived = self._derive(record, as_of or assam_today())
         visible_fields = self._visible_fields(record)
         sources = self.repository.field_sources(visible_fields)
         if len(sources) != len(visible_fields) or any(
@@ -210,7 +219,7 @@ class PublicRecruitmentService:
             (source.document.document_url, source.endpoint.name): self._source(source)
             for source in sources.values()
         }
-        evaluated_on = as_of or datetime.now(UTC).date()
+        evaluated_on = as_of or assam_today()
         return PublicAdvertisementSummary(
             id=first.master.id,
             title=first.revision.display_name,
@@ -249,14 +258,19 @@ class PublicRecruitmentService:
         fields = {self._public_path(record, field): field for field in self._visible_fields(record)}
         start = self._date_value(fields.get("application.start_date"))
         end = self._date_value(fields.get("application.end_date"))
+        lifecycle = classify_job(
+            start, end, today=evaluated_on,
+            recently_closed_days=self.settings.recently_closed_days,
+        )
         return _DerivedRecord(
             record=record,
             application=PublicApplicationWindowRead(
                 start_date=start,
                 end_date=end,
-                status=self._application_status(start, end, evaluated_on),
+                status=self._application_status(lifecycle),
                 evaluated_on=evaluated_on,
             ),
+            lifecycle=lifecycle,
             vacancies_total=self._integer_value(fields.get("vacancies.total")),
             post_name=(
                 record.post.name
@@ -332,18 +346,10 @@ class PublicRecruitmentService:
         return field.value if isinstance(field.value, str) else None
 
     @staticmethod
-    def _application_status(
-        start: date | None, end: date | None, evaluated_on: date
-    ) -> PublicApplicationStatus:
-        if start is not None and end is not None and start > end:
-            return PublicApplicationStatus.UNKNOWN
-        if start is None and end is None:
-            return PublicApplicationStatus.UNKNOWN
-        if start is not None and evaluated_on < start:
-            return PublicApplicationStatus.UPCOMING
-        if end is not None and evaluated_on > end:
+    def _application_status(lifecycle: JobLifecycle) -> PublicApplicationStatus:
+        if lifecycle in {JobLifecycle.RECENTLY_CLOSED, JobLifecycle.CLOSED}:
             return PublicApplicationStatus.CLOSED
-        return PublicApplicationStatus.OPEN
+        return PublicApplicationStatus(lifecycle.value)
 
     @staticmethod
     def _matches(item: _DerivedRecord, filters: PublicRecruitmentFilters) -> bool:
@@ -387,6 +393,14 @@ class PublicRecruitmentService:
     def _sort_key(item: _DerivedRecord, sort: PublicRecruitmentSort) -> tuple:
         master = item.record.master
         stable = str(item.record.post.public_id if item.record.post is not None else master.id)
+        if sort == PublicRecruitmentSort.LIFECYCLE:
+            return lifecycle_sort_key(
+                item.lifecycle,
+                start=item.application.start_date,
+                end=item.application.end_date,
+                refreshed_at=item.record.revision.published_at,
+                stable_id=stable,
+            )
         if sort == PublicRecruitmentSort.PUBLISHED_ASC:
             return (master.last_published_at, stable)
         if sort == PublicRecruitmentSort.APPLICATION_END_ASC:
@@ -430,6 +444,7 @@ class PublicRecruitmentService:
             published_at=item.record.revision.published_at,
             last_verified_at=item.record.master.last_verified_at,
             application=item.application,
+            lifecycle=item.lifecycle,
             vacancies_total=item.vacancies_total,
             post_name=item.post_name,
             organisation=item.department,

@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.candidates import CandidateValueType
 from app.models.discovery import DocumentType
 from app.models.source_registry import SourceClass
+from app.services.job_lifecycle import JobLifecycle
 
 
 class PublicSchema(BaseModel):
@@ -22,6 +23,7 @@ class PublicApplicationStatus(enum.StrEnum):
 
 
 class PublicRecruitmentSort(enum.StrEnum):
+    LIFECYCLE = "lifecycle"
     PUBLISHED_DESC = "published_desc"
     PUBLISHED_ASC = "published_asc"
     APPLICATION_END_ASC = "application_end_asc"
@@ -64,6 +66,7 @@ class PublicRecruitmentSummary(PublicSchema):
     published_at: datetime
     last_verified_at: datetime
     application: PublicApplicationWindowRead
+    lifecycle: JobLifecycle
     vacancies_total: int | None
     post_name: str | None
     organisation: str | None

@@ -147,6 +147,17 @@ class ReviewCaseViewService:
                     if item.confidence_score_snapshot is not None
                 ]
                 readiness = candidate_post_readiness(revision, post)
+                shared_dates = {
+                    field.field_path: field.value
+                    for field in revision.fields
+                    if field.field_path in {"application.start_date", "application.end_date"}
+                }
+                if post is not None:
+                    shared_dates.update(
+                        (fact.fact_key, fact.candidate_field.value)
+                        for fact in post.facts
+                        if fact.fact_key in {"application.start_date", "application.end_date"}
+                    )
                 entries.append(
                     {
                         "authority_code": candidate.recruiting_authority.code,
@@ -158,6 +169,8 @@ class ReviewCaseViewService:
                         "post_key": post_key,
                         "completeness": readiness.status.value,
                         "missing": list(readiness.missing),
+                        "opening_date": shared_dates.get("application.start_date"),
+                        "closing_date": shared_dates.get("application.end_date"),
                         "post_name": self._post_name(post, case.items)
                         if post is not None
                         else candidate.display_name,

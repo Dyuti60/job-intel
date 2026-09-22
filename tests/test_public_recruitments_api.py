@@ -242,6 +242,29 @@ def test_application_status_is_derived_safely_at_date_boundaries(client: TestCli
     assert status_on("2026-11-01") == "CLOSED"
 
 
+def test_default_public_and_web_order_share_lifecycle_priority(client: TestClient) -> None:
+    jobs = {
+        "OPEN_LATE": _published(client, "LIFE_OPEN_LATE", start="2026-09-01", end="2026-09-30"),
+        "RECENT": _published(client, "LIFE_RECENT", start="2026-08-01", end="2026-09-21"),
+        "CLOSED": _published(client, "LIFE_CLOSED", start="2026-07-01", end="2026-08-01"),
+        "UPCOMING": _published(client, "LIFE_UPCOMING", start="2026-10-01", end="2026-10-30"),
+        "OPEN_SOON": _published(client, "LIFE_OPEN_SOON", start="2026-09-01", end="2026-09-22"),
+    }
+
+    listed = client.get(PUBLIC_URL, params={"as_of": "2026-09-22"}).json()["items"]
+    expected = ["OPEN_SOON", "OPEN_LATE", "RECENT", "UPCOMING", "CLOSED"]
+    ids = [jobs[key]["publication"]["master"]["id"] for key in expected]
+    assert [item["id"] for item in listed] == ids
+    assert [item["lifecycle"] for item in listed] == [
+        "OPEN", "OPEN", "RECENTLY_CLOSED", "UPCOMING", "CLOSED",
+    ]
+    web = client.get("/jobs", params={"as_of": "2026-09-22"}).text
+    assert [web.index(f"/jobs/{job_id}") for job_id in ids] == sorted(
+        web.index(f"/jobs/{job_id}") for job_id in ids
+    )
+    assert "Closed Recently" in web and "<dt>Closed</dt>" in web
+
+
 def test_default_public_history_keeps_current_recent_and_unknown_but_hides_old_closed(
     client: TestClient,
 ) -> None:

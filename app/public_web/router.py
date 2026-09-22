@@ -79,7 +79,7 @@ def public_jobs(
     application_end_to: str | None = None,
     minimum_vacancies: str | None = None,
     maximum_vacancies: str | None = None,
-    sort: str = PublicRecruitmentSort.PUBLISHED_DESC.value,
+    sort: str = PublicRecruitmentSort.LIFECYCLE.value,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     as_of: date | None = None,
@@ -101,7 +101,7 @@ def public_jobs(
             else None
         )
         parsed_sort = PublicRecruitmentSort(
-            sort.strip() or PublicRecruitmentSort.PUBLISHED_DESC.value
+            sort.strip() or PublicRecruitmentSort.LIFECYCLE.value
         )
         parsed_application_start_from = _optional_date(
             application_start_from, "Application start date"

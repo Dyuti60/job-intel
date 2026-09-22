@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -11,6 +11,7 @@ from app.models.discovery import DiscoveryRun, DiscoveryRunStatus
 from app.models.master import MasterPost, MasterPublicationEvent
 from app.models.review import ReviewCase, ReviewDecision, ReviewItem
 from app.review_web.router import _format_ist
+from app.services.job_lifecycle import assam_today
 from tests.factories import (
     add_verification_assessment,
     complete_verification_run,
@@ -42,14 +43,26 @@ def _web_graph(client: TestClient, suffix: str) -> dict:
     return graph
 
 
-def _three_post_review_graph(client: TestClient) -> dict:
-    authority, endpoint = create_discovery_source(client)
+def _three_post_review_graph(
+    client: TestClient,
+    *,
+    suffix: str = "",
+    start: str = "2026-09-20",
+    end: str = "2026-10-20",
+) -> dict:
+    authority, endpoint = create_discovery_source(
+        client,
+        authority_overrides={"code": f"APSC_{suffix}"} if suffix else None,
+        endpoint_overrides={
+            "canonical_url": f"https://jobs.example.gov.in/recruitment/{suffix}"
+        } if suffix else None,
+    )
     discovery = create_run(client, endpoint["id"])
     document = observe_document(client, discovery["id"])["document"]
     candidate = create_candidate(
         client,
         authority["id"],
-        candidate_key="REVIEW_THREE_POSTS",
+        candidate_key=f"REVIEW_THREE_POSTS{suffix}",
         display_name="SLPRB Grade IV Advertisement",
     )
     posts = (
@@ -75,12 +88,12 @@ def _three_post_review_graph(client: TestClient) -> dict:
             {
                 "field_path": "application.start_date",
                 "value_type": "DATE",
-                "value": "2026-09-20",
+                "value": start,
             },
             {
                 "field_path": "application.end_date",
                 "value_type": "DATE",
-                "value": "2026-10-20",
+                "value": end,
             },
             {"field_path": "vacancies.total", "value_type": "INTEGER", "value": 256},
             {
@@ -476,10 +489,10 @@ def test_review_search_pagination_and_post_navigation(client: TestClient) -> Non
     assert "Page 2 of 3" in second.text
     specific = client.get("/review", params={"q": "Commando"})
     assert specific.text.count('class="case-link"') == 1
-    assert "Select all eligible on this page" in specific.text
-    assert "clear-selection" in specific.text
+    assert "Select all eligible Open/Active" in specific.text
+    assert "data-clear-selection" in specific.text
     assert client.get("/review", params={"page": 0}).status_code == 400
-    assert "No review cases" in client.get("/review", params={"q": "no-match"}).text
+    assert "No review Posts" in client.get("/review", params={"q": "no-match"}).text
     middle = client.get(f"/review/cases/{case_id}?post=assam_commando_battalions")
     assert "Post 2 of 3" in middle.text
     assert "Previous Post" in middle.text and "Next Post" in middle.text
@@ -1249,3 +1262,77 @@ def test_cancel_and_html_errors_are_user_friendly(client: TestClient) -> None:
     assert missing.status_code == 404 and "Review case not found" in missing.text
     assert invalid_filter.status_code == 400
     assert "Invalid review queue filter" in invalid_filter.text
+
+
+def test_lifecycle_sections_keep_bulk_selection_and_comments_isolated(
+    client: TestClient, db_session: Session
+) -> None:
+    today = assam_today()
+    open_graph = _three_post_review_graph(
+        client, suffix="OPEN_SECTION",
+        start=(today - timedelta(days=1)).isoformat(),
+        end=(today + timedelta(days=3)).isoformat(),
+    )
+    closed_graph = _three_post_review_graph(
+        client, suffix="CLOSED_SECTION",
+        start=(today - timedelta(days=50)).isoformat(),
+        end=(today - timedelta(days=2)).isoformat(),
+    )
+    open_value = f"{open_graph['case']['id']}:{open_graph['posts'][0][0]}"
+    closed_value = f"{closed_graph['case']['id']}:{closed_graph['posts'][0][0]}"
+
+    page = client.get("/review").text
+    assert page.count('action="/review/bulk-publish"') == 2
+    open_form = page.split('data-bulk-review="open"', 1)[1].split("</form>", 1)[0]
+    closed_form = page.split('data-bulk-review="closed"', 1)[1].split("</form>", 1)[0]
+    assert open_value in open_form and closed_value not in open_form
+    assert closed_value in closed_form and open_value not in closed_form
+    for form, section in ((open_form, "OPEN_ACTIVE"), (closed_form, "CLOSED")):
+        assert 'name="comment"' in form
+        assert 'data-selected-count>0</output>' in form
+        assert "data-select-page" in form and "data-clear-selection" in form
+        assert f'name="section" value="{section}"' in form
+        assert "Source refreshed:" in form and "Verified:" in form
+
+    invalid = client.post(
+        "/review/bulk-publish",
+        data={"section": "OPEN_ACTIVE", "selected": closed_value, "comment": "Checked source"},
+        follow_redirects=False,
+    )
+    assert invalid.status_code == 400
+    assert "another lifecycle section" in invalid.text
+    assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 0
+    for section, selected in (("OPEN_ACTIVE", open_value), ("CLOSED", closed_value)):
+        response = client.post(
+            "/review/bulk-publish",
+            data={"section": section, "selected": selected, "comment": f"Checked {section}"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 200
+        assert "1 published" in response.text
+    assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 2
+
+
+def test_lifecycle_filter_combines_with_queue_filters(client: TestClient) -> None:
+    today = assam_today()
+    _three_post_review_graph(
+        client, suffix="FILTER_OPEN",
+        start=(today - timedelta(days=1)).isoformat(),
+        end=(today + timedelta(days=3)).isoformat(),
+    )
+    _three_post_review_graph(
+        client, suffix="FILTER_CLOSED",
+        start=(today - timedelta(days=50)).isoformat(),
+        end=(today - timedelta(days=2)).isoformat(),
+    )
+    page = client.get(
+        "/review", params={"status": "REVIEW_REQUIRED", "priority": "ALL",
+                           "completeness": "ALL", "lifecycle": "CLOSED", "q": "Grade IV"},
+    ).text
+    assert 'name="lifecycle"' in page
+    assert '<option value="CLOSED" selected>' in page
+    assert 'name="status"' in page and 'name="priority"' in page
+    assert 'name="completeness"' in page
+    assert "Closed Job Review / Edit" in page
+    assert "Open / Active Job Review" in page
+    assert "FILTER_OPEN" not in page

@@ -40,7 +40,7 @@ def list_public_recruitments(
     application_end_to: date | None = None,
     minimum_vacancies: Annotated[int | None, Query(ge=0)] = None,
     maximum_vacancies: Annotated[int | None, Query(ge=0)] = None,
-    sort: PublicRecruitmentSort = PublicRecruitmentSort.PUBLISHED_DESC,
+    sort: PublicRecruitmentSort = PublicRecruitmentSort.LIFECYCLE,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 25,
     as_of: date | None = None,

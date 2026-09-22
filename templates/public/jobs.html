@@ -64,13 +64,13 @@
   {% for job in result.items %}
   <article class="job-card">
     <div class="card-topline">
-      <span class="status status-{{ job.application.status.value|lower }}">{{ job.application.status.value|replace('_', ' ')|title }}</span>
+      <span class="status status-{{ job.lifecycle.value|lower }}">{{ 'Closed Recently' if job.lifecycle.value == 'RECENTLY_CLOSED' else 'Date Unknown' if job.lifecycle.value == 'UNKNOWN' else job.lifecycle.value|title }}</span>
     </div>
     <h3><a href="/jobs/{{ job.id }}{% if filters.as_of %}?as_of={{ filters.as_of }}{% endif %}">{{ job.display_name }}</a></h3>
     <p class="authority">{{ job.organisation or job.authority.name }}</p>
     {% if job.post_key %}<a class="parent-link" href="/jobs/advertisements/{{ job.advertisement_id }}">Parent Advertisement ↗</a>{% endif %}
     <dl class="job-facts">
-      <div><dt>Closes</dt><dd>{{ job.application.end_date|public_date }}</dd></div>
+      <div><dt>{{ 'Closed' if job.lifecycle.value in ('RECENTLY_CLOSED', 'CLOSED') else 'Closes' }}</dt><dd>{{ job.application.end_date|public_date }}</dd></div>
       <div><dt>Vacancies</dt><dd>{{ job.vacancies_total if job.vacancies_total is not none else 'Not specified' }}</dd></div>
       {% if job.qualification_summary %}<div><dt>Qualification</dt><dd>{{ job.qualification_summary }}</dd></div>{% endif %}
     </dl>

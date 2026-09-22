@@ -43,6 +43,13 @@
       {% endfor %}
     </select>
   </label>
+  <label>Lifecycle
+    <select name="lifecycle">
+      {% for option in lifecycle_options %}
+      <option value="{{ option }}" {% if selected_lifecycle == option %}selected{% endif %}>{{ option | replace('_', ' ') | title }}</option>
+      {% endfor %}
+    </select>
+  </label>
   <button type="submit">Apply filters</button>
 </form>
 
@@ -52,7 +59,7 @@
   <table>
     <thead><tr><th scope="col">Published Post</th><th scope="col">Authority</th><th scope="col">Vacancies / closes</th><th scope="col">Completeness</th><th scope="col">Freshness (IST)</th><th scope="col">Action</th></tr></thead>
     <tbody>{% for job in published_rows %}<tr>
-      <td><strong>{{ job.name }}</strong><small>{{ job.organisation }}</small><small>{{ job.path | replace('_', ' ') }}</small></td>
+      <td><strong>{{ job.name }}</strong><small>{{ job.organisation }}</small><small>{{ job.path | replace('_', ' ') }}</small><small>Lifecycle: {{ job.lifecycle.value | replace('_', ' ') | title }}</small><small>Opens: {{ job.opening_date or 'Unknown' }} · Closes: {{ job.closing_date or 'Unknown' }}</small></td>
       <td>{{ job.authority }}</td>
       <td>{{ job.vacancies if job.vacancies is not none else 'Not specified' }}<small>Closes: {{ job.closing_date or 'Not specified' }}</small></td>
       <td><strong>{{ job.completeness }}</strong>{% if job.missing %}<small>Missing: {{ job.missing | join(', ') }}</small>{% endif %}</td>
@@ -63,46 +70,43 @@
   {% else %}<p class="empty">No published jobs match these filters.</p>{% endif %}
 </section>
 {% endif %}
-{% if cases or selected_view not in ('AUTO_PUBLISHED', 'HUMAN_PUBLISHED') %}
-<form method="post" action="/review/bulk-publish" id="bulk-review">
-<section class="card bulk-toolbar">
-  <div class="toolbar"><button type="button" id="select-page" class="secondary">Select all eligible on this page</button><button type="button" id="clear-selection" class="secondary">Clear selection</button></div>
-  <p>Selected Posts: <output id="selected-post-count">0</output></p>
-  <div id="bulk-actions">
-  <p class="muted">Select explicit Posts below. Remaining values are accepted as extracted; existing corrections are preserved.</p>
-  <label>Reviewer comment<textarea name="comment" required maxlength="8000" rows="2"></textarea></label>
-  <button>Approve As-Is &amp; Publish Selected</button>
-  <small>Maximum 50 Posts per submission.</small>
-  </div>
+{% macro review_section(section_id, heading, section_cases) %}
+<section aria-labelledby="{{ section_id }}-heading" class="review-section">
+  <h2 id="{{ section_id }}-heading">{{ heading }}</h2>
+  {% if section_id == 'open' %}<p class="muted">Open: {{ lifecycle_counts.OPEN }} · Upcoming: {{ lifecycle_counts.UPCOMING }} · Date Unknown: {{ lifecycle_counts.UNKNOWN }}</p>
+  {% else %}<p class="muted">Recently Closed: {{ lifecycle_counts.RECENTLY_CLOSED }} · Older Closed: {{ lifecycle_counts.CLOSED }}</p>{% endif %}
+  <form method="post" action="/review/bulk-publish" data-bulk-review="{{ section_id }}">
+    <input type="hidden" name="section" value="{{ 'OPEN_ACTIVE' if section_id == 'open' else 'CLOSED' }}">
+    <div class="card bulk-toolbar">
+      <div class="toolbar"><button type="button" data-select-page class="secondary">Select all eligible {{ 'Open/Active' if section_id == 'open' else 'Closed' }}</button><button type="button" data-clear-selection class="secondary">Clear selection</button></div>
+      <p>Selected: <output data-selected-count>0</output></p>
+      <div data-bulk-actions>
+        <p class="muted">Accept remaining values as extracted. Correct a value in detailed review first.</p>
+        <label>Reviewer / publication comment<textarea name="comment" required maxlength="8000" rows="2"></textarea></label>
+        <button>Approve &amp; Publish Selected</button><small>Maximum 50 Posts per submission.</small>
+      </div>
+    </div>
+    <div class="card table-wrap">
+      {% if section_cases %}<table>
+        <thead><tr><th scope="col">Select</th><th scope="col">Post / organisation</th><th scope="col">Vacancies</th><th scope="col">Lifecycle / dates</th><th scope="col">Status / progress</th><th scope="col">Confidence / reason</th><th scope="col">Freshness (IST)</th><th scope="col">Action</th></tr></thead>
+        <tbody>{% for case in section_cases %}<tr>
+          <td>{% if case.quick_eligible and not case.published %}<input type="checkbox" name="selected" value="{{ case.id }}:{{ case.post_key }}" aria-label="Select {{ case.post_name }}">{% else %}<span class="muted">{{ 'Published' if case.published else 'Not selectable' }}</span>{% endif %}</td>
+          <td><a class="case-link" href="/review/cases/{{ case.id }}{% if case.post_key %}?post={{ case.post_key|urlencode }}{% endif %}">{{ case.post_name }}</a><small>{{ case.organization }}</small><small><a href="/review/cases/{{ case.id }}{% if case.post_key %}?post={{ case.post_key|urlencode }}{% endif %}">Advertisement details</a></small><details class="technical"><summary>Technical details</summary>{{ case.advertisement_title }}<br>{{ case.authority_name }}<br>{{ case.candidate_key }}<br>Case {{ case.short_id }}</details></td>
+          <td>{% for field in case.important_fields if 'Vacancies' in field.label %}<small><strong>{{ field.label }}:</strong> {{ field.value }}</small>{% else %}Not specified{% endfor %}</td>
+          <td><strong class="badge">{{ case.lifecycle.value | replace('_', ' ') | title }}</strong><small>Opens: {{ case.opening_date or 'Unknown' }}</small><small>Closes: {{ case.closing_date or 'Unknown' }}</small></td>
+          <td><strong>{{ (case.outcome or case.status) | replace('_', ' ') }}</strong><small>{{ case.pending_items }} pending / {{ case.total_items }} total</small><small>{{ case.completeness }}{% if case.missing %} · Missing: {{ case.missing | join(', ') }}{% endif %}</small><span class="badge priority-{{ case.priority|lower }}">{{ case.priority }}</span></td>
+          <td>{{ case.score if case.score is not none else 'N/A' }} / 100 <small>{% for reason in case.review_reasons %}{{ reason }}{% if not loop.last %}<br>{% endif %}{% endfor %}</small></td>
+          <td><small>Source refreshed: {{ case.source_refreshed_at | ist }}</small><small>Verified: {{ case.verified_at | ist }}</small><small>Review opened: {{ case.opened_at | ist }}</small></td>
+          <td><a href="/review/cases/{{ case.id }}{% if case.post_key %}?post={{ case.post_key|urlencode }}{% endif %}">Review →</a></td>
+        </tr>{% endfor %}</tbody>
+      </table>{% else %}<p class="empty">No review Posts match this section and filter.</p>{% endif %}
+    </div>
+  </form>
 </section>
-<section class="card table-wrap">
-  {% if cases %}
-  <table>
-    <thead><tr><th scope="col">Select</th><th scope="col">Post / organisation</th><th scope="col">Vacancies</th><th scope="col">Status / progress</th><th scope="col">Confidence / reason</th><th scope="col">Freshness (IST)</th><th scope="col">Action</th></tr></thead>
-    <tbody>
-    {% for case in cases %}
-      <tr>
-        <td>{% if case.quick_eligible and not case.published %}<input type="checkbox" name="selected" value="{{ case.id }}:{{ case.post_key }}" aria-label="Select {{ case.post_name }}">{% else %}<span class="muted">{{ 'Published' if case.published else 'Not selectable' }}</span>{% endif %}</td>
-        <td>
-          <a class="case-link" href="/review/cases/{{ case.id }}{% if case.post_key %}?post={{ case.post_key|urlencode }}{% endif %}">{{ case.post_name }}</a>
-          <small>{{ case.organization }}</small>
-          <small><a href="/review/cases/{{ case.id }}{% if case.post_key %}?post={{ case.post_key|urlencode }}{% endif %}">Advertisement details</a></small>
-          <details class="technical"><summary>Technical details</summary>{{ case.advertisement_title }}<br>{{ case.authority_name }}<br>{{ case.candidate_key }}<br>Case {{ case.short_id }}</details>
-        </td>
-        <td>{% for field in case.important_fields if 'Vacancies' in field.label %}<small><strong>{{ field.label }}:</strong> {{ field.value }}</small>{% else %}Not specified{% endfor %}</td>
-        <td><strong>{{ (case.outcome or case.status) | replace('_', ' ') }}</strong><small>{{ case.pending_items }} pending / {{ case.total_items }} total</small><small>{{ case.completeness }}{% if case.missing %} · Missing: {{ case.missing | join(', ') }}{% endif %}</small><span class="badge priority-{{ case.priority|lower }}">{{ case.priority }}</span></td>
-        <td>{{ case.score if case.score is not none else 'N/A' }} / 100 <small>{% for reason in case.review_reasons %}{{ reason }}{% if not loop.last %}<br>{% endif %}{% endfor %}</small></td>
-        <td><small>Source refreshed: {{ case.source_refreshed_at | ist }}</small><small>Verified: {{ case.verified_at | ist }}</small><small>Review opened: {{ case.opened_at | ist }}</small></td>
-        <td><a href="/review/cases/{{ case.id }}{% if case.post_key %}?post={{ case.post_key|urlencode }}{% endif %}">Review →</a></td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="empty">No review cases match these filters.</p>
-  {% endif %}
-</section>
-</form>
+{% endmacro %}
+{% if selected_view not in ('AUTO_PUBLISHED', 'HUMAN_PUBLISHED') %}
+{{ review_section('open', 'Open / Active Job Review', open_cases) }}
+{{ review_section('closed', 'Closed Job Review / Edit', closed_cases) }}
 {% endif %}
 <nav class="pagination" aria-label="Review pages">{% if previous_url %}<a href="{{ previous_url }}" rel="prev">← Previous</a>{% endif %}<span>Page {{ page }} of {{ pages }}</span>{% if next_url %}<a href="{{ next_url }}" rel="next">Next →</a>{% endif %}</nav>
 <script src="/static/review-bulk.js" defer></script>

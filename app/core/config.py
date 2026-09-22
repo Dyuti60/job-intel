@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     discovery_read_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
     discovery_http_retries: int = Field(default=2, ge=0, le=5)
     history_lookback_months: int = Field(default=12, ge=1, le=60)
+    recently_closed_days: int = Field(default=30, ge=1, le=180)
     discovery_max_response_bytes: int = Field(default=10_000_000, ge=1024)
     monitor_running_stale_minutes: int = Field(default=60, ge=1, le=10_080)
     monitor_success_stale_hours: int = Field(default=26, ge=1, le=8_760)
