@@ -28,6 +28,7 @@ from sources.http import BoundedHttpClient
 class CmsDetailSource(OfficialArchiveSource):
     allowed_hosts: tuple[str, ...] = ()
     detail_path_prefixes: tuple[str, ...] = ()
+    max_listing_rows_per_run: int = 100
     max_detail_pages_per_run: int = 10
     allow_undated_detail_links: bool = False
 
@@ -55,7 +56,7 @@ CMS_DETAIL_SOURCE_CANDIDATES = {
         authority_code="NHM_ASSAM",
         authority_name="National Health Mission, Assam",
         authority_type=AuthorityType.AUTONOMOUS_BODY,
-        listing_url="https://nhm.assam.gov.in/search?Apply=Apply&title=Advertisement",
+        listing_url="https://nhm.assam.gov.in/documents",
         adapter_key="cms_detail_nhm",
         organization_name="National Health Mission, Assam",
         schedule_group=SourceScheduleGroup.HIGH_PRIORITY,
@@ -64,7 +65,46 @@ CMS_DETAIL_SOURCE_CANDIDATES = {
         requests_per_minute=4,
         max_notices_per_run=10,
         allowed_hosts=("nhm.assam.gov.in",),
-        detail_path_prefixes=("/latest/",),
+        detail_path_prefixes=("/latest/", "/documents-detail/", "/node/", "/resource/detail/"),
+        max_detail_pages_per_run=10,
+        allow_undated_detail_links=True,
+    ),
+    "ASRLM_ASSAM": CmsDetailSource(
+        source_code="ASRLM_ASSAM",
+        authority_code="ASRLM_ASSAM",
+        authority_name="Assam State Rural Livelihoods Mission",
+        authority_type=AuthorityType.AUTONOMOUS_BODY,
+        listing_url="https://asrlms.assam.gov.in/portlets/recruitment-career",
+        adapter_key="cms_detail_asrlm",
+        organization_name="Assam State Rural Livelihoods Mission",
+        priority=62,
+        requests_per_minute=4,
+        max_notices_per_run=10,
+        allowed_hosts=("asrlms.assam.gov.in",),
+        detail_path_prefixes=("/latest/", "/resource/", "/node/", "/documents-detail/"),
+        max_detail_pages_per_run=10,
+        allow_undated_detail_links=True,
+    ),
+    "SAMAGRA_ASSAM": CmsDetailSource(
+        source_code="SAMAGRA_ASSAM",
+        authority_code="SAMAGRA_ASSAM",
+        authority_name="Samagra Shiksha, Assam",
+        authority_type=AuthorityType.AUTONOMOUS_BODY,
+        listing_url="https://ssa.assam.gov.in/information-services/detail/recruitment-portal-0",
+        adapter_key="cms_detail_samagra",
+        organization_name="Samagra Shiksha, Assam",
+        schedule_group=SourceScheduleGroup.HIGH_PRIORITY,
+        poll_interval_minutes=720,
+        priority=48,
+        requests_per_minute=4,
+        max_notices_per_run=10,
+        allowed_hosts=("ssa.assam.gov.in",),
+        detail_path_prefixes=(
+            "/latest/",
+            "/resource/",
+            "/node/",
+            "/information-services/detail/",
+        ),
         max_detail_pages_per_run=10,
         allow_undated_detail_links=True,
     ),
@@ -86,17 +126,27 @@ class DetailLink:
 class _Anchor:
     href: str
     text: str
+    context: str
 
 
 class _AnchorParser(HTMLParser):
+    _CONTAINERS = {"tr", "li", "article"}
+
     def __init__(self) -> None:
         super().__init__()
         self.anchors: list[_Anchor] = []
         self._href: str | None = None
         self._parts: list[str] = []
+        self._container_tag: str | None = None
+        self._container_parts: list[str] = []
+        self._container_anchors: list[tuple[str, str]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attributes = dict(attrs)
+        if tag in self._CONTAINERS and self._container_tag is None:
+            self._container_tag = tag
+            self._container_parts = []
+            self._container_anchors = []
         if tag == "a":
             self._href = attributes.get("href")
             self._parts = []
@@ -104,16 +154,28 @@ class _AnchorParser(HTMLParser):
             self._parts.append(attributes["alt"] or "")
 
     def handle_data(self, data: str) -> None:
+        if self._container_tag is not None:
+            self._container_parts.append(data)
         if self._href is not None:
             self._parts.append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag != "a" or self._href is None:
-            return
-        text = " ".join(" ".join(self._parts).split())
-        self.anchors.append(_Anchor(self._href, text))
-        self._href = None
-        self._parts = []
+        if tag == "a" and self._href is not None:
+            text = _clean(" ".join(self._parts))
+            if self._container_tag is None:
+                self.anchors.append(_Anchor(self._href, text, text))
+            else:
+                self._container_anchors.append((self._href, text))
+            self._href = None
+            self._parts = []
+        if tag == self._container_tag:
+            context = _clean(" ".join(self._container_parts))
+            self.anchors.extend(
+                _Anchor(href, text, context) for href, text in self._container_anchors
+            )
+            self._container_tag = None
+            self._container_parts = []
+            self._container_anchors = []
 
 
 class CmsDetailRecruitmentAdapter:
@@ -141,13 +203,24 @@ class CmsDetailRecruitmentAdapter:
         )
         warnings: list[str] = []
         notices: list[ArchiveNotice] = []
+        if len(details) > self.source.max_listing_rows_per_run:
+            warnings.append(
+                f"Listing returned {len(details)} recruitment rows; processed bounded first "
+                f"{self.source.max_listing_rows_per_run}"
+            )
+        details = details[: self.source.max_listing_rows_per_run]
         if len(details) > self.source.max_detail_pages_per_run:
             warnings.append(
                 f"Listing returned {len(details)} recruitment details; processed bounded first "
                 f"{self.source.max_detail_pages_per_run}"
             )
+        seen_details: set[str] = set()
+        seen_documents: set[str] = set()
         for detail in details[: self.source.max_detail_pages_per_run]:
             if len(notices) >= self.source.max_notices_per_run:
+                warnings.append(
+                    f"Reached bounded document limit {self.source.max_notices_per_run}"
+                )
                 break
             try:
                 detail_page = self.http.fetch(detail.url, accepted_types=("text/html",))
@@ -158,6 +231,9 @@ class CmsDetailRecruitmentAdapter:
                 ):
                     warnings.append(f"Detail redirect left approved source scope: {detail.url}")
                     continue
+                if detail_page.url in seen_details:
+                    continue
+                seen_details.add(detail_page.url)
                 resolved_detail = replace(detail, url=detail_page.url)
                 document_url = select_recruitment_document(
                     detail_page.content, resolved_detail, self.source
@@ -165,6 +241,9 @@ class CmsDetailRecruitmentAdapter:
                 if document_url is None:
                     warnings.append(f"No recruitment document found on detail page: {detail.url}")
                     continue
+                if document_url in seen_documents:
+                    continue
+                seen_documents.add(document_url)
                 resource = self.http.fetch(document_url, accepted_types=("application/pdf",))
                 if not _is_allowed_url(resource.url, self.source):
                     warnings.append(f"Document redirect left approved source scope: {document_url}")
@@ -221,16 +300,33 @@ def parse_cms_detail_listing(
     parser.feed(content.decode("utf-8", errors="replace"))
     selected: dict[str, DetailLink] = {}
     for anchor in parser.anchors:
-        title = " ".join(anchor.text.split())
-        if not is_recruitment_advertisement(title):
+        title = _clean(anchor.text)
+        context = _clean(anchor.context or title)
+        classification_text = context if is_recruitment_advertisement(context) else title
+        if not is_recruitment_advertisement(classification_text):
+            continue
+        if is_recruitment_lifecycle_notice(context):
             continue
         url = urljoin(source.listing_url, anchor.href)
         if not _is_allowed_url(url, source, path_prefixes=source.detail_path_prefixes):
             continue
-        notification_date = notice_date_from_title(title)
-        if notice_before_cutoff(notification_date, title, cutoff_date):
+        notification_date = notice_date_from_title(context)
+        if notice_before_cutoff(notification_date, context, cutoff_date):
             continue
-        selected[url] = DetailLink(_without_trailing_date(title), url, notification_date)
+        display_title = classification_text
+        if title.casefold() not in {
+            "details",
+            "download",
+            "view",
+            "read more",
+            "click here",
+        }:
+            display_title = title
+        selected[url] = DetailLink(
+            _without_trailing_date(display_title),
+            url,
+            notification_date,
+        )
     return sorted(
         selected.values(),
         key=lambda item: (item.notification_date or date.min, item.url),
@@ -250,7 +346,7 @@ def select_recruitment_document(
         url = urljoin(detail.url, anchor.href)
         if not _is_allowed_url(url, source) or ".pdf" not in urlsplit(url).path.casefold():
             continue
-        label = " ".join(anchor.text.split())
+        label = _clean(f"{anchor.text} {anchor.context}")
         if is_recruitment_lifecycle_notice(label):
             continue
         lowered = label.casefold()
@@ -307,3 +403,7 @@ def _without_trailing_date(title: str) -> str:
         title,
         flags=re.IGNORECASE,
     ).strip()
+
+
+def _clean(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
