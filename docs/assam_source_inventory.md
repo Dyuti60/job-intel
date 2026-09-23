@@ -49,9 +49,9 @@ Scheduler values are recommendations for inactive sources. Lower numeric priorit
 | `DSE_ASSAM` | Directorate of Secondary Education | Directorate | `https://dse.assam.gov.in/` | HIGH | dispersed CMS notices / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | HIGH_PRIORITY / 46 | No stable recruitment-only listing was confirmed. |
 | `GHC_ASSAM` | Gauhati High Court recruitment relevant to Assam | Court | `https://ghconline.gov.in/index.php/recruitment-notices/` | HIGH | dated HTML listing + documents / SPECIAL_CASE | REQUIRES_CUSTOM_ADAPTER | HIGH_PRIORITY / 52 | Must restrict ingestion to Assam/Principal Seat recruitments. |
 | `MHRB_ASSAM` | Medical and Health Recruitment Board, Assam | Board | `https://nhm.assam.gov.in/documents` | HIGH | documents hosted with NHM / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | HIGH_PRIORITY / 54 | Needs authoritative MHRB-vs-NHM ownership classification. |
-| `APDCL_ASSAM` | Assam Power Distribution Company Limited | PSU | `https://www.apdcl.org/` | NORMAL | careers portal / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 66 | Stable recruitment listing endpoint must be validated. |
-| `APGCL_ASSAM` | Assam Power Generation Corporation Limited | PSU | `https://www.apgcl.org/public/en/career/recruitments` | NORMAL | structured recruitment table / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 67 | Share a power-sector family; filter verification and appointment notices. |
-| `AEGCL_ASSAM` | Assam Electricity Grid Corporation Limited | PSU | `https://www.aegcl.co.in/career-recruitment/` | NORMAL | recruitment table + documents / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 68 | Share a power-sector family; lifecycle material is mixed in. |
+| `APDCL_ASSAM` | Assam Power Distribution Company Limited | PSU | `https://www.apdcl.org/` | NORMAL | careers portal / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 66 | Reachable homepage emitted no qualifying recruitment listing item; stable career endpoint remains unresolved. |
+| `APGCL_ASSAM` | Assam Power Generation Corporation Limited | PSU | `https://www.apgcl.org/public/en/career/recruitments` | NORMAL | structured recruitment table / CUSTOM_HTML_LISTING | ENABLED_VALIDATED | NORMAL / 67 | Bounded live validation resolved one official document; safely routed LEGACY_UNSPLIT. |
+| `AEGCL_ASSAM` | Assam Electricity Grid Corporation Limited | PSU | `https://www.aegcl.co.in/career-recruitment/` | NORMAL | recruitment table + documents / CUSTOM_HTML_LISTING | ENABLED_VALIDATED | NORMAL / 68 | Bounded live validation resolved one official document; safely routed LEGACY_UNSPLIT. |
 | `AMTRON_ASSAM` | Assam Electronics Development Corporation | PSU | `https://recruitment.amtron.in/` | NORMAL | application/recruitment portal / CUSTOM_PORTAL_API | REQUIRES_CUSTOM_ADAPTER | NORMAL / 69 | Portal behavior and stable document identity need bounded validation. |
 | `GAUHATI_UNIVERSITY` | Gauhati University | State university | `https://gauhati.ac.in/` | NORMAL | notices + application portal / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 74 | Current recruitment listing and older notification surfaces are split. |
 | `DIBRUGARH_UNIVERSITY` | Dibrugarh University | State university | `https://www.dibru.ac.in/categories/archive/recruitment-notices/2025/July` | NORMAL | dated archive pages / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 75 | URL is month-scoped; discover the stable archive index without crawling all months. |
@@ -69,11 +69,11 @@ Scheduler values are recommendations for inactive sources. Lower numeric priorit
 ## Counts
 
 - Official sources inventoried: **35**.
-- `ENABLED_VALIDATED`: **8**.
+- `ENABLED_VALIDATED`: **10**.
 - `READY_FOR_ACTIVATION`: **0**; no inactive source has both deterministic tests and bounded live
   validation yet.
 - `REQUIRES_EXISTING_ADAPTER_EXTENSION`: **8**.
-- `REQUIRES_CUSTOM_ADAPTER`: **13**.
+- `REQUIRES_CUSTOM_ADAPTER`: **11**.
 - `DISCOVERED_NOT_YET_VALIDATED`: **4**.
 - `EXCLUDED`: **2**.
 
@@ -107,8 +107,11 @@ and Samagra exposed no qualifying detail links in their single bounded live vali
 
 `APDCL_ASSAM`, `APGCL_ASSAM`, and `AEGCL_ASSAM`.
 
-Build one **CUSTOM_HTML_LISTING** family for the three official PSU career surfaces, with shared
-lifecycle filtering and per-authority selectors.
+Completed 24 September 2026. One bounded **CUSTOM_HTML_LISTING** family now reuses the shared dated
+document resolver with power-authority URL, host-alias, path, and schedule configuration. APGCL and
+AEGCL passed bounded live validation and are enabled; both safely routed LEGACY_UNSPLIT without
+fabricated Posts. APDCL remains disabled because its reachable homepage exposed no qualifying
+recruitment listing item.
 
 ### Batch 4 — state-institution listings
 

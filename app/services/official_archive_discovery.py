@@ -32,6 +32,10 @@ from sources.adapters.cms_detail_recruitment import (
     CmsDetailRecruitmentAdapter,
     CmsDetailSource,
 )
+from sources.adapters.custom_html_recruitment import (
+    CustomHtmlListingAdapter,
+    CustomHtmlListingSource,
+)
 from sources.adapters.dated_document_resolver import (
     DatedDocumentResolverAdapter,
     DatedDocumentSource,
@@ -52,7 +56,12 @@ class OfficialArchiveDiscoveryWorkerService:
         session: Session,
         settings: Settings,
         logger: logging.Logger,
-        source: OfficialArchiveSource | CmsDetailSource | DatedDocumentSource,
+        source: (
+            OfficialArchiveSource
+            | CmsDetailSource
+            | DatedDocumentSource
+            | CustomHtmlListingSource
+        ),
     ) -> None:
         self.session = session
         self.settings = settings
@@ -67,6 +76,7 @@ class OfficialArchiveDiscoveryWorkerService:
             OfficialRecruitmentArchiveAdapter
             | CmsDetailRecruitmentAdapter
             | DatedDocumentResolverAdapter
+            | CustomHtmlListingAdapter
             | None
         ) = None,
     ) -> DiscoverySummary:
@@ -87,7 +97,9 @@ class OfficialArchiveDiscoveryWorkerService:
                     max_response_bytes=self.settings.discovery_max_response_bytes,
                     requests_per_minute=self.source.requests_per_minute,
                 )
-                if isinstance(self.source, DatedDocumentSource):
+                if isinstance(self.source, CustomHtmlListingSource):
+                    adapter_class = CustomHtmlListingAdapter
+                elif isinstance(self.source, DatedDocumentSource):
                     adapter_class = DatedDocumentResolverAdapter
                 elif isinstance(self.source, CmsDetailSource):
                     adapter_class = CmsDetailRecruitmentAdapter

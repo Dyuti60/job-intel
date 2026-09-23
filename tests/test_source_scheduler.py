@@ -31,6 +31,8 @@ def test_catalog_covers_pipeline_sources_with_bounded_schedules() -> None:
     catalog = source_schedule_catalog()
 
     assert tuple(sorted(catalog)) == (
+        "AEGCL_ASSAM",
+        "APGCL_ASSAM",
         "APSC",
         "ASDMA_ASSAM",
         "DEE_ASSAM",
@@ -57,6 +59,8 @@ def test_selection_is_priority_then_code_and_supports_groups(db_session) -> None
         "DTE_ASSAM",
         "ASDMA_ASSAM",
         "FREMAA_ASSAM",
+        "APGCL_ASSAM",
+        "AEGCL_ASSAM",
     )
     assert service.select_sources(
         SchedulerSelection.GROUP,
@@ -188,6 +192,8 @@ def test_fast_dry_run_previews_all_selection_modes_without_pipeline_side_effects
         "DTE_ASSAM",
         "ASDMA_ASSAM",
         "FREMAA_ASSAM",
+        "APGCL_ASSAM",
+        "AEGCL_ASSAM",
     )
     assert source.results == []
     assert source.previews[0].due is False
