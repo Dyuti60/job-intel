@@ -1,22 +1,19 @@
-# V1 operational activation checklist
+# Next task: Assam source expansion — mixed CMS document resolver
 
-V1 implementation includes shared deterministic Advertisement-to-Post structuring, canonical Post
-naming, explicit safe single-Post creation, and an audited Human Review builder for ambiguous or
-legacy-unsplit advertisements. Human-confirmed structures create immutable successor revisions and
-use the normal Verification, Review, MasterPost, and public paths.
+Implement only the first registry batch:
 
-The remaining work is an operator-owned production activation,
-not another application milestone.
+- `FREMAA_ASSAM`
+- `ASDM_ASSAM`
+- `PNRD_ASSAM`
+- `DTE_ASSAM`
 
-- create and protect the GitHub `public-production` environment
-- configure `AJI_PUBLIC_DATABASE_URL`, `AJI_BACKUP_DATABASE_URL`, `PUBLIC_HOSTNAME`, and
-  `PUBLIC_BASE_URL` without storing credentials in the repository
-- provision DNS/TLS ingress and restrict the private review/operations runtime to authorized staff
-- run and retain a successful Restore Rehearsal against a disposable target
-- run Public Release with `deploy=false`, review its scan and attestation, then make an explicit
-  deployment decision
-- validate public availability, private-route absence, backup manifest retention, and rollback
-  evidence after activation
+Create one reusable bounded `DATED_DOCUMENT_RESOLVER` by extending existing official-archive
+primitives. It must classify listing rows before document fetch, apply
+`AJI_HISTORY_LOOKBACK_MONTHS` to reliable dates, retain otherwise valid undated recruitments
+conservatively, and exclude results, merit/selection lists, admit cards, interviews, verification,
+appointments, cancellations, postponements, corrigenda/addenda alone, and extensions alone.
 
-Source expansion and semantic interpretation improvements belong to V2 and must preserve the
-deterministic onboarding and Human Review boundaries in `AGENTS.md`.
+For each source, add small HTML fixtures proving recruitment discovery, lifecycle exclusion,
+document URL resolution, deterministic Candidate identity, idempotent rediscovery, and handoff to
+shared Advertisement-to-Post structuring. Activate a source only after one bounded non-persistent
+official live validation succeeds. Do not implement the later registry batches in this task.
