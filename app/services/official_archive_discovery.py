@@ -32,6 +32,10 @@ from sources.adapters.cms_detail_recruitment import (
     CmsDetailRecruitmentAdapter,
     CmsDetailSource,
 )
+from sources.adapters.dated_document_resolver import (
+    DatedDocumentResolverAdapter,
+    DatedDocumentSource,
+)
 from sources.adapters.official_recruitment_archive import (
     ArchiveAdapterResult,
     OfficialArchiveSource,
@@ -48,7 +52,7 @@ class OfficialArchiveDiscoveryWorkerService:
         session: Session,
         settings: Settings,
         logger: logging.Logger,
-        source: OfficialArchiveSource | CmsDetailSource,
+        source: OfficialArchiveSource | CmsDetailSource | DatedDocumentSource,
     ) -> None:
         self.session = session
         self.settings = settings
@@ -59,7 +63,12 @@ class OfficialArchiveDiscoveryWorkerService:
         self,
         *,
         dry_run: bool = False,
-        adapter: OfficialRecruitmentArchiveAdapter | CmsDetailRecruitmentAdapter | None = None,
+        adapter: (
+            OfficialRecruitmentArchiveAdapter
+            | CmsDetailRecruitmentAdapter
+            | DatedDocumentResolverAdapter
+            | None
+        ) = None,
     ) -> DiscoverySummary:
         registry = SourceRegistryService(self.session, commit=False)
         authority, endpoint = self._ensure_registry(registry)
@@ -78,11 +87,12 @@ class OfficialArchiveDiscoveryWorkerService:
                     max_response_bytes=self.settings.discovery_max_response_bytes,
                     requests_per_minute=self.source.requests_per_minute,
                 )
-                adapter_class = (
-                    CmsDetailRecruitmentAdapter
-                    if isinstance(self.source, CmsDetailSource)
-                    else OfficialRecruitmentArchiveAdapter
-                )
+                if isinstance(self.source, DatedDocumentSource):
+                    adapter_class = DatedDocumentResolverAdapter
+                elif isinstance(self.source, CmsDetailSource):
+                    adapter_class = CmsDetailRecruitmentAdapter
+                else:
+                    adapter_class = OfficialRecruitmentArchiveAdapter
                 adapter = adapter_class(
                     http,
                     self.source,

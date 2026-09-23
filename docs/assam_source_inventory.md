@@ -36,15 +36,15 @@ Scheduler values are recommendations for inactive sources. Lower numeric priorit
 | `DHS_ASSAM` | Directorate of Health Services | Directorate | `https://dhs.assam.gov.in/documents-detail/recruitment` | HIGH | document table + PDFs / OFFICIAL_ARCHIVE | ENABLED_VALIDATED | HIGH_PRIORITY / 35 | Existing official-archive configuration. |
 | `DME_ASSAM` | Directorate of Medical Education | Directorate | `https://dme.assam.gov.in/documents-detail/recruitment` | HIGH | document table + PDFs / OFFICIAL_ARCHIVE | ENABLED_VALIDATED | NORMAL / 40 | Existing official-archive configuration. |
 | `ASDMA_ASSAM` | Assam State Disaster Management Authority | Authority | `https://asdma.assam.gov.in/resource/recruitment` | PERIODIC | structured resources / OFFICIAL_ARCHIVE | ENABLED_VALIDATED | NORMAL / 60 | Existing structured-resource handling. |
-| `DTE_ASSAM` | Directorate of Technical Education | Directorate | `https://dte.assam.gov.in/portlets/recruitment` | NORMAL | mixed CMS notices / DATED_DOCUMENT_RESOLVER | REQUIRES_EXISTING_ADAPTER_EXTENSION | HIGH_PRIORITY / 42 | Recruitment and downstream lifecycle notices share the listing. |
+| `DTE_ASSAM` | Directorate of Technical Education | Directorate | `https://dte.assam.gov.in/portlets/recruitment` | NORMAL | mixed CMS notices / DATED_DOCUMENT_RESOLVER | ENABLED_VALIDATED | HIGH_PRIORITY / 42 | Bounded live validation resolved one official document; safely routed LEGACY_UNSPLIT. |
 | `AGRI_ASSAM` | Directorate of Agriculture | Directorate | `https://diragri.assam.gov.in/resource/recruitment-1` | NORMAL | listing to detail to document / CMS_DETAIL | REQUIRES_EXISTING_ADAPTER_EXTENSION | HIGH_PRIORITY / 45 | Candidate configuration exists; `/node/` aliases still need deterministic validation. |
 | `NHM_ASSAM` | National Health Mission, Assam | Mission | `https://nhm.assam.gov.in/documents` | HIGH | filtered listing/detail/document / CMS_DETAIL | REQUIRES_EXISTING_ADAPTER_EXTENSION | HIGH_PRIORITY / 50 | Candidate search route did not expose bounded detail links reliably. |
 | `ASRLM_ASSAM` | Assam State Rural Livelihoods Mission | Mission | `https://asrlms.assam.gov.in/portlets/recruitment-career` | NORMAL | mixed listing/detail/document / CMS_DETAIL | REQUIRES_EXISTING_ADAPTER_EXTENSION | NORMAL / 62 | Must separate advertisements from results, selections, and extensions. |
-| `FREMAA_ASSAM` | Flood and River Erosion Management Agency of Assam | Agency | `https://fremaa.assam.gov.in/portlets/recruitment-career` | NORMAL | mixed document table / DATED_DOCUMENT_RESOLVER | REQUIRES_EXISTING_ADAPTER_EXTENSION | NORMAL / 64 | Advertisements, addenda, and results share one archive. |
+| `FREMAA_ASSAM` | Flood and River Erosion Management Agency of Assam | Agency | `https://fremaa.assam.gov.in/portlets/recruitment-career` | NORMAL | mixed document table / DATED_DOCUMENT_RESOLVER | ENABLED_VALIDATED | NORMAL / 64 | Bounded live validation resolved one official document; safely routed LEGACY_UNSPLIT. |
 | `DECT_ASSAM` | Directorate of Employment and Craftsmen Training | Directorate | `https://dect.assam.gov.in/portlets/recruitment-career-0` | NORMAL | mixed CMS/search listing / DATED_DOCUMENT_RESOLVER | REQUIRES_EXISTING_ADAPTER_EXTENSION | NORMAL / 58 | Includes job-fair and lifecycle material unrelated to authority vacancies. |
-| `PNRD_ASSAM` | Panchayat and Rural Development | Department | `https://pnrd.assam.gov.in/documents/recruitment` | HIGH | dated document listing / DATED_DOCUMENT_RESOLVER | REQUIRES_EXISTING_ADAPTER_EXTENSION | HIGH_PRIORITY / 44 | High-value source; bounded listing and lifecycle tests are still required. |
+| `PNRD_ASSAM` | Panchayat and Rural Development | Department | `https://pnrd.assam.gov.in/documents/recruitment` | HIGH | dated document listing / DATED_DOCUMENT_RESOLVER | REQUIRES_EXISTING_ADAPTER_EXTENSION | HIGH_PRIORITY / 44 | Reachable, but the live listing emitted no qualifying document links to this resolver. |
 | `SAMAGRA_ASSAM` | Samagra Shiksha, Assam | Mission | `https://ssa.assam.gov.in/information-services/detail/recruitment-portal-0` | HIGH | portal/detail links / CMS_DETAIL | REQUIRES_EXISTING_ADAPTER_EXTENSION | HIGH_PRIORITY / 48 | Recruitment, interview, and result material require strict classification. |
-| `ASDM_ASSAM` | Assam Skill Development Mission | Mission | `https://asdm.assam.gov.in/portlets/recruitment-career` | NORMAL | document archive / DATED_DOCUMENT_RESOLVER | REQUIRES_EXISTING_ADAPTER_EXTENSION | NORMAL / 56 | Official archive found; deterministic fixtures and live validation absent. |
+| `ASDM_ASSAM` | Assam Skill Development Mission | Mission | `https://asdm.assam.gov.in/portlets/recruitment-career` | NORMAL | document archive / DATED_DOCUMENT_RESOLVER | REQUIRES_EXISTING_ADAPTER_EXTENSION | NORMAL / 56 | Reachable, but the live listing emitted no qualifying document links to this resolver. |
 | `SAMETI_ASSAM` | State Agricultural Management and Extension Training Institute | Institute | `https://sameti.assam.gov.in/resource/recruitment-notice` | PERIODIC | structured resources / OFFICIAL_ARCHIVE | REQUIRES_EXISTING_ADAPTER_EXTENSION | NORMAL / 72 | Validate resource metadata and date extraction before activation. |
 | `DSE_ASSAM` | Directorate of Secondary Education | Directorate | `https://dse.assam.gov.in/` | HIGH | dispersed CMS notices / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | HIGH_PRIORITY / 46 | No stable recruitment-only listing was confirmed. |
 | `GHC_ASSAM` | Gauhati High Court recruitment relevant to Assam | Court | `https://ghconline.gov.in/index.php/recruitment-notices/` | HIGH | dated HTML listing + documents / SPECIAL_CASE | REQUIRES_CUSTOM_ADAPTER | HIGH_PRIORITY / 52 | Must restrict ingestion to Assam/Principal Seat recruitments. |
@@ -69,10 +69,10 @@ Scheduler values are recommendations for inactive sources. Lower numeric priorit
 ## Counts
 
 - Official sources inventoried: **35**.
-- `ENABLED_VALIDATED`: **6**.
+- `ENABLED_VALIDATED`: **8**.
 - `READY_FOR_ACTIVATION`: **0**; no inactive source has both deterministic tests and bounded live
   validation yet.
-- `REQUIRES_EXISTING_ADAPTER_EXTENSION`: **10**.
+- `REQUIRES_EXISTING_ADAPTER_EXTENSION`: **8**.
 - `REQUIRES_CUSTOM_ADAPTER`: **13**.
 - `DISCOVERED_NOT_YET_VALIDATED`: **4**.
 - `EXCLUDED`: **2**.
@@ -87,10 +87,11 @@ handoff, and one bounded non-persistent live validation per source.
 
 `FREMAA_ASSAM`, `ASDM_ASSAM`, `PNRD_ASSAM`, and `DTE_ASSAM`.
 
-Extend one **DATED_DOCUMENT_RESOLVER** on top of the bounded official-archive primitives. These
-official CMS surfaces offer the best combination of candidate value and reuse. The family must
-resolve reliable listing dates, retain undated recruitments conservatively, and reject lifecycle
-documents before Candidate creation.
+Completed 24 September 2026. One **DATED_DOCUMENT_RESOLVER** now handles bounded row/detail/document
+resolution, reliable-date filtering, conservative undated recruitment handling, same-domain safety,
+deduplication, and lifecycle exclusion. FREMAA and DTE passed bounded live validation and are
+enabled. ASDM and PNRD remain disabled because their reachable live listings exposed no qualifying
+document links to this resolver.
 
 ### Batch 2 — bounded CMS detail activation
 

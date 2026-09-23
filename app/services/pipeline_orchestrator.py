@@ -24,9 +24,14 @@ from app.services.verification_worker import (
     VerificationWorkerSummary,
 )
 from sources.adapters.cms_detail_recruitment import CMS_DETAIL_SOURCES
+from sources.adapters.dated_document_resolver import DATED_DOCUMENT_SOURCES
 from sources.adapters.official_recruitment_archive import OFFICIAL_ARCHIVE_SOURCES
 
-OFFICIAL_RECRUITMENT_SOURCES = {**OFFICIAL_ARCHIVE_SOURCES, **CMS_DETAIL_SOURCES}
+OFFICIAL_RECRUITMENT_SOURCES = {
+    **OFFICIAL_ARCHIVE_SOURCES,
+    **CMS_DETAIL_SOURCES,
+    **DATED_DOCUMENT_SOURCES,
+}
 
 
 class PipelineStatus(enum.StrEnum):

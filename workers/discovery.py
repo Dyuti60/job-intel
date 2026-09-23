@@ -8,13 +8,13 @@ from app.core.logging import configure_logging, get_logger
 from app.db.session import SessionLocal
 from app.services.apsc_discovery import APSCDiscoveryWorkerService, format_discovery_summary
 from app.services.official_archive_discovery import OfficialArchiveDiscoveryWorkerService
-from sources.adapters.official_recruitment_archive import OFFICIAL_ARCHIVE_SOURCES
+from app.services.pipeline_orchestrator import OFFICIAL_RECRUITMENT_SOURCES
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run one bounded official-source discovery.")
     parser.add_argument(
-        "--source", required=True, choices=("APSC", *tuple(OFFICIAL_ARCHIVE_SOURCES))
+        "--source", required=True, choices=("APSC", *tuple(OFFICIAL_RECRUITMENT_SOURCES))
     )
     parser.add_argument("--dry-run", action="store_true")
     return parser
@@ -36,7 +36,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     session,
                     settings,
                     logger,
-                    OFFICIAL_ARCHIVE_SOURCES[args.source],
+                    OFFICIAL_RECRUITMENT_SOURCES[args.source],
                 ).run(dry_run=args.dry_run)
     except (SQLAlchemyError, OSError, RuntimeError, ValueError) as error:
         logger.exception("discovery_worker_level_failure source=%s", args.source)

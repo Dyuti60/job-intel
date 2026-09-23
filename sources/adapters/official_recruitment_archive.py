@@ -514,6 +514,7 @@ def is_recruitment_lifecycle_notice(title: str) -> bool:
         "selection process",
         "written examination",
         "skill test",
+        "interview notice",
         "interview schedule",
         "schedule of interview",
         "rejected candidates",
