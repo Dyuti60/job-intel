@@ -9,23 +9,35 @@
   </div>
 </div>
 
-<section class="metrics" aria-label="Queue counts">
-  <a class="metric" href="{{ metric_urls.ALL }}"><strong>{{ counts.total_jobs }}</strong><span>Total Jobs</span></a>
-  <a class="metric" href="{{ metric_urls.REVIEW_REQUIRED }}"><strong>{{ counts.review_required }}</strong><span>Review Required</span></a>
-  <a class="metric" href="{{ metric_urls.IN_REVIEW }}"><strong>{{ counts.in_review }}</strong><span>In Review</span></a>
-  <a class="metric" href="{{ metric_urls.RESOLVED }}"><strong>{{ counts.approved }}</strong><span>Resolved</span></a>
-  <a class="metric critical" href="{{ metric_urls.REJECTED }}"><strong>{{ counts.rejected }}</strong><span>Rejected</span></a>
-  <a class="metric" href="{{ metric_urls.AUTO_PUBLISHED }}"><strong>{{ counts.auto_published }}</strong><span>Auto Published</span></a>
-  <a class="metric" href="{{ metric_urls.HUMAN_PUBLISHED }}"><strong>{{ counts.human_published }}</strong><span>Human Published</span></a>
+<section class="metric-section" aria-labelledby="job-status-heading">
+  <div class="metric-section-heading">
+    <h2 id="job-status-heading">Job Post Status</h2>
+    <p>Review workload, outcomes, and publication state.</p>
+  </div>
+  <div class="metrics status-metrics">
+    <a class="metric metric-neutral" data-filter-kind="status" data-filter-value="ALL" href="{{ metric_urls.ALL }}" {% if selected_status == 'ALL' %}aria-current="page"{% endif %}><strong>{{ counts.total_jobs }}</strong><span>Total Jobs</span></a>
+    <a class="metric metric-warning" data-filter-kind="status" data-filter-value="REVIEW_REQUIRED" href="{{ metric_urls.REVIEW_REQUIRED }}" {% if selected_status == 'REVIEW_REQUIRED' %}aria-current="page"{% endif %}><strong>{{ counts.review_required }}</strong><span>Review Required</span></a>
+    <a class="metric metric-blue" data-filter-kind="status" data-filter-value="IN_REVIEW" href="{{ metric_urls.IN_REVIEW }}" {% if selected_status == 'IN_REVIEW' %}aria-current="page"{% endif %}><strong>{{ counts.in_review }}</strong><span>In Review</span></a>
+    <a class="metric metric-positive" data-filter-kind="status" data-filter-value="RESOLVED" href="{{ metric_urls.RESOLVED }}" {% if selected_status == 'RESOLVED' %}aria-current="page"{% endif %}><strong>{{ counts.approved }}</strong><span>Resolved</span></a>
+    <a class="metric metric-danger" data-filter-kind="status" data-filter-value="REJECTED" href="{{ metric_urls.REJECTED }}" {% if selected_status == 'REJECTED' %}aria-current="page"{% endif %}><strong>{{ counts.rejected }}</strong><span>Rejected</span></a>
+    <a class="metric metric-published" data-filter-kind="status" data-filter-value="AUTO_PUBLISHED" href="{{ metric_urls.AUTO_PUBLISHED }}" {% if selected_status == 'AUTO_PUBLISHED' %}aria-current="page"{% endif %}><strong>{{ counts.auto_published }}</strong><span>Auto Published</span></a>
+    <a class="metric metric-published-human" data-filter-kind="status" data-filter-value="HUMAN_PUBLISHED" href="{{ metric_urls.HUMAN_PUBLISHED }}" {% if selected_status == 'HUMAN_PUBLISHED' %}aria-current="page"{% endif %}><strong>{{ counts.human_published }}</strong><span>Human Published</span></a>
+  </div>
 </section>
 
-<nav class="metrics lifecycle-nav" aria-label="Lifecycle quick navigation">
-  {% for option in lifecycle_options %}
-  <a class="metric" href="{{ lifecycle_urls[option] }}" {% if selected_lifecycle == option %}aria-current="page"{% endif %}>
-    <strong>{{ lifecycle_counts[option] }}</strong><span>{{ option | replace('_', ' ') | title }}</span>
-  </a>
-  {% endfor %}
-</nav>
+<section class="metric-section" aria-labelledby="lifecycle-heading">
+  <div class="metric-section-heading">
+    <h2 id="lifecycle-heading">Lifecycle</h2>
+    <p>Move quickly between active, upcoming, and closed recruitment Posts.</p>
+  </div>
+  <nav class="metrics lifecycle-nav" aria-label="Lifecycle quick navigation">
+    {% for option in lifecycle_options %}
+    <a class="metric metric-lifecycle-{{ option | lower }}" data-filter-kind="lifecycle" data-filter-value="{{ option }}" href="{{ lifecycle_urls[option] }}" {% if selected_lifecycle == option %}aria-current="page"{% endif %}>
+      <strong>{{ lifecycle_counts[option] }}</strong><span>{{ option | replace('_', ' ') | title }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+</section>
 
 <form class="filters card" method="get" action="/review">
   <label>Search<input name="q" value="{{ search_query }}" maxlength="100" placeholder="Post, Advertisement, or authority"></label>

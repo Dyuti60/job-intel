@@ -1068,6 +1068,8 @@ def test_review_metrics_and_manual_publication_are_post_scoped_and_idempotent(
 
     dashboard = client.get("/review")
     assert "status=ALL" in dashboard.text
+    assert '<h2 id="job-status-heading">Job Post Status</h2>' in dashboard.text
+    assert '<h2 id="lifecycle-heading">Lifecycle</h2>' in dashboard.text
     metrics = (
         (3, "Total Jobs"),
         (0, "Review Required"),
@@ -1079,6 +1081,10 @@ def test_review_metrics_and_manual_publication_are_post_scoped_and_idempotent(
     )
     for value, label in metrics:
         assert f"<strong>{value}</strong><span>{label}</span>" in dashboard.text
+    all_status_card = dashboard.text.split(
+        'data-filter-kind="status" data-filter-value="ALL"', 1
+    )[1].split("</a>", 1)[0]
+    assert 'status=ALL' in all_status_card and 'aria-current="page"' in all_status_card
 
     get_publish = client.get(f"/review/cases/{case_id}/publish")
     first = client.post(
@@ -1353,6 +1359,13 @@ def test_lifecycle_filter_combines_with_queue_filters(client: TestClient) -> Non
     assert 'name="status"' in page and 'name="priority"' in page
     assert 'name="completeness"' in page
     assert page.count("<table>") == 1
-    assert 'aria-current="page"' in page
+    status_card = page.split(
+        'data-filter-kind="status" data-filter-value="REVIEW_REQUIRED"', 1
+    )[1].split("</a>", 1)[0]
+    lifecycle_card = page.split(
+        'data-filter-kind="lifecycle" data-filter-value="CLOSED"', 1
+    )[1].split("</a>", 1)[0]
+    assert 'status=REVIEW_REQUIRED' in status_card and 'aria-current="page"' in status_card
+    assert 'lifecycle=CLOSED' in lifecycle_card and 'aria-current="page"' in lifecycle_card
     assert "REVIEW_THREE_POSTSFILTER_CLOSED" in page
     assert "FILTER_OPEN" not in page
