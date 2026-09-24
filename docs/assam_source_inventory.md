@@ -52,11 +52,11 @@ Scheduler values are recommendations for inactive sources. Lower numeric priorit
 | `APDCL_ASSAM` | Assam Power Distribution Company Limited | PSU | `https://www.apdcl.org/` | NORMAL | careers portal / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 66 | Reachable homepage emitted no qualifying recruitment listing item; stable career endpoint remains unresolved. |
 | `APGCL_ASSAM` | Assam Power Generation Corporation Limited | PSU | `https://www.apgcl.org/public/en/career/recruitments` | NORMAL | structured recruitment table / CUSTOM_HTML_LISTING | ENABLED_VALIDATED | NORMAL / 67 | Bounded live validation resolved one official document; safely routed LEGACY_UNSPLIT. |
 | `AEGCL_ASSAM` | Assam Electricity Grid Corporation Limited | PSU | `https://www.aegcl.co.in/career-recruitment/` | NORMAL | recruitment table + documents / CUSTOM_HTML_LISTING | ENABLED_VALIDATED | NORMAL / 68 | Bounded live validation resolved one official document; safely routed LEGACY_UNSPLIT. |
-| `AMTRON_ASSAM` | Assam Electronics Development Corporation | PSU | `https://recruitment.amtron.in/` | NORMAL | application/recruitment portal / CUSTOM_PORTAL_API | REQUIRES_CUSTOM_ADAPTER | NORMAL / 69 | Portal behavior and stable document identity need bounded validation. |
+| `AMTRON_ASSAM` | Assam Electronics Development Corporation | PSU | `https://recruitment.amtron.in/` | NORMAL | application/recruitment portal / CUSTOM_PORTAL_API | REQUIRES_CUSTOM_ADAPTER | NORMAL / 69 | Reachable, but the bounded official portal exposed no qualifying advertisement identity/document. |
 | `GAUHATI_UNIVERSITY` | Gauhati University | State university | `https://gauhati.ac.in/` | NORMAL | notices + application portal / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 74 | Reachable, but the bounded official surface exposed no qualifying in-window recruitment item/document. |
 | `DIBRUGARH_UNIVERSITY` | Dibrugarh University | State university | `https://www.dibru.ac.in/categories/archive/recruitment-notices/2025/July` | NORMAL | dated archive pages / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 75 | Reachable, but the bounded archive/listing shape exposed no qualifying in-window recruitment item/document. |
 | `COTTON_UNIVERSITY` | Cotton University | State university | `https://recruit.cottonuniversity.ac.in/` | NORMAL | application portal + notices / CUSTOM_PORTAL_API | REQUIRES_CUSTOM_ADAPTER | NORMAL / 76 | Reachable, but the bounded official portal/listing exposed no qualifying recruitment advertisement/document. |
-| `AAU_ASSAM` | Assam Agricultural University | State university | `https://www.appl.aau.ac.in/recuitments/index.php` | NORMAL | custom recruitment portal / CUSTOM_PORTAL_API | REQUIRES_CUSTOM_ADAPTER | NORMAL / 77 | Preserve the authority's published `recuitments` URL spelling. |
+| `AAU_ASSAM` | Assam Agricultural University | State university | `https://www.appl.aau.ac.in/recuitments/index.php` | NORMAL | custom recruitment portal / CUSTOM_PORTAL_API | REQUIRES_CUSTOM_ADAPTER | NORMAL / 77 | Published `recuitments` URL preserved; bounded validation could not establish the listing because the official portal's TLS certificate chain was untrusted. |
 | `ASTU_ASSAM` | Assam Science and Technology University | State university | `https://astu.ac.in/?page_id=110` | PERIODIC | WordPress listing + documents / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 78 | Reachable, but the bounded WordPress/listing surface exposed no qualifying in-window recruitment item/document. |
 | `SLRC_ASSAM` | State Level Recruitment Commissions (ADRE) | Commission | `https://site.sebaonline.org/` | PERIODIC | campaign portals / SPECIAL_CASE | REQUIRES_CUSTOM_ADAPTER | HIGH_PRIORITY / 25 | Campaign URLs change; a stable authoritative advertisement archive is unresolved. |
 | `AYUSH_ASSAM` | Directorate of AYUSH | Directorate | `https://ayush.assam.gov.in/` | PERIODIC | CMS latest/detail pages / CMS_DETAIL | DISCOVERED_NOT_YET_VALIDATED | NORMAL / 70 | Official recruitment details exist, but no stable recruitment index was confirmed. |
@@ -124,8 +124,17 @@ all four official surfaces were reachable but exposed no qualifying recruitment 
 their single bounded live validations. Application portals remain supporting context and never
 create Candidates by themselves.
 
-### Later custom and special batches
+### Custom recruitment portal batch
 
-- **CUSTOM_PORTAL_API**: `AMTRON_ASSAM`, `AAU_ASSAM`, and portal portions of university sources.
+`AMTRON_ASSAM` and `AAU_ASSAM`.
+
+Completed 24 September 2026. A bounded **CUSTOM_PORTAL_API** family now rejects application,
+registration, and login actions before traversal and reuses shared document resolution, cutoff,
+lifecycle, authority-safety, identity, idempotency, and Post-structuring behavior. Neither source
+was activated: AMTRON exposed no qualifying advertisement/document, while AAU's published portal
+failed official TLS certificate-chain validation during its single bounded live check.
+
+### Next special-case batch
+
 - **SPECIAL_CASE**: `GHC_ASSAM` (Assam-seat filtering) and `SLRC_ASSAM` (campaign identity).
 - Validate the four discovered-only sources before assigning an implementation batch.

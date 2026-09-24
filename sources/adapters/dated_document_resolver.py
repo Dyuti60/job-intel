@@ -28,6 +28,7 @@ from sources.http import BoundedHttpClient
 class DatedDocumentSource(OfficialArchiveSource):
     allowed_hosts: tuple[str, ...] = ()
     detail_path_prefixes: tuple[str, ...] = ()
+    excluded_link_terms: tuple[str, ...] = ()
     max_listing_rows_per_run: int = 100
     max_detail_pages_per_run: int = 10
 
@@ -290,6 +291,9 @@ def parse_dated_document_listing(
     for anchor in parser.anchors:
         context = _clean(anchor.context or anchor.text)
         title = _clean(anchor.text)
+        link_identity = f"{title} {anchor.href}".casefold()
+        if any(term.casefold() in link_identity for term in source.excluded_link_terms):
+            continue
         classification_text = context if is_recruitment_advertisement(context) else title
         if not is_recruitment_advertisement(classification_text):
             continue

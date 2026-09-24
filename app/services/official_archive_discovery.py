@@ -36,6 +36,7 @@ from sources.adapters.custom_html_recruitment import (
     CustomHtmlListingAdapter,
     CustomHtmlListingSource,
 )
+from sources.adapters.custom_portal_recruitment import CustomPortalAdapter, CustomPortalSource
 from sources.adapters.dated_document_resolver import (
     DatedDocumentResolverAdapter,
     DatedDocumentSource,
@@ -61,6 +62,7 @@ class OfficialArchiveDiscoveryWorkerService:
             | CmsDetailSource
             | DatedDocumentSource
             | CustomHtmlListingSource
+            | CustomPortalSource
         ),
     ) -> None:
         self.session = session
@@ -77,6 +79,7 @@ class OfficialArchiveDiscoveryWorkerService:
             | CmsDetailRecruitmentAdapter
             | DatedDocumentResolverAdapter
             | CustomHtmlListingAdapter
+            | CustomPortalAdapter
             | None
         ) = None,
     ) -> DiscoverySummary:
@@ -97,7 +100,9 @@ class OfficialArchiveDiscoveryWorkerService:
                     max_response_bytes=self.settings.discovery_max_response_bytes,
                     requests_per_minute=self.source.requests_per_minute,
                 )
-                if isinstance(self.source, CustomHtmlListingSource):
+                if isinstance(self.source, CustomPortalSource):
+                    adapter_class = CustomPortalAdapter
+                elif isinstance(self.source, CustomHtmlListingSource):
                     adapter_class = CustomHtmlListingAdapter
                 elif isinstance(self.source, DatedDocumentSource):
                     adapter_class = DatedDocumentResolverAdapter

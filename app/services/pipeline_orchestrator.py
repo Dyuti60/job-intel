@@ -25,6 +25,7 @@ from app.services.verification_worker import (
 )
 from sources.adapters.cms_detail_recruitment import CMS_DETAIL_SOURCES
 from sources.adapters.custom_html_recruitment import CUSTOM_HTML_SOURCES
+from sources.adapters.custom_portal_recruitment import CUSTOM_PORTAL_SOURCES
 from sources.adapters.dated_document_resolver import DATED_DOCUMENT_SOURCES
 from sources.adapters.official_recruitment_archive import OFFICIAL_ARCHIVE_SOURCES
 
@@ -32,6 +33,7 @@ OFFICIAL_RECRUITMENT_SOURCES = {
     **OFFICIAL_ARCHIVE_SOURCES,
     **CMS_DETAIL_SOURCES,
     **CUSTOM_HTML_SOURCES,
+    **CUSTOM_PORTAL_SOURCES,
     **DATED_DOCUMENT_SOURCES,
 }
 
