@@ -47,6 +47,34 @@ CASES = (
         "/career-recruitment/assistant-manager",
         "https://aegcl.co.in/career/field-assistant",
     ),
+    (
+        "GAUHATI_UNIVERSITY",
+        "gauhati_university_listing.html",
+        "gauhati_university_detail.html",
+        "/recruitment/research-assistant",
+        "https://gauhati.ac.in/notifications/project-assistant",
+    ),
+    (
+        "DIBRUGARH_UNIVERSITY",
+        "dibrugarh_university_listing.html",
+        "dibrugarh_university_detail.html",
+        "/categories/archive/recruitment-notices/2026/September/research-assistant",
+        "https://dibru.ac.in/notifications/project-assistant",
+    ),
+    (
+        "COTTON_UNIVERSITY",
+        "cotton_university_listing.html",
+        "cotton_university_detail.html",
+        "https://www.cottonuniversity.ac.in/recruitment/research-assistant",
+        "https://www.cottonuniversity.ac.in/advertisement/project-assistant",
+    ),
+    (
+        "ASTU_ASSAM",
+        "astu_listing.html",
+        "astu_detail.html",
+        "/recruitment/research-assistant",
+        "https://www.astu.ac.in/career/project-assistant",
+    ),
 )
 
 
@@ -108,6 +136,10 @@ def test_only_live_validated_power_sources_are_registered() -> None:
         66,
         67,
         68,
+        74,
+        75,
+        76,
+        78,
     }
 
 

@@ -1,17 +1,15 @@
-# Next task: Assam source expansion — state-institution listings
+# Next task: Assam source expansion — custom recruitment portals
 
-Implement only Batch 4 from the authoritative source registry:
+Implement only the next portal/API batch from the authoritative source registry:
 
-- `GAUHATI_UNIVERSITY`
-- `DIBRUGARH_UNIVERSITY`
-- `COTTON_UNIVERSITY`
-- `ASTU_ASSAM`
+- `AMTRON_ASSAM`
+- `AAU_ASSAM`
 
-Extend the bounded `CUSTOM_HTML_LISTING` family where official listing shapes permit. Keep
-authority URLs, selectors, host aliases, and path rules in source configuration. Preserve
-`AJI_HISTORY_LOOKBACK_MONTHS`, lifecycle exclusion, deterministic Candidate identity,
-same-authority document safety, idempotency, and shared Advertisement-to-Post structuring.
+Create the smallest bounded `CUSTOM_PORTAL_API` family that can establish stable official
+advertisement identity and resolve an authority-owned recruitment document before Candidate
+creation. Preserve `AJI_HISTORY_LOOKBACK_MONTHS`, lifecycle exclusion, deterministic identity,
+same-authority safety, idempotency, and shared Advertisement-to-Post structuring.
 
-Application portals are supporting evidence, not advertisements by themselves. Register a source
-only after deterministic fixtures and one bounded non-persistent official live validation reach a
-usable recruitment document. Do not implement later registry batches in this task.
+Application forms or login portals alone are not advertisements. Register a source only after
+deterministic fixtures and one bounded non-persistent official live validation reach a usable
+recruitment document. Do not implement the later special-case batch in this task.

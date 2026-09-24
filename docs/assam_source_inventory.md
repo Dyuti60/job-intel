@@ -53,11 +53,11 @@ Scheduler values are recommendations for inactive sources. Lower numeric priorit
 | `APGCL_ASSAM` | Assam Power Generation Corporation Limited | PSU | `https://www.apgcl.org/public/en/career/recruitments` | NORMAL | structured recruitment table / CUSTOM_HTML_LISTING | ENABLED_VALIDATED | NORMAL / 67 | Bounded live validation resolved one official document; safely routed LEGACY_UNSPLIT. |
 | `AEGCL_ASSAM` | Assam Electricity Grid Corporation Limited | PSU | `https://www.aegcl.co.in/career-recruitment/` | NORMAL | recruitment table + documents / CUSTOM_HTML_LISTING | ENABLED_VALIDATED | NORMAL / 68 | Bounded live validation resolved one official document; safely routed LEGACY_UNSPLIT. |
 | `AMTRON_ASSAM` | Assam Electronics Development Corporation | PSU | `https://recruitment.amtron.in/` | NORMAL | application/recruitment portal / CUSTOM_PORTAL_API | REQUIRES_CUSTOM_ADAPTER | NORMAL / 69 | Portal behavior and stable document identity need bounded validation. |
-| `GAUHATI_UNIVERSITY` | Gauhati University | State university | `https://gauhati.ac.in/` | NORMAL | notices + application portal / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 74 | Current recruitment listing and older notification surfaces are split. |
-| `DIBRUGARH_UNIVERSITY` | Dibrugarh University | State university | `https://www.dibru.ac.in/categories/archive/recruitment-notices/2025/July` | NORMAL | dated archive pages / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 75 | URL is month-scoped; discover the stable archive index without crawling all months. |
-| `COTTON_UNIVERSITY` | Cotton University | State university | `https://recruit.cottonuniversity.ac.in/` | NORMAL | application portal + notices / CUSTOM_PORTAL_API | REQUIRES_CUSTOM_ADAPTER | NORMAL / 76 | Portal/listing linkage and official documents need deterministic handling. |
+| `GAUHATI_UNIVERSITY` | Gauhati University | State university | `https://gauhati.ac.in/` | NORMAL | notices + application portal / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 74 | Reachable, but the bounded official surface exposed no qualifying in-window recruitment item/document. |
+| `DIBRUGARH_UNIVERSITY` | Dibrugarh University | State university | `https://www.dibru.ac.in/categories/archive/recruitment-notices/2025/July` | NORMAL | dated archive pages / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 75 | Reachable, but the bounded archive/listing shape exposed no qualifying in-window recruitment item/document. |
+| `COTTON_UNIVERSITY` | Cotton University | State university | `https://recruit.cottonuniversity.ac.in/` | NORMAL | application portal + notices / CUSTOM_PORTAL_API | REQUIRES_CUSTOM_ADAPTER | NORMAL / 76 | Reachable, but the bounded official portal/listing exposed no qualifying recruitment advertisement/document. |
 | `AAU_ASSAM` | Assam Agricultural University | State university | `https://www.appl.aau.ac.in/recuitments/index.php` | NORMAL | custom recruitment portal / CUSTOM_PORTAL_API | REQUIRES_CUSTOM_ADAPTER | NORMAL / 77 | Preserve the authority's published `recuitments` URL spelling. |
-| `ASTU_ASSAM` | Assam Science and Technology University | State university | `https://astu.ac.in/?page_id=110` | PERIODIC | WordPress listing + documents / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 78 | Recruitment and downstream notices require classification. |
+| `ASTU_ASSAM` | Assam Science and Technology University | State university | `https://astu.ac.in/?page_id=110` | PERIODIC | WordPress listing + documents / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 78 | Reachable, but the bounded WordPress/listing surface exposed no qualifying in-window recruitment item/document. |
 | `SLRC_ASSAM` | State Level Recruitment Commissions (ADRE) | Commission | `https://site.sebaonline.org/` | PERIODIC | campaign portals / SPECIAL_CASE | REQUIRES_CUSTOM_ADAPTER | HIGH_PRIORITY / 25 | Campaign URLs change; a stable authoritative advertisement archive is unresolved. |
 | `AYUSH_ASSAM` | Directorate of AYUSH | Directorate | `https://ayush.assam.gov.in/` | PERIODIC | CMS latest/detail pages / CMS_DETAIL | DISCOVERED_NOT_YET_VALIDATED | NORMAL / 70 | Official recruitment details exist, but no stable recruitment index was confirmed. |
 | `HOME_POLITICAL_ASSAM` | Home and Political Department | Department | `https://homeandpolitical.assam.gov.in/documents-detail/recruitment-notice` | PERIODIC | individual document detail / OFFICIAL_ARCHIVE | DISCOVERED_NOT_YET_VALIDATED | NORMAL / 80 | Detail page is official but is not yet a stable recurring listing. |
@@ -117,8 +117,12 @@ recruitment listing item.
 
 `GAUHATI_UNIVERSITY`, `DIBRUGARH_UNIVERSITY`, `COTTON_UNIVERSITY`, and `ASTU_ASSAM`.
 
-Use a bounded **CUSTOM_HTML_LISTING** family where possible; keep portal application links as
-evidence rather than inventing jobs from forms. AAU remains in the later portal/API batch.
+Completed 24 September 2026. The bounded **CUSTOM_HTML_LISTING** family now has deterministic
+institution configurations and fixtures covering cutoff, undated notices, lifecycle exclusion,
+authority aliases, traversal bounds, idempotency, and shared Post structuring. None was activated:
+all four official surfaces were reachable but exposed no qualifying recruitment item/document in
+their single bounded live validations. Application portals remain supporting context and never
+create Candidates by themselves.
 
 ### Later custom and special batches
 
