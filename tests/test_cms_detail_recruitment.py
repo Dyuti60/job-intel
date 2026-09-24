@@ -57,6 +57,13 @@ CMS_CASES = (
         "/information-services/detail/special-educator",
         "/latest/education-coordinator",
     ),
+    (
+        "AYUSH_ASSAM",
+        "ayush_listing.html",
+        "ayush_detail.html",
+        "/node/97001",
+        "/resource/detail/ayush-coordinator",
+    ),
 )
 
 
@@ -113,11 +120,13 @@ def _extract_fixture(content: bytes, metadata, organization_name):
 
 @pytest.mark.parametrize(
     "source_code",
-    ["AGRI_ASSAM", "NHM_ASSAM", "ASRLM_ASSAM", "SAMAGRA_ASSAM"],
+    ["AGRI_ASSAM", "NHM_ASSAM", "ASRLM_ASSAM", "SAMAGRA_ASSAM", "AYUSH_ASSAM"],
 )
 def test_unvalidated_cms_sources_are_not_registered_for_execution(source_code: str) -> None:
     source = CMS_DETAIL_SOURCE_CANDIDATES[source_code]
-    expected_group = "NORMAL" if source_code == "ASRLM_ASSAM" else "HIGH_PRIORITY"
+    expected_group = (
+        "NORMAL" if source_code in {"ASRLM_ASSAM", "AYUSH_ASSAM"} else "HIGH_PRIORITY"
+    )
 
     assert source_code not in CMS_DETAIL_SOURCES
     assert source_code not in PIPELINE_SOURCES

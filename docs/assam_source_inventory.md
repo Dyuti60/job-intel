@@ -59,20 +59,20 @@ Scheduler values are recommendations for inactive sources. Lower numeric priorit
 | `AAU_ASSAM` | Assam Agricultural University | State university | `https://www.appl.aau.ac.in/recuitments/index.php` | NORMAL | custom recruitment portal / CUSTOM_PORTAL_API | REQUIRES_CUSTOM_ADAPTER | NORMAL / 77 | Published `recuitments` URL preserved; bounded validation could not establish the listing because the official portal's TLS certificate chain was untrusted. |
 | `ASTU_ASSAM` | Assam Science and Technology University | State university | `https://astu.ac.in/?page_id=110` | PERIODIC | WordPress listing + documents / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 78 | Reachable, but the bounded WordPress/listing surface exposed no qualifying in-window recruitment item/document. |
 | `SLRC_ASSAM` | State Level Recruitment Commissions (ADRE) | Commission | `https://site.sebaonline.org/` | PERIODIC | campaign portals / SPECIAL_CASE | REQUIRES_CUSTOM_ADAPTER | HIGH_PRIORITY / 25 | Reachable, but the bounded official surface exposed no qualifying advertisement from which stable campaign identity could be established. |
-| `AYUSH_ASSAM` | Directorate of AYUSH | Directorate | `https://ayush.assam.gov.in/resource/recruitment` | PERIODIC | paginated CMS listing → node detail / CMS_DETAIL | REQUIRES_EXISTING_ADAPTER_EXTENSION | NORMAL / 70 | Reachable stable recruitment index; mixed result/interview rows require lifecycle filtering and bounded pagination/detail selectors. |
+| `AYUSH_ASSAM` | Directorate of AYUSH | Directorate | `https://ayush.assam.gov.in/resource/recruitment` | PERIODIC | paginated CMS listing → node detail / CMS_DETAIL | REQUIRES_EXISTING_ADAPTER_EXTENSION | NORMAL / 70 | Bounded live listing was usable but yielded only lifecycle material; no qualifying recruitment detail/document resolved. |
 | `HOME_POLITICAL_ASSAM` | Home and Political Department | Department | `https://homeandpolitical.assam.gov.in/documents-detail/recruitment-notice` | PERIODIC | individual cross-authority detail / SPECIAL_CASE | REQUIRES_CUSTOM_ADAPTER | NORMAL / 80 | Reachable page exposes one SLRC recruitment PDF, not a recurring Home & Political recruitment listing; ownership and recurrence remain blockers. |
 | `ASU_ASSAM` | Assam Skill University | State university | `https://asu.ac.in/index_page_details.php?page=44&title=recruitments` | PERIODIC | dedicated empty HTML surface / CUSTOM_HTML_LISTING (provisional) | DISCOVERED_NOT_YET_VALIDATED | NORMAL / 82 | Reachable stable recruitment page, but no listing item/document exists to validate recurrence, selectors, or family compatibility. |
-| `SOIL_ASSAM` | Directorate of Soil Conservation | Directorate | `https://soildirectorate.assam.gov.in/portlets/recruitment` | PERIODIC | stable portlet → direct PDFs / OFFICIAL_ARCHIVE | REQUIRES_EXISTING_ADAPTER_EXTENSION | NORMAL / 84 | Reachable stable recruitment portlet exposes authority-owned PDFs; blank link labels require bounded metadata/classification extension before activation. |
+| `SOIL_ASSAM` | Directorate of Soil Conservation | Directorate | `https://soildirectorate.assam.gov.in/portlets/recruitment` | PERIODIC | stable portlet → direct PDFs / OFFICIAL_ARCHIVE | ENABLED_VALIDATED | NORMAL / 84 | Safe row context classified one official document in bounded live validation; routed LEGACY_UNSPLIT without fabricated Posts. |
 | `ASHB_ASSAM` | Assam State Housing Board | Board | `https://ashb.assam.gov.in/portlets/recruitment-and-career` | PERIODIC | service-regulation page only | EXCLUDED | NONE | No stable official vacancy feed is currently present. |
 | `ASSAM_UNIVERSITY` | Assam University, Silchar | Central university | `https://www.aus.ac.in/employment-notification/` | NORMAL | official employment listing | EXCLUDED | NONE | Central university; outside Assam Government scope. |
 
 ## Counts
 
 - Official sources inventoried: **35**.
-- `ENABLED_VALIDATED`: **10**.
+- `ENABLED_VALIDATED`: **11**.
 - `READY_FOR_ACTIVATION`: **0**; no inactive source has both deterministic tests and bounded live
   validation yet.
-- `REQUIRES_EXISTING_ADAPTER_EXTENSION`: **10**.
+- `REQUIRES_EXISTING_ADAPTER_EXTENSION`: **9**.
 - `REQUIRES_CUSTOM_ADAPTER`: **12**.
 - `DISCOVERED_NOT_YET_VALIDATED`: **1**.
 - `EXCLUDED`: **2**.
@@ -153,7 +153,8 @@ not a recurring authority recruitment index.
 
 ### Next implementation batch
 
-Implement `AYUSH_ASSAM` and `SOIL_ASSAM` by extending their existing adapter families. They provide
-the strongest stable official listing evidence and highest reuse without new architecture. Keep
-`ASU_ASSAM` withheld until an item/document shape can be validated, and keep
-`HOME_POLITICAL_ASSAM` withheld until authority ownership and recurrence are resolved.
+Completed 24 September 2026. `CMS_DETAIL` now includes bounded AYUSH configuration, but AYUSH
+remains disabled because the single live listing exposed no qualifying advertisement detail or
+document. `OFFICIAL_ARCHIVE` now supports authority host restrictions and safe row-context
+classification for Soil Conservation. Soil passed bounded live validation, resolved one official
+document, routed it as LEGACY_UNSPLIT, and is enabled. ASU and Home & Political remain withheld.

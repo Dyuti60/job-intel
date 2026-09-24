@@ -108,6 +108,23 @@ CMS_DETAIL_SOURCE_CANDIDATES = {
         max_detail_pages_per_run=10,
         allow_undated_detail_links=True,
     ),
+    "AYUSH_ASSAM": CmsDetailSource(
+        source_code="AYUSH_ASSAM",
+        authority_code="AYUSH_ASSAM",
+        authority_name="Directorate of AYUSH, Assam",
+        authority_type=AuthorityType.DEPARTMENT,
+        listing_url="https://ayush.assam.gov.in/resource/recruitment",
+        adapter_key="cms_detail_ayush",
+        organization_name="Directorate of AYUSH, Assam",
+        priority=70,
+        requests_per_minute=4,
+        max_notices_per_run=10,
+        allowed_hosts=("ayush.assam.gov.in",),
+        detail_path_prefixes=("/node/", "/resource/detail/"),
+        max_listing_rows_per_run=100,
+        max_detail_pages_per_run=10,
+        allow_undated_detail_links=True,
+    ),
 }
 
 # Activation is evidence-driven. A source moves here only after one bounded live validation

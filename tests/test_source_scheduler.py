@@ -41,6 +41,7 @@ def test_catalog_covers_pipeline_sources_with_bounded_schedules() -> None:
         "DTE_ASSAM",
         "FREMAA_ASSAM",
         "SLPRB_ASSAM",
+        "SOIL_ASSAM",
     )
     assert catalog["APSC"].group == SourceScheduleGroup.HIGH_PRIORITY
     assert all(item.poll_interval_minutes >= 15 for item in catalog.values())
@@ -61,6 +62,7 @@ def test_selection_is_priority_then_code_and_supports_groups(db_session) -> None
         "FREMAA_ASSAM",
         "APGCL_ASSAM",
         "AEGCL_ASSAM",
+        "SOIL_ASSAM",
     )
     assert service.select_sources(
         SchedulerSelection.GROUP,
@@ -194,6 +196,7 @@ def test_fast_dry_run_previews_all_selection_modes_without_pipeline_side_effects
         "FREMAA_ASSAM",
         "APGCL_ASSAM",
         "AEGCL_ASSAM",
+        "SOIL_ASSAM",
     )
     assert source.results == []
     assert source.previews[0].due is False

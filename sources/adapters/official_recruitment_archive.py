@@ -1,10 +1,11 @@
 import hashlib
 import io
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import date
 from html.parser import HTMLParser
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 from pypdf import PdfReader
 
@@ -41,6 +42,7 @@ class OfficialArchiveSource:
     requests_per_minute: int = 6
     accepts_download_links: bool = False
     max_notices_per_run: int = 50
+    allowed_hosts: tuple[str, ...] = ()
 
 
 OFFICIAL_ARCHIVE_SOURCES = {
@@ -105,6 +107,25 @@ OFFICIAL_ARCHIVE_SOURCES = {
         max_notices_per_run=20,
     ),
 }
+
+OFFICIAL_ARCHIVE_SOURCE_CANDIDATES = {
+    **OFFICIAL_ARCHIVE_SOURCES,
+    "SOIL_ASSAM": OfficialArchiveSource(
+        source_code="SOIL_ASSAM",
+        authority_code="SOIL_ASSAM",
+        authority_name="Directorate of Soil Conservation, Assam",
+        authority_type=AuthorityType.DEPARTMENT,
+        listing_url="https://soildirectorate.assam.gov.in/portlets/recruitment",
+        adapter_key="official_archive_soil",
+        organization_name="Directorate of Soil Conservation, Assam",
+        priority=84,
+        requests_per_minute=4,
+        max_notices_per_run=10,
+        allowed_hosts=("soildirectorate.assam.gov.in",),
+    ),
+}
+
+OFFICIAL_ARCHIVE_SOURCES["SOIL_ASSAM"] = OFFICIAL_ARCHIVE_SOURCE_CANDIDATES["SOIL_ASSAM"]
 
 
 @dataclass(frozen=True)
@@ -200,10 +221,12 @@ class OfficialRecruitmentArchiveAdapter:
         source: OfficialArchiveSource,
         *,
         cutoff_date: date,
+        extractor: Callable[[bytes, ArchiveNoticeMetadata, str], ParsedAdvertisement] | None = None,
     ) -> None:
         self.http = http
         self.source = source
         self.cutoff_date = cutoff_date
+        self.extractor = extractor or parse_official_advertisement_pdf
 
     def discover(self) -> ArchiveAdapterResult:
         listing = self.http.fetch(self.source.listing_url, accepted_types=("text/html",))
@@ -222,7 +245,12 @@ class OfficialRecruitmentArchiveAdapter:
         for item in metadata[: self.source.max_notices_per_run]:
             try:
                 resource = self.http.fetch(item.document_url, accepted_types=("application/pdf",))
-                extraction = parse_official_advertisement_pdf(
+                if source_has_disallowed_host(resource.url, self.source):
+                    warnings.append(
+                        f"Document redirect left approved source scope: {item.document_url}"
+                    )
+                    continue
+                extraction = self.extractor(
                     resource.content,
                     item,
                     self.source.organization_name,
@@ -270,6 +298,12 @@ def parse_archive_listing(
             continue
         selected[item.document_url] = item
     return [selected[url] for url in sorted(selected)]
+
+
+def source_has_disallowed_host(url: str, source: OfficialArchiveSource) -> bool:
+    return bool(source.allowed_hosts) and (urlsplit(url).hostname or "").casefold() not in {
+        host.casefold() for host in source.allowed_hosts
+    }
 
 
 def _metadata_from_row(row: _Row, source: OfficialArchiveSource) -> ArchiveNoticeMetadata | None:
@@ -320,9 +354,14 @@ def _metadata_from_row(row: _Row, source: OfficialArchiveSource) -> ArchiveNotic
         return None
     if not is_recruitment_advertisement(title):
         return None
+    if is_recruitment_lifecycle_notice(title):
+        return None
+    document_url = urljoin(source.listing_url, title_link.url)
+    if source_has_disallowed_host(document_url, source):
+        return None
     return ArchiveNoticeMetadata(
         title=title,
-        document_url=urljoin(source.listing_url, title_link.url),
+        document_url=document_url,
         notification_number=None,
         notification_date=notice_date_from_title(title)
         or next(
@@ -537,15 +576,12 @@ def extraction_diagnostic_summary(
             heading = _match_section_heading(line)
             if heading is not None:
                 page_headings.append(heading[0])
-            elif (
-                len(unsupported) < 30
-                and re.match(r"^\s*\d+(?:\.\d+)*\.?\s+[A-Z][A-Z /&()-]{4,}:?\s*$", line)
+            elif len(unsupported) < 30 and re.match(
+                r"^\s*\d+(?:\.\d+)*\.?\s+[A-Z][A-Z /&()-]{4,}:?\s*$", line
             ):
                 unsupported.append({"page": page_number, "heading": _clean_text(line)[:160]})
         if page_headings:
-            recognized.append(
-                {"page": page_number, "sections": list(dict.fromkeys(page_headings))}
-            )
+            recognized.append({"page": page_number, "sections": list(dict.fromkeys(page_headings))})
     return {
         "document_url": document_url,
         "pages_scanned": min(len(page_texts), 30),
@@ -563,7 +599,6 @@ def extraction_diagnostic_summary(
         "ambiguities": list(extraction.warnings),
         "unsupported_section_headings": unsupported,
     }
-
 
 
 _POST_DETAIL_HEADERS = {
@@ -659,8 +694,7 @@ def refine_atomic_trade_posts(
         parent_matches = [
             index
             for index, post in enumerate(posts)
-            if _canonical_owner(_post_organisation(post))
-            == _canonical_owner(heading_organisation)
+            if _canonical_owner(_post_organisation(post)) == _canonical_owner(heading_organisation)
         ]
         locator = f"pdf:trade-roster;occurrence={occurrence}"
         if len(parent_matches) != 1:
@@ -688,16 +722,28 @@ def refine_atomic_trade_posts(
             display_name = f"{trade_name} - {organisation}"
             facts: list[ParsedField] = [
                 ParsedField(
-                    "name", CandidateValueType.STRING, display_name, trade_name,
-                    f"{row_locator};field=post", trade_name,
+                    "name",
+                    CandidateValueType.STRING,
+                    display_name,
+                    trade_name,
+                    f"{row_locator};field=post",
+                    trade_name,
                 ),
                 ParsedField(
-                    "organisation.name", CandidateValueType.STRING, organisation,
-                    organisation, f"{row_locator};field=organisation", organisation,
+                    "organisation.name",
+                    CandidateValueType.STRING,
+                    organisation,
+                    organisation,
+                    f"{row_locator};field=organisation",
+                    organisation,
                 ),
                 ParsedField(
-                    "vacancies.total", CandidateValueType.INTEGER, total, str(total),
-                    f"{row_locator};field=total", str(total),
+                    "vacancies.total",
+                    CandidateValueType.INTEGER,
+                    total,
+                    str(total),
+                    f"{row_locator};field=total",
+                    str(total),
                 ),
             ]
             men = sum(category["male"] for category in categories)
@@ -709,16 +755,27 @@ def refine_atomic_trade_posts(
             facts.extend(
                 (
                     ParsedField(
-                        "vacancies.men", CandidateValueType.INTEGER, men, str(men),
-                        f"{row_locator};field=men", str(men),
+                        "vacancies.men",
+                        CandidateValueType.INTEGER,
+                        men,
+                        str(men),
+                        f"{row_locator};field=men",
+                        str(men),
                     ),
                     ParsedField(
-                        "vacancies.women", CandidateValueType.INTEGER, women, str(women),
-                        f"{row_locator};field=women", str(women),
+                        "vacancies.women",
+                        CandidateValueType.INTEGER,
+                        women,
+                        str(women),
+                        f"{row_locator};field=women",
+                        str(women),
                     ),
                     ParsedField(
-                        "vacancies.category_gender", CandidateValueType.JSON, category_gender,
-                        str(category_gender), f"{row_locator};field=category-gender",
+                        "vacancies.category_gender",
+                        CandidateValueType.JSON,
+                        category_gender,
+                        str(category_gender),
+                        f"{row_locator};field=category-gender",
                         str(category_gender),
                     ),
                 )
@@ -726,8 +783,11 @@ def refine_atomic_trade_posts(
             for category in categories:
                 facts.append(
                     ParsedField(
-                        category["path"], CandidateValueType.INTEGER, category["total"],
-                        str(category["total"]), f"{row_locator};field={category['path']}",
+                        category["path"],
+                        CandidateValueType.INTEGER,
+                        category["total"],
+                        str(category["total"]),
+                        f"{row_locator};field={category['path']}",
                         str(category),
                     )
                 )
@@ -829,10 +889,7 @@ def _attach_trade_requirements(
     )
     if start is None or end is None:
         return posts, ()
-    labels = {
-        post.normalized_name
-        for post in posts
-    }
+    labels = {post.normalized_name for post in posts}
     blocks: dict[str, list[str]] = {}
     current: str | None = None
     for line in lines[start:end]:
@@ -853,8 +910,12 @@ def _attach_trade_requirements(
             continue
         facts = [
             ParsedField(
-                "qualification.additional", CandidateValueType.STRING, text, text,
-                f"pdf:trade-requirement={trade_name}", text[:8000],
+                "qualification.additional",
+                CandidateValueType.STRING,
+                text,
+                text,
+                f"pdf:trade-requirement={trade_name}",
+                text[:8000],
             )
         ]
         certificate = re.search(
@@ -866,9 +927,12 @@ def _attach_trade_requirements(
         if certificate:
             facts.append(
                 ParsedField(
-                    "qualification.certificate", CandidateValueType.STRING,
-                    _clean_text(certificate.group(1)), certificate.group(1),
-                    f"pdf:trade-requirement={trade_name};field=certificate", text[:8000],
+                    "qualification.certificate",
+                    CandidateValueType.STRING,
+                    _clean_text(certificate.group(1)),
+                    certificate.group(1),
+                    f"pdf:trade-requirement={trade_name};field=certificate",
+                    text[:8000],
                 )
             )
         experience = re.search(
@@ -880,14 +944,15 @@ def _attach_trade_requirements(
         if experience:
             facts.append(
                 ParsedField(
-                    "experience.requirement", CandidateValueType.STRING,
-                    _clean_text(experience.group(1)), experience.group(1),
-                    f"pdf:trade-requirement={trade_name};field=experience", text[:8000],
+                    "experience.requirement",
+                    CandidateValueType.STRING,
+                    _clean_text(experience.group(1)),
+                    experience.group(1),
+                    f"pdf:trade-requirement={trade_name};field=experience",
+                    text[:8000],
                 )
             )
-        indexes = [
-            index for index, post in enumerate(posts) if post.normalized_name == trade_name
-        ]
+        indexes = [index for index, post in enumerate(posts) if post.normalized_name == trade_name]
         _attach_post_facts(fact_maps, indexes, tuple(facts), [], f"pdf:trade={trade_name}")
     updated = tuple(
         replace(post, facts=tuple(facts[path] for path in sorted(facts)))
@@ -1022,8 +1087,6 @@ def _aligned_detail_rows(
     if current:
         rows.append(current)
     return rows
-
-
 
 
 _SECTION_HEADINGS = {
@@ -1226,11 +1289,7 @@ def _match_section_heading(line: str) -> tuple[str, str, str] | None:
         if match is None:
             continue
         remainder = without_number[match.end() :].lstrip(" :-.")
-        if (
-            number
-            and "." not in number.group(1)
-            and without_number != without_number.upper()
-        ):
+        if number and "." not in number.group(1) and without_number != without_number.upper():
             return None
         if number is None and line.rstrip().endswith(".") and line != line.upper():
             return None
@@ -1238,9 +1297,7 @@ def _match_section_heading(line: str) -> tuple[str, str, str] | None:
     return None
 
 
-def _eligibility_fields(
-    lines: list[str], locator: str, excerpt: str
-) -> list[ParsedField]:
+def _eligibility_fields(lines: list[str], locator: str, excerpt: str) -> list[ParsedField]:
     text = " ".join(lines)
     claims = (
         (
@@ -1270,9 +1327,7 @@ def _eligibility_fields(
     return parsed
 
 
-def _age_relaxation_fields(
-    lines: list[str], locator: str, excerpt: str
-) -> list[ParsedField]:
+def _age_relaxation_fields(lines: list[str], locator: str, excerpt: str) -> list[ParsedField]:
     text = " ".join(lines)
     rules: list[dict[str, str]] = []
     patterns = (
@@ -1308,9 +1363,7 @@ def _age_relaxation_fields(
                 excerpt,
             )
         ]
-    return _structured_section_field(
-        "age.relaxations", lines, locator, excerpt, prefer_table=True
-    )
+    return _structured_section_field("age.relaxations", lines, locator, excerpt, prefer_table=True)
 
 
 def _match_kind(line: str) -> str | None:
@@ -1347,8 +1400,12 @@ def _physical_fields(raw_text: str) -> list[ParsedField]:
         )
         return [
             ParsedField(
-                "physical.criteria", CandidateValueType.JSON, value, str(value),
-                "pdf:section=physical-standards", excerpt[:8000],
+                "physical.criteria",
+                CandidateValueType.JSON,
+                value,
+                str(value),
+                "pdf:section=physical-standards",
+                excerpt[:8000],
             )
         ]
     useful = [
@@ -1486,20 +1543,20 @@ def _selection_fields(raw_text: str) -> list[ParsedField]:
         (r"^8\.\s+FINAL\s+MERIT\s+LISTS?\b", "Final Merit List"),
     )
     phase_names = [
-        name
-        for line in lines
-        for pattern, name in stages
-        if re.search(pattern, line, re.I)
+        name for line in lines for pattern, name in stages if re.search(pattern, line, re.I)
     ]
     phases = [
-        {"sequence": sequence, "name": name}
-        for sequence, name in enumerate(phase_names, start=1)
+        {"sequence": sequence, "name": name} for sequence, name in enumerate(phase_names, start=1)
     ]
     if len(phases) >= 2:
         parsed = [
             ParsedField(
-                "selection.phases", CandidateValueType.JSON, phases, str(phases),
-                "pdf:section=selection-stages", str(phases),
+                "selection.phases",
+                CandidateValueType.JSON,
+                phases,
+                str(phases),
+                "pdf:section=selection-stages",
+                str(phases),
             )
         ]
         text = " ".join(lines)
@@ -1508,8 +1565,12 @@ def _selection_fields(raw_text: str) -> list[ParsedField]:
             value = {"maximum_marks": int(marks.group(1))}
             parsed.append(
                 ParsedField(
-                    "selection.trade_proficiency_test", CandidateValueType.JSON, value,
-                    marks.group(0), "pdf:section=trade-proficiency-test", marks.group(0),
+                    "selection.trade_proficiency_test",
+                    CandidateValueType.JSON,
+                    value,
+                    marks.group(0),
+                    "pdf:section=trade-proficiency-test",
+                    marks.group(0),
                 )
             )
         maximum = re.search(r"Maximum\s+Marks\s*:\s*(\d+)", text, re.I)
@@ -1522,8 +1583,12 @@ def _selection_fields(raw_text: str) -> list[ParsedField]:
                 value["qualifying_percentage"] = int(qualifying.group(1))
             parsed.append(
                 ParsedField(
-                    "selection.final_merit", CandidateValueType.JSON, value, str(value),
-                    "pdf:section=final-merit", str(value),
+                    "selection.final_merit",
+                    CandidateValueType.JSON,
+                    value,
+                    str(value),
+                    "pdf:section=final-merit",
+                    str(value),
                 )
             )
         return parsed
@@ -1585,12 +1650,8 @@ def _exam_fields(lines: list[str], locator: str, excerpt: str) -> list[ParsedFie
     text = " ".join(lines)
     pattern: dict[str, object] = {"phase": "Written Test"}
     questions = re.search(r"(\d+)\s+multiple\s+choice\s+type\s+questions", text, re.I)
-    marks = re.search(
-        r"Total\s+marks\s+for\s+the\s+Written\s+Test\s+will\s+be\s+(\d+)", text, re.I
-    )
-    duration = re.search(
-        r"(?:duration|time)\s*[:.-]?\s*(\d+\s*(?:hours?|minutes?))", text, re.I
-    )
+    marks = re.search(r"Total\s+marks\s+for\s+the\s+Written\s+Test\s+will\s+be\s+(\d+)", text, re.I)
+    duration = re.search(r"(?:duration|time)\s*[:.-]?\s*(\d+\s*(?:hours?|minutes?))", text, re.I)
     if questions:
         pattern["questions"] = int(questions.group(1))
     if marks:
@@ -1617,8 +1678,7 @@ def _exam_fields(lines: list[str], locator: str, excerpt: str) -> list[ParsedFie
         )
         if language_line:
             pattern["languages"] = [
-                language.strip().title()
-                for language in language_line.rstrip(".").split("/")
+                language.strip().title() for language in language_line.rstrip(".").split("/")
             ]
     subjects = _subjects_from_exam_lines(lines)
     parsed: list[ParsedField] = []
@@ -1973,8 +2033,6 @@ def _ordered_items(lines: list[str]) -> list[str]:
     return list(dict.fromkeys(item for item in items if item))
 
 
-
-
 def apply_post_detail_tables(
     raw_text: str, posts: tuple[ParsedPost, ...]
 ) -> tuple[tuple[ParsedPost, ...], tuple[str, ...]]:
@@ -2100,9 +2158,7 @@ def apply_pypdf_post_details(
     ambiguities: list[str] = []
     for occurrence, block in enumerate(_post_scope_blocks(lines), start=1):
         text = _clean_text(" ".join(block))
-        owner_match = re.search(
-            r"For\s+the\s+posts?\s+of\s+(.+?)\s*:\s*The\s+age\b", text, re.I
-        )
+        owner_match = re.search(r"For\s+the\s+posts?\s+of\s+(.+?)\s*:\s*The\s+age\b", text, re.I)
         if owner_match:
             locator = f"pdf:post-scope=age;occurrence={occurrence}"
             matches = _owner_post_indexes(posts, owner_match.group(1))
@@ -2123,22 +2179,36 @@ def apply_pypdf_post_details(
                 else:
                     facts = (
                         ParsedField(
-                            "age.minimum", CandidateValueType.INTEGER, int(age.group(1)),
-                            age.group(1), locator, text[:8000],
+                            "age.minimum",
+                            CandidateValueType.INTEGER,
+                            int(age.group(1)),
+                            age.group(1),
+                            locator,
+                            text[:8000],
                         ),
                         ParsedField(
-                            "age.maximum", CandidateValueType.INTEGER, int(age.group(2)),
-                            age.group(2), locator, text[:8000],
+                            "age.maximum",
+                            CandidateValueType.INTEGER,
+                            int(age.group(2)),
+                            age.group(2),
+                            locator,
+                            text[:8000],
                         ),
                         ParsedField(
-                            "age.reference_date", CandidateValueType.DATE,
-                            parsed_date.isoformat(), age.group(3), locator, text[:8000],
+                            "age.reference_date",
+                            CandidateValueType.DATE,
+                            parsed_date.isoformat(),
+                            age.group(3),
+                            locator,
+                            text[:8000],
                         ),
                     )
                     _attach_post_facts(fact_maps, matches, facts, ambiguities, locator)
         licence_match = re.search(
             r"For\s+the\s+posts?\s+of\s+(.+?),\s*Applicant\s+must\s+possess\s+"
-            r"(.+?driving\s+licen[cs]e.+?)(?:\.|$)", text, re.I,
+            r"(.+?driving\s+licen[cs]e.+?)(?:\.|$)",
+            text,
+            re.I,
         )
         if licence_match:
             locator = f"pdf:post-scope=licence;occurrence={occurrence}"
@@ -2147,8 +2217,11 @@ def apply_pypdf_post_details(
                 ambiguities.append(f"Post licence clause at {locator} has uncertain ownership")
             else:
                 fact = ParsedField(
-                    "qualification.registration_or_licence", CandidateValueType.STRING,
-                    _clean_text(licence_match.group(2)), licence_match.group(2), locator,
+                    "qualification.registration_or_licence",
+                    CandidateValueType.STRING,
+                    _clean_text(licence_match.group(2)),
+                    licence_match.group(2),
+                    locator,
                     text[:8000],
                 )
                 _attach_post_facts(fact_maps, matches, (fact,), ambiguities, locator)
@@ -2242,8 +2315,11 @@ def _owner_has_name(owner: str, base_name: str) -> bool:
 
 
 def _attach_post_facts(
-    fact_maps: list[dict[str, ParsedField]], indexes: list[int],
-    facts: tuple[ParsedField, ...], ambiguities: list[str], locator: str,
+    fact_maps: list[dict[str, ParsedField]],
+    indexes: list[int],
+    facts: tuple[ParsedField, ...],
+    ambiguities: list[str],
+    locator: str,
 ) -> None:
     for index in indexes:
         for fact in facts:
@@ -2259,26 +2335,20 @@ def _attach_post_facts(
 
 
 def _attach_roster_blocks(
-    lines: list[str], posts: tuple[ParsedPost, ...],
-    fact_maps: list[dict[str, ParsedField]], ambiguities: list[str],
+    lines: list[str],
+    posts: tuple[ParsedPost, ...],
+    fact_maps: list[dict[str, ParsedField]],
+    ambiguities: list[str],
 ) -> None:
     heading = re.compile(
         r"^\s*(.+?)\s+in\s+(.+?)\s+with\s+Grade\s+Pay\s+of\s+(Rs\.?\s*[0-9,]+/-?)", re.I
     )
     starts = [(index, match) for index, line in enumerate(lines) if (match := heading.match(line))]
     for occurrence, (start, match) in enumerate(starts, start=1):
-        end = (
-            starts[occurrence][0]
-            if occurrence < len(starts)
-            else min(len(lines), start + 80)
-        )
+        end = starts[occurrence][0] if occurrence < len(starts) else min(len(lines), start + 80)
         block = lines[start:end]
         total_index = next(
-            (
-                offset
-                for offset, line in enumerate(block)
-                if re.match(r"^Total\s+", line, re.I)
-            ),
+            (offset for offset, line in enumerate(block) if re.match(r"^Total\s+", line, re.I)),
             None,
         )
         if total_index is None:
@@ -2302,15 +2372,23 @@ def _attach_roster_blocks(
         excerpt = "\n".join(block)[:8000]
         facts = [
             ParsedField(
-                "pay.grade_pay", CandidateValueType.STRING, _clean_text(match.group(3)),
-                match.group(3), f"{locator};field=grade-pay", excerpt,
+                "pay.grade_pay",
+                CandidateValueType.STRING,
+                _clean_text(match.group(3)),
+                match.group(3),
+                f"{locator};field=grade-pay",
+                excerpt,
             )
         ]
         for path, value in categories.items():
             facts.append(
                 ParsedField(
-                    path, CandidateValueType.INTEGER, value, str(value),
-                    f"{locator};field={path}", excerpt,
+                    path,
+                    CandidateValueType.INTEGER,
+                    value,
+                    str(value),
+                    f"{locator};field={path}",
+                    excerpt,
                 )
             )
         _attach_post_facts(fact_maps, matches, tuple(facts), ambiguities, locator)
@@ -2372,8 +2450,6 @@ def _matching_post_indexes(posts: tuple[ParsedPost, ...], values: dict[str, str]
             )
         ]
     return matches
-
-
 
 
 def archive_candidate_key(authority_code: str, metadata: ArchiveNoticeMetadata) -> str:
@@ -2461,9 +2537,7 @@ def notice_before_cutoff(notification_date: date | None, title: str, cutoff: dat
 
 
 def _parse_numeric_date(value: str) -> date | None:
-    match = re.search(
-        r"(\d{1,2})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{4})", value
-    )
+    match = re.search(r"(\d{1,2})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{4})", value)
     if not match:
         return None
     try:

@@ -1,15 +1,14 @@
-# Next task: Assam source expansion — AYUSH and Soil activation
+# Next task: Assam source production readiness
 
-Implement only the next evidence-backed existing-family batch:
+Validate the enabled Assam source set as a production operating unit:
 
-- `AYUSH_ASSAM`
-- `SOIL_ASSAM`
+- registry and scheduler configuration consistency
+- one bounded non-persistent smoke check per enabled source
+- source-specific operational blockers and runbook readiness
 
-Extend `CMS_DETAIL` for AYUSH's paginated recruitment index and node details, including strict
-lifecycle exclusion. Extend `OFFICIAL_ARCHIVE` for Soil Conservation's stable recruitment portlet,
-deriving safe classification metadata without downloading or accepting unlabeled documents
-blindly.
+Do not expand source coverage or reactivate withheld sources. Confirm that enabled sources retain
+bounded request behavior, rolling history policy, lifecycle exclusion, deterministic identity, and
+safe Advertisement-to-Post routing under current official surfaces.
 
-Use deterministic fixtures and one bounded non-persistent live validation per source. Register only
-after an authority-owned recruitment advertisement resolves safely. Do not implement ASU or Home &
-Political in this batch.
+Document operational readiness and exact blockers only. Do not run historical backfills or write
+to production data during validation.
