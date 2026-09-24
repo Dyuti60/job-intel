@@ -318,6 +318,9 @@ def test_operational_api_and_private_page_are_read_only_and_escape_failures(
     assert "Bounded actions" in page.text
     assert "Run all enabled" in page.text
     assert "ASDMA_ASSAM" in page.text
+    assert "HIGH_PRIORITY · priority 10 · every 360 minutes" in page.text
+    assert "Next due" in page.text
+    assert "Last attempted" in page.text
     assert "&lt;script&gt;" in page.text
     assert "<script>alert" not in page.text
     assert client.get("/operations/unknown").status_code == 404

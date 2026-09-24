@@ -57,6 +57,7 @@ class SourceSchedulePreview:
     priority: int
     poll_interval_minutes: int
     due: bool
+    next_due_at: datetime | None
     last_attempted_at: datetime | None
     last_successful_at: datetime | None
 
@@ -92,6 +93,47 @@ def source_schedule_catalog() -> dict[str, SourceSchedule]:
     if set(schedules) != set(PIPELINE_SOURCES):
         raise RuntimeError("Every pipeline source must have deterministic schedule metadata")
     return schedules
+
+
+def source_schedule_previews(
+    session: Session,
+    selected: tuple[str, ...],
+    evaluated_at: datetime | None = None,
+) -> tuple[SourceSchedulePreview, ...]:
+    """Return persisted cadence state for registered sources without executing them."""
+    now = evaluated_at or datetime.now(UTC)
+    catalog = source_schedule_catalog()
+    endpoints = {
+        authority.code: endpoint
+        for authority, endpoint in session.execute(
+            select(RecruitingAuthority, SourceEndpoint).join(
+                SourceEndpoint,
+                SourceEndpoint.recruiting_authority_id == RecruitingAuthority.id,
+            )
+        )
+    }
+    previews = []
+    for code in selected:
+        default = catalog[code]
+        endpoint = endpoints.get(code)
+        interval = endpoint.poll_interval_minutes if endpoint else default.poll_interval_minutes
+        last_attempted = endpoint.last_attempted_at if endpoint else None
+        next_due_at = (
+            last_attempted + timedelta(minutes=interval) if last_attempted is not None else None
+        )
+        previews.append(
+            SourceSchedulePreview(
+                source_code=code,
+                group=endpoint.schedule_group if endpoint else default.group,
+                priority=endpoint.priority if endpoint else default.priority,
+                poll_interval_minutes=interval,
+                due=next_due_at is None or next_due_at <= now,
+                next_due_at=next_due_at,
+                last_attempted_at=last_attempted,
+                last_successful_at=endpoint.last_successful_at if endpoint else None,
+            )
+        )
+    return tuple(previews)
 
 
 class SourceSchedulerService:
@@ -171,7 +213,7 @@ class SourceSchedulerService:
         selected = self.select_sources(
             selection, source=source, group=group, evaluated_at=started_at
         )
-        previews = self._preview(selected, started_at)
+        previews = source_schedule_previews(self.session, selected, started_at)
         aggregate = SchedulerSummary(
             selection,
             dry_run,
@@ -215,42 +257,6 @@ class SourceSchedulerService:
                     )
                 )
         return aggregate
-
-    def _preview(
-        self, selected: tuple[str, ...], evaluated_at: datetime
-    ) -> tuple[SourceSchedulePreview, ...]:
-        catalog = source_schedule_catalog()
-        endpoints = {
-            authority.code: endpoint
-            for authority, endpoint in self.session.execute(
-                select(RecruitingAuthority, SourceEndpoint).join(
-                    SourceEndpoint,
-                    SourceEndpoint.recruiting_authority_id == RecruitingAuthority.id,
-                )
-            )
-        }
-        previews = []
-        for code in selected:
-            default = catalog[code]
-            endpoint = endpoints.get(code)
-            interval = endpoint.poll_interval_minutes if endpoint else default.poll_interval_minutes
-            last_attempted = endpoint.last_attempted_at if endpoint else None
-            due = (
-                last_attempted is None
-                or last_attempted + timedelta(minutes=interval) <= evaluated_at
-            )
-            previews.append(
-                SourceSchedulePreview(
-                    source_code=code,
-                    group=endpoint.schedule_group if endpoint else default.group,
-                    priority=endpoint.priority if endpoint else default.priority,
-                    poll_interval_minutes=interval,
-                    due=due,
-                    last_attempted_at=last_attempted,
-                    last_successful_at=endpoint.last_successful_at if endpoint else None,
-                )
-            )
-        return tuple(previews)
 
     def _record_attempt(
         self, source_code: str, attempted_at: datetime, status: PipelineStatus

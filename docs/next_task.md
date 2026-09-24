@@ -1,14 +1,13 @@
-# Next task: Assam source production readiness
+# Next task: staged Assam production activation
 
-Validate the enabled Assam source set as a production operating unit:
+Run the first controlled production cadence for the 11 enabled Assam sources:
 
-- registry and scheduler configuration consistency
-- one bounded non-persistent smoke check per enabled source
-- source-specific operational blockers and runbook readiness
+- preview due sources and confirm the intended priority order;
+- execute only the due set with normal persistence and existing locks;
+- observe `/operations`, Review routing, and publisher outcomes through completion;
+- reconcile READY/DEGRADED/BLOCKED results against `docs/assam_production_readiness.md`;
+- stop and diagnose any BLOCKED source before retrying it.
 
-Do not expand source coverage or reactivate withheld sources. Confirm that enabled sources retain
-bounded request behavior, rolling history policy, lifecycle exclusion, deterministic identity, and
-safe Advertisement-to-Post routing under current official surfaces.
-
-Document operational readiness and exact blockers only. Do not run historical backfills or write
-to production data during validation.
+Do not run a historical backfill, reactivate withheld sources, expand coverage, or change shared
+Review/Master/Public behavior. This is an operational activation and observation task, not an adapter
+development milestone.

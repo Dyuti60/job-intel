@@ -28,6 +28,7 @@ from app.services.source_scheduler import (
     SourceSchedulerService,
     format_scheduler_summary,
     source_schedule_catalog,
+    source_schedule_previews,
 )
 
 router = APIRouter(prefix="/operations", tags=["operations-web"])
@@ -88,6 +89,10 @@ def _status_context(
     else:
         selected = sources
         health = [monitoring.evaluate(item) for item in sources]
+    scheduled = tuple(code for code in selected if code in source_schedule_catalog())
+    schedule_previews = {
+        item.source_code: item for item in source_schedule_previews(session, scheduled)
+    }
     notifications = OperationalNotificationService(
         session,
         settings,
@@ -106,6 +111,7 @@ def _status_context(
         "selected_source": source or "",
         "schedule_groups": [item.value for item in SourceScheduleGroup],
         "health_records": health,
+        "schedule_previews": schedule_previews,
         "notifications": notifications,
         "operation_result": operation_result,
         "failed_delivery_count": sum(

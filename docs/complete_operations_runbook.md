@@ -239,7 +239,43 @@ approved past application windows derive `CLOSED` status rather than disappearin
 
 Open `http://localhost:8000/operations` for status and bounded controls. Keep dry-run selected until
 the target is reviewed. Browser actions require a same-origin submission and call internal
-services directly; no entered value is executed as a command.
+services directly; no entered value is executed as a command. Each source card shows its configured
+group, priority, cadence, due state, next due time, last attempt, last scheduler success, latest
+pipeline result, and bounded failure summary.
+
+Preview which sources are due without fetching or changing recruitment data:
+
+```powershell
+uv run python -m workers.scheduler --due --dry-run
+```
+
+Preview one source, then run its complete pipeline without committing recruitment-domain changes:
+
+```powershell
+uv run python -m workers.scheduler --source APSC --dry-run
+uv run python -m workers.scheduler --source APSC --execute-no-commit
+```
+
+`--dry-run` previews scheduler selection only. `--execute-no-commit` performs the bounded network and
+pipeline validation; use it for a non-persistent source check. Do not substitute an unbounded manual
+crawl or repeatedly rerun a failing source. Inspect `/operations`, its pipeline stages, and the error
+summary first. A normal production execution should be started only after the target and due state
+are confirmed; source identity and publication are idempotent, but manual overlapping runs are still
+unsafe and unnecessary.
+
+Interpret source readiness consistently:
+
+- `READY`: the official surface is reachable and a bounded validation resolves a usable recruitment
+  document through the shared pipeline.
+- `DEGRADED`: the source is reachable and structurally usable, but currently exposes no qualifying
+  recruitment notice; this is not a parser failure.
+- `BLOCKED`: TLS, domain, configuration, parser, or structural failure prevents safe operation.
+
+For `DEGRADED`, retain the normal cadence and recheck on the next due run. For `BLOCKED`, stop source
+execution, preserve the failed run, diagnose against a small official fixture, and deploy a tested
+fix before retrying. Never work around host/TLS restrictions or manually enable a withheld inventory
+source. `AJI_HISTORY_LOOKBACK_MONTHS` is the rolling discovery window for future runs; changing it
+does not delete persisted history.
 
 ```powershell
 uv run python -m workers.monitoring --source APSC

@@ -16,6 +16,7 @@ from app.services.source_scheduler import (
     SourceSchedulerService,
     format_scheduler_summary,
     source_schedule_catalog,
+    source_schedule_previews,
 )
 from tests.factories import create_authority, create_endpoint
 from workers import scheduler as scheduler_command
@@ -106,6 +107,32 @@ def test_due_selection_uses_registry_attempt_time_and_disabled_state(client, db_
         assert "disabled source" in str(error)
     else:
         raise AssertionError("disabled source should not be selected")
+
+
+def test_schedule_preview_exposes_persisted_cadence_and_next_due(client, db_session) -> None:
+    authority = create_authority(client)
+    endpoint_data = create_endpoint(
+        client,
+        authority["id"],
+        schedule_group="HIGH_PRIORITY",
+        poll_interval_minutes=360,
+        priority=10,
+    )
+    endpoint = db_session.get(SourceEndpoint, UUID(endpoint_data["id"]))
+    assert endpoint is not None
+    endpoint.last_attempted_at = NOW - timedelta(minutes=30)
+    endpoint.last_successful_at = NOW - timedelta(days=1)
+    db_session.commit()
+
+    preview = source_schedule_previews(db_session, ("APSC",), NOW)[0]
+
+    assert preview.group == SourceScheduleGroup.HIGH_PRIORITY
+    assert preview.priority == 10
+    assert preview.poll_interval_minutes == 360
+    assert preview.due is False
+    assert preview.next_due_at == NOW + timedelta(minutes=330)
+    assert preview.last_attempted_at == NOW - timedelta(minutes=30)
+    assert preview.last_successful_at == NOW - timedelta(days=1)
 
 
 def test_scheduler_isolates_one_source_failure(monkeypatch, db_session) -> None:

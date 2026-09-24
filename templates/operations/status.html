@@ -61,6 +61,7 @@
 {% endif %}
 
 {% for health in health_records %}
+{% set schedule = schedule_previews.get(health.source_code) %}
 <section class="card">
   <div class="section-heading">
     <div><p class="eyebrow">Source</p><h2>{{ health.source_code }}</h2></div>
@@ -73,6 +74,13 @@
     <div class="metric"><small>Stale running</small><strong>{{ health.stale_running_runs|length }}</strong></div>
   </div>
   <dl class="facts">
+    {% if schedule %}
+    <dt>Schedule</dt><dd>{{ schedule.group.value }} · priority {{ schedule.priority }} · every {{ schedule.poll_interval_minutes }} minutes</dd>
+    <dt>Due</dt><dd>{% if schedule.due %}Now{% else %}No{% endif %}</dd>
+    <dt>Next due</dt><dd>{% if schedule.next_due_at %}{{ schedule.next_due_at }}{% else %}Now (no prior attempt){% endif %}</dd>
+    <dt>Last attempted</dt><dd>{{ schedule.last_attempted_at or "None" }}</dd>
+    <dt>Scheduler last success</dt><dd>{{ schedule.last_successful_at or "None" }}</dd>
+    {% endif %}
     <dt>Evaluated</dt><dd>{{ health.evaluated_at }}</dd>
     <dt>Latest run</dt><dd>{% if health.last_run %}<a href="/api/v1/pipeline-runs/{{ health.last_run.id }}">{{ health.last_run.id }}</a> · {{ health.last_run.status.value }}{% else %}None{% endif %}</dd>
     <dt>Last success</dt><dd>{% if health.last_successful_run %}<a href="/api/v1/pipeline-runs/{{ health.last_successful_run.id }}">{{ health.last_successful_run.completed_at }}</a>{% else %}None{% endif %}</dd>
