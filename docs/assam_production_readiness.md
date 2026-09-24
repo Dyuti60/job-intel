@@ -30,3 +30,29 @@ registrations.
 - Operations exposes persisted last attempt/success, pipeline status/failure, next due/cadence,
   group, and priority. Production should begin with a staged due-source execution and operator
   observation rather than a historical backfill.
+
+## Staged activation attempt — 24 September 2026
+
+The required `workers.scheduler --due --dry-run` preflight could not connect to the configured local
+PostgreSQL service at `localhost:5433`. No PostgreSQL service, Docker daemon, or alternate local
+container engine was available. The command was stopped after one connection attempt; it performed
+no network discovery and no persistence. Because the due set could not be established, the normal
+persistent scheduler was not executed.
+
+| Source | Run status | READY / DEGRADED / BLOCKED | Review / Master outcome | Note |
+|---|---|---|---|---|
+| `APSC` | NOT RUN | NOT CLASSIFIED | No change | Scheduler preview blocked by unavailable database |
+| `SLPRB_ASSAM` | NOT RUN | NOT CLASSIFIED | No change | Scheduler preview blocked by unavailable database |
+| `DEE_ASSAM` | NOT RUN | NOT CLASSIFIED | No change | Scheduler preview blocked by unavailable database |
+| `DHS_ASSAM` | NOT RUN | NOT CLASSIFIED | No change | Scheduler preview blocked by unavailable database |
+| `DME_ASSAM` | NOT RUN | NOT CLASSIFIED | No change | Scheduler preview blocked by unavailable database |
+| `DTE_ASSAM` | NOT RUN | NOT CLASSIFIED | No change | Scheduler preview blocked by unavailable database |
+| `ASDMA_ASSAM` | NOT RUN | NOT CLASSIFIED | No change | Scheduler preview blocked by unavailable database |
+| `FREMAA_ASSAM` | NOT RUN | NOT CLASSIFIED | No change | Scheduler preview blocked by unavailable database |
+| `APGCL_ASSAM` | NOT RUN | NOT CLASSIFIED | No change | Scheduler preview blocked by unavailable database |
+| `AEGCL_ASSAM` | NOT RUN | NOT CLASSIFIED | No change | Scheduler preview blocked by unavailable database |
+| `SOIL_ASSAM` | NOT RUN | NOT CLASSIFIED | No change | Scheduler preview blocked by unavailable database |
+
+Activation result: **0 due sources executed; 0 newly classified READY, 0 DEGRADED, 0 source-level
+BLOCKED**. The activation environment is **BLOCKED** until PostgreSQL is available. Existing bounded
+readiness classifications above remain unchanged; there is no evidence of a source or adapter defect.

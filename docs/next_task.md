@@ -2,6 +2,7 @@
 
 Run the first controlled production cadence for the 11 enabled Assam sources:
 
+- restore the configured PostgreSQL service at `localhost:5433` and confirm it is reachable;
 - preview due sources and confirm the intended priority order;
 - execute only the due set with normal persistence and existing locks;
 - observe `/operations`, Review routing, and publisher outcomes through completion;

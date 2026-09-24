@@ -246,8 +246,14 @@ pipeline result, and bounded failure summary.
 Preview which sources are due without fetching or changing recruitment data:
 
 ```powershell
+docker compose ps
 uv run python -m workers.scheduler --due --dry-run
 ```
+
+The scheduler preview reads persisted endpoint cadence, so PostgreSQL must be reachable before it can
+select the due set. If `docker compose ps` cannot reach a container engine or the preview waits on the
+configured database, stop after that single attempt. Restore the documented database service first;
+do not guess the due set, force individual sources, or substitute `--all-enabled`.
 
 Preview one source, then run its complete pipeline without committing recruitment-domain changes:
 
