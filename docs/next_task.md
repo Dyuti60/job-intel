@@ -1,16 +1,15 @@
-# Next task: Assam source expansion — discovered-only validation
+# Next task: Assam source expansion — AYUSH and Soil activation
 
-Validate only the remaining discovered-but-unvalidated official sources:
+Implement only the next evidence-backed existing-family batch:
 
 - `AYUSH_ASSAM`
-- `HOME_POLITICAL_ASSAM`
-- `ASU_ASSAM`
 - `SOIL_ASSAM`
 
-Perform one bounded official-surface validation per source to establish whether a stable recurring
-recruitment listing exists and which existing adapter family, if any, can support it safely. Do not
-write adapters or enable sources merely from visual similarity.
+Extend `CMS_DETAIL` for AYUSH's paginated recruitment index and node details, including strict
+lifecycle exclusion. Extend `OFFICIAL_ARCHIVE` for Soil Conservation's stable recruitment portlet,
+deriving safe classification metadata without downloading or accepting unlabeled documents
+blindly.
 
-Update the authoritative registry with the evidence-backed classification and define the next
-implementation batch. Preserve official-source authority and do not crawl advertisements or PDFs
-beyond the single bounded listing-shape validation.
+Use deterministic fixtures and one bounded non-persistent live validation per source. Register only
+after an authority-owned recruitment advertisement resolves safely. Do not implement ASU or Home &
+Political in this batch.
