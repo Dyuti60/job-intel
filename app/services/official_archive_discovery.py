@@ -46,6 +46,10 @@ from sources.adapters.official_recruitment_archive import (
     OfficialArchiveSource,
     OfficialRecruitmentArchiveAdapter,
 )
+from sources.adapters.special_case_recruitment import (
+    SpecialCaseRecruitmentAdapter,
+    SpecialCaseSource,
+)
 from sources.http import BoundedHttpClient
 
 
@@ -63,6 +67,7 @@ class OfficialArchiveDiscoveryWorkerService:
             | DatedDocumentSource
             | CustomHtmlListingSource
             | CustomPortalSource
+            | SpecialCaseSource
         ),
     ) -> None:
         self.session = session
@@ -80,6 +85,7 @@ class OfficialArchiveDiscoveryWorkerService:
             | DatedDocumentResolverAdapter
             | CustomHtmlListingAdapter
             | CustomPortalAdapter
+            | SpecialCaseRecruitmentAdapter
             | None
         ) = None,
     ) -> DiscoverySummary:
@@ -100,7 +106,9 @@ class OfficialArchiveDiscoveryWorkerService:
                     max_response_bytes=self.settings.discovery_max_response_bytes,
                     requests_per_minute=self.source.requests_per_minute,
                 )
-                if isinstance(self.source, CustomPortalSource):
+                if isinstance(self.source, SpecialCaseSource):
+                    adapter_class = SpecialCaseRecruitmentAdapter
+                elif isinstance(self.source, CustomPortalSource):
                     adapter_class = CustomPortalAdapter
                 elif isinstance(self.source, CustomHtmlListingSource):
                     adapter_class = CustomHtmlListingAdapter

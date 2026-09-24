@@ -47,7 +47,7 @@ Scheduler values are recommendations for inactive sources. Lower numeric priorit
 | `ASDM_ASSAM` | Assam Skill Development Mission | Mission | `https://asdm.assam.gov.in/portlets/recruitment-career` | NORMAL | document archive / DATED_DOCUMENT_RESOLVER | REQUIRES_EXISTING_ADAPTER_EXTENSION | NORMAL / 56 | Reachable, but the live listing emitted no qualifying document links to this resolver. |
 | `SAMETI_ASSAM` | State Agricultural Management and Extension Training Institute | Institute | `https://sameti.assam.gov.in/resource/recruitment-notice` | PERIODIC | structured resources / OFFICIAL_ARCHIVE | REQUIRES_EXISTING_ADAPTER_EXTENSION | NORMAL / 72 | Validate resource metadata and date extraction before activation. |
 | `DSE_ASSAM` | Directorate of Secondary Education | Directorate | `https://dse.assam.gov.in/` | HIGH | dispersed CMS notices / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | HIGH_PRIORITY / 46 | No stable recruitment-only listing was confirmed. |
-| `GHC_ASSAM` | Gauhati High Court recruitment relevant to Assam | Court | `https://ghconline.gov.in/index.php/recruitment-notices/` | HIGH | dated HTML listing + documents / SPECIAL_CASE | REQUIRES_CUSTOM_ADAPTER | HIGH_PRIORITY / 52 | Must restrict ingestion to Assam/Principal Seat recruitments. |
+| `GHC_ASSAM` | Gauhati High Court recruitment relevant to Assam | Court | `https://ghconline.gov.in/index.php/recruitment-notices/` | HIGH | dated HTML listing + documents / SPECIAL_CASE | REQUIRES_CUSTOM_ADAPTER | HIGH_PRIORITY / 52 | Reachable, but the bounded official listing exposed no qualifying advertisement on which Assam/Principal Seat ownership could be established. |
 | `MHRB_ASSAM` | Medical and Health Recruitment Board, Assam | Board | `https://nhm.assam.gov.in/documents` | HIGH | documents hosted with NHM / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | HIGH_PRIORITY / 54 | Needs authoritative MHRB-vs-NHM ownership classification. |
 | `APDCL_ASSAM` | Assam Power Distribution Company Limited | PSU | `https://www.apdcl.org/` | NORMAL | careers portal / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 66 | Reachable homepage emitted no qualifying recruitment listing item; stable career endpoint remains unresolved. |
 | `APGCL_ASSAM` | Assam Power Generation Corporation Limited | PSU | `https://www.apgcl.org/public/en/career/recruitments` | NORMAL | structured recruitment table / CUSTOM_HTML_LISTING | ENABLED_VALIDATED | NORMAL / 67 | Bounded live validation resolved one official document; safely routed LEGACY_UNSPLIT. |
@@ -58,7 +58,7 @@ Scheduler values are recommendations for inactive sources. Lower numeric priorit
 | `COTTON_UNIVERSITY` | Cotton University | State university | `https://recruit.cottonuniversity.ac.in/` | NORMAL | application portal + notices / CUSTOM_PORTAL_API | REQUIRES_CUSTOM_ADAPTER | NORMAL / 76 | Reachable, but the bounded official portal/listing exposed no qualifying recruitment advertisement/document. |
 | `AAU_ASSAM` | Assam Agricultural University | State university | `https://www.appl.aau.ac.in/recuitments/index.php` | NORMAL | custom recruitment portal / CUSTOM_PORTAL_API | REQUIRES_CUSTOM_ADAPTER | NORMAL / 77 | Published `recuitments` URL preserved; bounded validation could not establish the listing because the official portal's TLS certificate chain was untrusted. |
 | `ASTU_ASSAM` | Assam Science and Technology University | State university | `https://astu.ac.in/?page_id=110` | PERIODIC | WordPress listing + documents / CUSTOM_HTML_LISTING | REQUIRES_CUSTOM_ADAPTER | NORMAL / 78 | Reachable, but the bounded WordPress/listing surface exposed no qualifying in-window recruitment item/document. |
-| `SLRC_ASSAM` | State Level Recruitment Commissions (ADRE) | Commission | `https://site.sebaonline.org/` | PERIODIC | campaign portals / SPECIAL_CASE | REQUIRES_CUSTOM_ADAPTER | HIGH_PRIORITY / 25 | Campaign URLs change; a stable authoritative advertisement archive is unresolved. |
+| `SLRC_ASSAM` | State Level Recruitment Commissions (ADRE) | Commission | `https://site.sebaonline.org/` | PERIODIC | campaign portals / SPECIAL_CASE | REQUIRES_CUSTOM_ADAPTER | HIGH_PRIORITY / 25 | Reachable, but the bounded official surface exposed no qualifying advertisement from which stable campaign identity could be established. |
 | `AYUSH_ASSAM` | Directorate of AYUSH | Directorate | `https://ayush.assam.gov.in/` | PERIODIC | CMS latest/detail pages / CMS_DETAIL | DISCOVERED_NOT_YET_VALIDATED | NORMAL / 70 | Official recruitment details exist, but no stable recruitment index was confirmed. |
 | `HOME_POLITICAL_ASSAM` | Home and Political Department | Department | `https://homeandpolitical.assam.gov.in/documents-detail/recruitment-notice` | PERIODIC | individual document detail / OFFICIAL_ARCHIVE | DISCOVERED_NOT_YET_VALIDATED | NORMAL / 80 | Detail page is official but is not yet a stable recurring listing. |
 | `ASU_ASSAM` | Assam Skill University | State university | `https://asu.ac.in/` | PERIODIC | institution site / CUSTOM_HTML_LISTING | DISCOVERED_NOT_YET_VALIDATED | NORMAL / 82 | Recruitment section endpoint and recurrence need validation. |
@@ -136,5 +136,13 @@ failed official TLS certificate-chain validation during its single bounded live 
 
 ### Next special-case batch
 
-- **SPECIAL_CASE**: `GHC_ASSAM` (Assam-seat filtering) and `SLRC_ASSAM` (campaign identity).
-- Validate the four discovered-only sources before assigning an implementation batch.
+Completed 24 September 2026. **SPECIAL_CASE** now applies explicit Assam/Principal Seat ownership
+filtering for `GHC_ASSAM` and URL-independent cycle-plus-advertisement identity for `SLRC_ASSAM`,
+then reuses the bounded shared document and Post pipeline. Neither was activated: both official
+entry points were reachable, but their single bounded live validations exposed no qualifying
+advertisement on which the required source-specific safety rule could be established.
+
+### Discovered-only validation batch
+
+Validate `AYUSH_ASSAM`, `HOME_POLITICAL_ASSAM`, `ASU_ASSAM`, and `SOIL_ASSAM` before assigning an
+adapter family or enabling any source.

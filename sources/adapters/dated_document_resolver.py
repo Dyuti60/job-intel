@@ -185,11 +185,15 @@ class DatedDocumentResolverAdapter:
 
     def discover(self) -> ArchiveAdapterResult:
         listing = self.http.fetch(self.source.listing_url, accepted_types=("text/html",))
-        items = parse_dated_document_listing(
-            listing.content,
-            self.source,
-            cutoff_date=self.cutoff_date,
-        )
+        items = [
+            item
+            for item in parse_dated_document_listing(
+                listing.content,
+                self.source,
+                cutoff_date=self.cutoff_date,
+            )
+            if self.accepts_item(item)
+        ]
         warnings: list[str] = []
         notices: list[ArchiveNotice] = []
         if len(items) > self.source.max_listing_rows_per_run:
@@ -255,12 +259,18 @@ class DatedDocumentResolverAdapter:
                         f"Recruitment document outside bounded history window: {resource.url}"
                     )
                     continue
+                candidate_key = self.candidate_key(metadata, extraction)
+                if candidate_key is None:
+                    warnings.append(
+                        f"Recruitment identity could not be established safely: {resource.url}"
+                    )
+                    continue
                 warnings.extend(extraction.warnings)
                 notices.append(
                     ArchiveNotice(
                         metadata=metadata,
                         document=AdapterDocument(resource, DocumentType.PDF, "pdf"),
-                        candidate_key=archive_candidate_key(self.source.authority_code, metadata),
+                        candidate_key=candidate_key,
                         fields=extraction.fields,
                         posts=extraction.posts,
                         split_status=extraction.split_status,
@@ -277,6 +287,16 @@ class DatedDocumentResolverAdapter:
             notices=tuple(notices),
             warnings=tuple(warnings),
         )
+
+    def accepts_item(self, item: DocumentListingItem) -> bool:
+        return True
+
+    def candidate_key(
+        self,
+        metadata: ArchiveNoticeMetadata,
+        extraction: ParsedAdvertisement,
+    ) -> str | None:
+        return archive_candidate_key(self.source.authority_code, metadata)
 
 
 def parse_dated_document_listing(

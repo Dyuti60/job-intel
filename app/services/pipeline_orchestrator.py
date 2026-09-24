@@ -28,6 +28,7 @@ from sources.adapters.custom_html_recruitment import CUSTOM_HTML_SOURCES
 from sources.adapters.custom_portal_recruitment import CUSTOM_PORTAL_SOURCES
 from sources.adapters.dated_document_resolver import DATED_DOCUMENT_SOURCES
 from sources.adapters.official_recruitment_archive import OFFICIAL_ARCHIVE_SOURCES
+from sources.adapters.special_case_recruitment import SPECIAL_CASE_SOURCES
 
 OFFICIAL_RECRUITMENT_SOURCES = {
     **OFFICIAL_ARCHIVE_SOURCES,
@@ -35,6 +36,7 @@ OFFICIAL_RECRUITMENT_SOURCES = {
     **CUSTOM_HTML_SOURCES,
     **CUSTOM_PORTAL_SOURCES,
     **DATED_DOCUMENT_SOURCES,
+    **SPECIAL_CASE_SOURCES,
 }
 
 
