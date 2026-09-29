@@ -87,3 +87,16 @@ last fully successful timestamp.
 
 The Publisher safely rescanned an increasing review backlog (up to 92 assessments by the SOIL run).
 It caused no correctness failure and is recorded only as a follow-up performance optimization.
+
+## DHS/DME extraction hardening â€” 29 September 2026
+
+The shared official-archive Post structurer now recognizes explicit single-Post titles, bounded
+whitespace vacancy tables, and numbered position/count rows. It still rejects incomplete tables as
+`AMBIGUOUS` and retains unsupported content as `LEGACY_UNSPLIT`; no persisted history was rewritten.
+
+| Source | Persisted representative comparison | Bounded live check | Classification / remaining action |
+|---|---|---|---|
+| `DHS_ASSAM` | 4 documents: before 0 Posts / 0 AMBIGUOUS / 4 LEGACY; after 3 Posts / 1 AMBIGUOUS / 1 LEGACY | Reachable; one document resolved; sampled image/unsupported PDF remained LEGACY_UNSPLIT | DEGRADED â€” evaluate bounded scanned-PDF text recovery; keep Review fallback |
+| `DME_ASSAM` | 4 documents: before 0 Posts / 0 AMBIGUOUS / 4 LEGACY; after 4 Posts / 0 AMBIGUOUS / 2 LEGACY | Reachable; one document resolved; sampled image/unsupported PDF remained LEGACY_UNSPLIT | DEGRADED â€” evaluate bounded scanned-PDF text recovery; keep Review fallback |
+
+Both checks were non-persistent, fetched at most one qualifying document, and fabricated no Posts.

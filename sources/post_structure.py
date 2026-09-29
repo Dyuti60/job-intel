@@ -375,6 +375,388 @@ def _ambiguous_narrative() -> tuple[
     return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
 
 
+_WHITESPACE_VACANCY_HEADER = re.compile(
+    r"\bname\s+of\s+(?:the\s+)?posts?\b.*?\b(?:minimum\s+)?educational\s+qualification\b"
+    r".*?\bscale\s+of\s+pay\b.*?\btotal\s+(?:no[.,]?\s+of\s+)?vacant\s+"
+    r"(?:posts?|dost|oost)\b",
+    re.I,
+)
+_QUALIFICATION_START = re.compile(
+    r"^(?:b\.?\s*sc\.?|m\.?\s*sc\.?|hsslc|hslc|mbbs|bachelor|master|graduate|"
+    r"post[- ]?graduate|diploma|certificate|iti\b|degree\b|class\s+[ivx]+\b|passed\b)",
+    re.I,
+)
+_QUALIFICATION_INLINE = re.compile(_QUALIFICATION_START.pattern.removeprefix("^"), re.I)
+_PAY_RANGE = re.compile(r"\b\d{1,2}[,.]?\d{3}\s*[-–]\s*\d{1,2}[,.]?\d{3}\b")
+_VACANCY_COUNT_LINE = re.compile(r"^\s*(\d{1,5})(?:\s+(?:nos?\.?|[A-Za-z]))", re.I)
+_SERIAL_ROW = re.compile(r"^\s*(?P<serial>[0-9Il]{1,3})[.)]?\s+(?P<title>\S.+?)\s*$")
+
+
+def parse_whitespace_vacancy_table(
+    raw_text: str, title: str = "",
+) -> tuple[
+    tuple[ParsedPost, ...],
+    AdvertisementSplitStatus,
+    str | None,
+    tuple[str, ...],
+]:
+    """Parse bounded pypdf rows whose columns survived but pipe separators did not."""
+    lines = [_clean_text(line) for line in raw_text.replace("\r\n", "\n").split("\n")]
+    header_index = next(
+        (
+            index
+            for index in range(len(lines))
+            if _WHITESPACE_VACANCY_HEADER.search(" ".join(lines[index : index + 8]))
+        ),
+        None,
+    )
+    if header_index is None:
+        return (), AdvertisementSplitStatus.LEGACY_UNSPLIT, None, ()
+
+    parsed: list[ParsedPost] = []
+    seen_keys: set[str] = set()
+    expected_serial = 1
+    errors: list[str] = []
+    scan_end = min(len(lines), header_index + 402)
+    index = header_index + 1
+    while index < scan_end:
+        match = _SERIAL_ROW.match(lines[index])
+        if match is None:
+            index += 1
+            continue
+        serial_text = match.group("serial").translate(str.maketrans({"I": "1", "l": "1"}))
+        serial = int(serial_text)
+        if serial < expected_serial:
+            index += 1
+            continue
+        if serial > expected_serial:
+            errors.append(f"Vacancy table skipped serial {expected_serial}")
+            break
+
+        initial_title = match.group("title")
+        inline_qualification = _QUALIFICATION_INLINE.search(initial_title)
+        title_lines = [
+            initial_title[: inline_qualification.start()]
+            if inline_qualification is not None
+            else initial_title
+        ]
+        qualification_index = index if inline_qualification is not None else None
+        for offset in range(1, 8):
+            if qualification_index is not None:
+                break
+            candidate_index = index + offset
+            if candidate_index >= scan_end:
+                break
+            candidate = lines[candidate_index]
+            if _QUALIFICATION_START.match(candidate):
+                qualification_index = candidate_index
+                break
+            if not candidate or _SERIAL_ROW.match(candidate):
+                break
+            title_lines.append(candidate)
+        if qualification_index is None:
+            index += 1
+            continue
+
+        name = _clean_post_title(" ".join(title_lines)).strip(" ,-:")
+        if not name or len(name) > 180 or re.search(r"[.;]", name):
+            errors.append(f"Vacancy row {serial} has an unsupported Post title")
+            break
+        row_end = min(scan_end, qualification_index + 25)
+        for candidate_index in range(qualification_index + 1, row_end):
+            next_row = _SERIAL_ROW.match(lines[candidate_index])
+            if next_row is None:
+                continue
+            next_serial = int(
+                next_row.group("serial").translate(str.maketrans({"I": "1", "l": "1"}))
+            )
+            if next_serial == serial + 1:
+                row_end = candidate_index
+                break
+        pay_index = next(
+            (
+                candidate_index
+                for candidate_index in range(qualification_index, row_end)
+                if _PAY_RANGE.search(lines[candidate_index])
+            ),
+            None,
+        )
+        if pay_index is None:
+            errors.append(f"Vacancy row {serial} has no deterministic pay/total boundary")
+            break
+        count_match = next(
+            (
+                (candidate_index, count)
+                for candidate_index in range(pay_index + 1, min(scan_end, pay_index + 6))
+                if (count := _VACANCY_COUNT_LINE.match(lines[candidate_index]))
+            ),
+            None,
+        )
+        if count_match is None:
+            errors.append(f"Vacancy row {serial} has no deterministic total")
+            break
+        count_index, count = count_match
+        total = int(count.group(1))
+        post_key = _stable_post_key(name, "")
+        if total < 1 or post_key in seen_keys:
+            errors.append(f"Vacancy row {serial} has an invalid total or duplicate Post")
+            break
+        seen_keys.add(post_key)
+        excerpt = "\n".join(lines[index : count_index + 1])[:8000]
+        locator = f"pdf:whitespace-vacancies;row={serial}"
+        parsed.append(
+            ParsedPost(
+                post_key=post_key,
+                ordinal=len(parsed) + 1,
+                name=name,
+                normalized_name=" ".join(name.casefold().split()),
+                source_locator=locator,
+                facts=(
+                    ParsedField(
+                        "name",
+                        CandidateValueType.STRING,
+                        name,
+                        name,
+                        f"{locator};column=post",
+                        excerpt,
+                    ),
+                    ParsedField(
+                        "vacancies.total",
+                        CandidateValueType.INTEGER,
+                        total,
+                        count.group(1),
+                        f"{locator};column=total",
+                        excerpt,
+                    ),
+                ),
+            )
+        )
+        expected_serial += 1
+        index = count_index + 1
+
+    if errors or not parsed:
+        note = "; ".join(errors)[:4000] or (
+            "Whitespace vacancy table was found but no deterministic Post rows followed."
+        )
+        return (), AdvertisementSplitStatus.AMBIGUOUS, note, tuple(errors or [note])
+    return (
+        canonicalize_posts(_prefer_listing_post_names(title, tuple(parsed))),
+        AdvertisementSplitStatus.EXPLICIT,
+        f"Deterministically parsed {len(parsed)} Posts from a whitespace vacancy table.",
+        (),
+    )
+
+
+def _clean_post_title(value: str) -> str:
+    return _clean_text(re.sub(r"(?<=[a-z])(?=[A-Z])", " ", value))
+
+
+def _prefer_listing_post_names(
+    title: str, posts: tuple[ParsedPost, ...]
+) -> tuple[ParsedPost, ...]:
+    listing = re.sub(
+        r"^\s*(?:advertisement|advt\.?|recruitment\s+notice)\s*[-:]?\s*",
+        "",
+        _clean_text(title),
+        flags=re.I,
+    )
+    names = [_clean_post_title(value).strip(" ,-:") for value in re.split(r"\s+&\s+", listing)]
+    if len(names) != len(posts) or len(names) < 2:
+        return posts
+    listing_token_sets = [set(re.findall(r"[a-z0-9]+", name.casefold())) for name in names]
+    parsed_token_sets = [
+        set(re.findall(r"[a-z0-9]+", post.name.casefold())) for post in posts
+    ]
+    for index, (listing_tokens, parsed_tokens) in enumerate(
+        zip(listing_token_sets, parsed_token_sets, strict=True)
+    ):
+        overlap = len(listing_tokens & parsed_tokens)
+        competing = max(
+            (
+                len(other_listing & parsed_tokens)
+                for other_index, other_listing in enumerate(listing_token_sets)
+                if other_index != index
+            ),
+            default=0,
+        )
+        if not listing_tokens or not parsed_tokens or overlap == 0 or overlap <= competing:
+            return posts
+    result: list[ParsedPost] = []
+    for name, post in zip(names, posts, strict=True):
+        facts = tuple(
+            replace(
+                fact,
+                value=name,
+                raw_value=name,
+                source_locator=f"listing:title;post={post.ordinal}",
+                excerpt=_clean_text(title)[:8000],
+            )
+            if fact.field_path == "name"
+            else fact
+            for fact in post.facts
+        )
+        result.append(
+            replace(
+                post,
+                post_key=_stable_post_key(name, ""),
+                name=name,
+                normalized_name=" ".join(name.casefold().split()),
+                facts=facts,
+            )
+        )
+    if len({post.post_key for post in result}) != len(result):
+        return posts
+    return tuple(result)
+
+
+_POSITION_TABLE_HEADER = re.compile(r"\bposition\s+essential\s+qualification\b", re.I)
+_POSITION_COUNT = re.compile(
+    r"^\(?\s*(?P<total>\d{1,5})\s*(?:nos?\.?|posts?)\s*\)?$", re.I
+)
+
+
+def parse_numbered_position_table(
+    raw_text: str,
+) -> tuple[
+    tuple[ParsedPost, ...],
+    AdvertisementSplitStatus,
+    str | None,
+    tuple[str, ...],
+]:
+    """Parse bounded numbered position headings with an explicit parenthetical count."""
+    lines = [_clean_text(line) for line in raw_text.replace("\r\n", "\n").split("\n")]
+    header_index = next(
+        (
+            index
+            for index in range(len(lines))
+            if _POSITION_TABLE_HEADER.search(" ".join(lines[index : index + 4]))
+        ),
+        None,
+    )
+    if header_index is None:
+        return (), AdvertisementSplitStatus.LEGACY_UNSPLIT, None, ()
+
+    parsed: list[ParsedPost] = []
+    seen_keys: set[str] = set()
+    for index in range(header_index + 1, min(len(lines), header_index + 252)):
+        row = _SERIAL_ROW.match(lines[index])
+        if row is None:
+            continue
+        title_lines = [row.group("title")]
+        count_match = None
+        count_index = None
+        for candidate_index in range(index + 1, min(len(lines), index + 8)):
+            candidate = lines[candidate_index]
+            if count := _POSITION_COUNT.fullmatch(candidate):
+                count_match = count
+                count_index = candidate_index
+                break
+            if not candidate or _SERIAL_ROW.match(candidate) or re.search(r"[.;:]$", candidate):
+                break
+            title_lines.append(candidate)
+        if count_match is None or count_index is None:
+            continue
+        name = _clean_text(" ".join(title_lines)).strip(" ,-:")
+        if not name or len(name) > 160 or re.search(r"[.;:]", name):
+            continue
+        post_key = _stable_post_key(name, "")
+        if post_key in seen_keys:
+            note = "Numbered position table contains a duplicate Post identity."
+            return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
+        seen_keys.add(post_key)
+        total = int(count_match.group("total"))
+        if total < 1:
+            continue
+        locator = f"pdf:numbered-positions;row={len(parsed) + 1}"
+        excerpt = "\n".join(lines[index : count_index + 1])[:8000]
+        parsed.append(
+            ParsedPost(
+                post_key=post_key,
+                ordinal=len(parsed) + 1,
+                name=name,
+                normalized_name=" ".join(name.casefold().split()),
+                source_locator=locator,
+                facts=(
+                    ParsedField(
+                        "name",
+                        CandidateValueType.STRING,
+                        name,
+                        name,
+                        f"{locator};field=post",
+                        excerpt,
+                    ),
+                    ParsedField(
+                        "vacancies.total",
+                        CandidateValueType.INTEGER,
+                        total,
+                        count_match.group("total"),
+                        f"{locator};field=total",
+                        excerpt,
+                    ),
+                ),
+            )
+        )
+    if not parsed:
+        note = "Numbered position table was found but no explicit Post/count rows followed."
+        return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
+    return (
+        canonicalize_posts(tuple(parsed)),
+        AdvertisementSplitStatus.EXPLICIT,
+        f"Deterministically parsed {len(parsed)} Posts from numbered position rows.",
+        (),
+    )
+
+
+_SINGLE_POST_TITLE = re.compile(
+    r"^\s*(?:advertisement|advt\.?)\s+for\s+the\s+post\s+of\s+(?P<name>.+?)\s*$",
+    re.I,
+)
+
+
+def parse_explicit_single_post(
+    title: str, raw_text: str
+) -> tuple[
+    tuple[ParsedPost, ...],
+    AdvertisementSplitStatus,
+    str | None,
+    tuple[str, ...],
+]:
+    """Create one Post only for an official title that explicitly says 'the post of'."""
+    match = _SINGLE_POST_TITLE.match(_clean_text(title))
+    if match is None:
+        return (), AdvertisementSplitStatus.LEGACY_UNSPLIT, None, ()
+    if re.search(r"\bfollowing\b.{0,80}\bposts?\b", _clean_text(raw_text[:8000]), re.I):
+        note = "Single-Post title conflicts with a multi-Post advertisement body."
+        return (), AdvertisementSplitStatus.AMBIGUOUS, note, (note,)
+    name = _clean_text(match.group("name")).strip(" ,-:")
+    if not name or len(name) > 240 or re.search(r"[.;:]", name):
+        return (), AdvertisementSplitStatus.LEGACY_UNSPLIT, None, ()
+    locator = "listing:title=explicit-single-post"
+    post = ParsedPost(
+        post_key=_stable_post_key(name, ""),
+        ordinal=1,
+        name=name,
+        normalized_name=" ".join(name.casefold().split()),
+        source_locator=locator,
+        facts=(
+            ParsedField(
+                "name",
+                CandidateValueType.STRING,
+                name,
+                match.group("name"),
+                locator,
+                _clean_text(title)[:8000],
+            ),
+        ),
+    )
+    return (
+        canonicalize_posts((post,)),
+        AdvertisementSplitStatus.EXPLICIT,
+        "Deterministically parsed one Post from an explicit single-Post title.",
+        (),
+    )
+
+
 def canonicalize_posts(posts: tuple[ParsedPost, ...]) -> tuple[ParsedPost, ...]:
     result = []
     for post in posts:
@@ -407,4 +789,10 @@ def structure_posts(title: str, text: str):
     posts, status, note, warnings = parse_vacancy_table(text)
     if status == AdvertisementSplitStatus.LEGACY_UNSPLIT:
         posts, status, note, warnings = parse_narrative_vacancies(title, text)
+    if status == AdvertisementSplitStatus.LEGACY_UNSPLIT:
+        posts, status, note, warnings = parse_whitespace_vacancy_table(text, title)
+    if status == AdvertisementSplitStatus.LEGACY_UNSPLIT:
+        posts, status, note, warnings = parse_numbered_position_table(text)
+    if status == AdvertisementSplitStatus.LEGACY_UNSPLIT:
+        posts, status, note, warnings = parse_explicit_single_post(title, text)
     return canonicalize_posts(posts), status, note, warnings
