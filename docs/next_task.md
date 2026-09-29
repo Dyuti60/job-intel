@@ -1,14 +1,16 @@
-# Next task: staged Assam production activation
+# Next task: Master Publisher incremental scan optimization
 
-Run the first controlled production cadence for the 11 enabled Assam sources:
+The staged 11-source activation was correct and release-ready, but each later source run rescanned
+the growing unresolved Publisher backlog (up to 92 assessments). Design the smallest deterministic
+incremental selection/batching change that avoids repeatedly scanning unchanged `REVIEW_PENDING`
+assessments while preserving:
 
-- restore the configured PostgreSQL service at `localhost:5433` and confirm it is reachable;
-- preview due sources and confirm the intended priority order;
-- execute only the due set with normal persistence and existing locks;
-- observe `/operations`, Review routing, and publisher outcomes through completion;
-- reconcile READY/DEGRADED/BLOCKED results against `docs/assam_production_readiness.md`;
-- stop and diagnose any BLOCKED source before retrying it.
+- immutable Verification, Review, publication events, and Master history;
+- prompt publication after a Review decision or newly verified direct-publication assessment;
+- idempotency and stable Post/Master identity;
+- per-record failure isolation and existing scheduler semantics;
+- explicit metrics for selected, skipped, published, unchanged, and failed assessments.
 
-Do not run a historical backfill, reactivate withheld sources, expand coverage, or change shared
-Review/Master/Public behavior. This is an operational activation and observation task, not an adapter
-development milestone.
+Do not weaken Review/Public Readiness safeguards, auto-approve pending work, expand source coverage,
+or combine this with Review UX changes. Add focused Publisher tests and benchmark the scan selection
+against the current persisted backlog before any production activation.

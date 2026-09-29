@@ -277,11 +277,23 @@ Interpret source readiness consistently:
   recruitment notice; this is not a parser failure.
 - `BLOCKED`: TLS, domain, configuration, parser, or structural failure prevents safe operation.
 
+Pipeline `PARTIAL` and source readiness are separate. `PARTIAL` may still be `READY` when ambiguity,
+`LEGACY_UNSPLIT`, history-window exclusion, or `REVIEW_PENDING` is the only reason and both
+Verification and Publisher complete with zero failures. Classify it `DEGRADED` when extraction is
+materially sparse and needs monitoring, even though Human Review keeps publication safe. In
+`/operations`, “last success” means the last fully `SUCCESS` PipelineRun; a newer `PARTIAL` remains
+visible as the latest status without replacing that timestamp.
+
 For `DEGRADED`, retain the normal cadence and recheck on the next due run. For `BLOCKED`, stop source
 execution, preserve the failed run, diagnose against a small official fixture, and deploy a tested
 fix before retrying. Never work around host/TLS restrictions or manually enable a withheld inventory
 source. `AJI_HISTORY_LOOKBACK_MONTHS` is the rolling discovery window for future runs; changing it
 does not delete persisted history.
+
+The staged activation on 29 September 2026 also showed the Publisher rescanning a growing pending
+backlog (up to 92 assessments). This was bounded and correct, with zero publication failures. Treat
+incremental Publisher scanning as a separate performance task; do not bypass `REVIEW_PENDING` or
+change publication safeguards to reduce the count.
 
 ```powershell
 uv run python -m workers.monitoring --source APSC

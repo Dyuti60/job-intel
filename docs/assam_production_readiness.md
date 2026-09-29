@@ -56,3 +56,34 @@ persistent scheduler was not executed.
 Activation result: **0 due sources executed; 0 newly classified READY, 0 DEGRADED, 0 source-level
 BLOCKED**. The activation environment is **BLOCKED** until PostgreSQL is available. Existing bounded
 readiness classifications above remain unchanged; there is no evidence of a source or adapter defect.
+
+## Persistent staged activation — 29 September 2026
+
+The later persistent due-source run completed for all 11 enabled sources. This table reconciles the
+latest immutable PipelineRuns and their Verification, Review, and Master Publisher outcomes; no
+source was rerun for reconciliation.
+
+| Source | Pipeline | Classification | Review / Master reason | Action |
+|---|---|---|---|---|
+| `APSC` | SUCCESS | READY | Reused 1 revision; Verification and Publisher succeeded; backlog remained review-pending | Normal cadence |
+| `SLPRB_ASSAM` | PARTIAL | READY | 3 uncertain Post-age ownership warnings were preserved; 10 existing active reviews; Publisher failed 0 | Review ambiguous facts normally |
+| `DEE_ASSAM` | SUCCESS | READY | 2 revisions verified and 2 ReviewCases queued; Publisher failed 0 | Review queued records |
+| `DHS_ASSAM` | PARTIAL | DEGRADED | 14 revisions verified and queued; all LEGACY_UNSPLIT; 5 documents yielded no supported facts | Monitor extraction quality and enrich in Review |
+| `DME_ASSAM` | PARTIAL | DEGRADED | 24 revisions verified and queued; all LEGACY_UNSPLIT; 10 documents yielded no supported facts | Monitor extraction quality and enrich in Review |
+| `DTE_ASSAM` | SUCCESS | READY | No qualifying Candidate revision in this run; all stages succeeded | Normal cadence |
+| `ASDMA_ASSAM` | SUCCESS | READY | Reused 10 revisions; all stages succeeded | Normal cadence |
+| `FREMAA_ASSAM` | PARTIAL | READY | Bounded 20-document limit reached; 12 revisions verified and queued; Publisher failed 0 | Review queued records; retain bound |
+| `APGCL_ASSAM` | PARTIAL | READY | 1 out-of-window document safely excluded; 2 revisions verified and queued; Publisher failed 0 | Review queued records |
+| `AEGCL_ASSAM` | PARTIAL | READY | 2 out-of-window documents safely excluded; 9 revisions verified and queued; Publisher failed 0 | Review queued records |
+| `SOIL_ASSAM` | SUCCESS | READY | 1 revision verified and queued; Publisher failed 0 | Review queued record |
+
+Result: **5 SUCCESS, 6 PARTIAL, 0 FAILED; 9 READY, 2 DEGRADED, 0 BLOCKED**. There
+is **no release blocker**. Every new ReviewCase inspected was queued against a verified immutable
+revision, and publisher skips were `REVIEW_PENDING`; no run revision produced a premature publication
+event. Candidate keys were unique within every reconciled source, with no duplicate current job
+created. Operations records the common attempt time, latest PipelineRun status, full-success time,
+next due time, group, and priority for all 11 sources. A PARTIAL run does not overwrite the distinct
+last fully successful timestamp.
+
+The Publisher safely rescanned an increasing review backlog (up to 92 assessments by the SOIL run).
+It caused no correctness failure and is recorded only as a follow-up performance optimization.
