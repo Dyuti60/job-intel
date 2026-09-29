@@ -31,7 +31,9 @@ class PublicationCandidateKind(enum.StrEnum):
 @dataclass
 class MasterPublisherWorkerSummary:
     dry_run: bool
+    eligible: int = 0
     scanned: int = 0
+    processed: int = 0
     direct_verified: int = 0
     human_approved: int = 0
     human_corrected: int = 0
@@ -43,6 +45,7 @@ class MasterPublisherWorkerSummary:
     review_cancelled: int = 0
     rejected: int = 0
     reverification_requested: int = 0
+    skipped: int = 0
     failed: int = 0
     scanned_ids: list[uuid.UUID] = field(default_factory=list)
 
@@ -65,6 +68,7 @@ class MasterPublisherWorkerService:
 
     def run(self, *, batch_size: int, dry_run: bool = False) -> MasterPublisherWorkerSummary:
         summary = MasterPublisherWorkerSummary(dry_run=dry_run)
+        summary.eligible = self.confidence.count_incremental_publication_ids()
         assessment_ids = self.confidence.list_pending_publication_ids(limit=batch_size)
         summary.scanned = len(assessment_ids)
         summary.scanned_ids.extend(assessment_ids)
@@ -89,6 +93,7 @@ class MasterPublisherWorkerService:
         assessment_id: uuid.UUID,
         summary: MasterPublisherWorkerSummary,
     ) -> None:
+        summary.processed += 1
         self.logger.info("master_publication_assessment_processing id=%s", assessment_id)
         assessment = self.confidence.get(assessment_id)
         if assessment is None:
@@ -220,6 +225,7 @@ class MasterPublisherWorkerService:
             PublicationCandidateKind.REVERIFICATION_REQUESTED: "reverification_requested",
         }[kind]
         setattr(summary, attribute, getattr(summary, attribute) + 1)
+        summary.skipped += 1
         self.logger.info("master_publication_skipped id=%s reason=%s", assessment_id, kind.value)
 
     def _failed(
@@ -276,7 +282,9 @@ def format_master_publisher_summary(summary: MasterPublisherWorkerSummary) -> st
             f" Assam Job Intelligence - Master Publisher{mode}",
             "================================================",
             "",
-            f"Scanned:                     {summary.scanned:>5}",
+            f"Eligible:                    {summary.eligible:>5}",
+            f"Selected/scanned:            {summary.scanned:>5}",
+            f"Processed:                   {summary.processed:>5}",
             "",
             "PUBLISHABLE",
             f"  Direct verified:           {summary.direct_verified:>5}",
@@ -289,6 +297,7 @@ def format_master_publisher_summary(summary: MasterPublisherWorkerSummary) -> st
             f"  Master unchanged:          {summary.master_unchanged:>5}",
             "",
             "SKIPPED",
+            f"  Total:                     {summary.skipped:>5}",
             f"  Review required/missing:   {summary.review_missing:>5}",
             f"  Review pending:            {summary.review_pending:>5}",
             f"  Review cancelled:          {summary.review_cancelled:>5}",

@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import and_, exists, or_, select
+from sqlalchemy import Select, and_, exists, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models.confidence import (
@@ -9,6 +9,8 @@ from app.models.confidence import (
     RevisionConfidenceAssessment,
 )
 from app.models.master import MasterPublicationEvent
+from app.models.review import ReviewCase, ReviewCaseOutcome, ReviewCaseStatus
+from app.models.review_routing import ReviewRoutingAssessment, ReviewRoutingPolicyVersion
 from app.models.verification import VerificationRun, VerificationRunStatus
 
 
@@ -73,8 +75,8 @@ class RevisionConfidenceRepository:
             )
         )
 
-    def list_pending_publication_ids(self, *, limit: int) -> list[uuid.UUID]:
-        """Return completed-run assessments without a successful publication event."""
+    def _incremental_publication_statement(self) -> Select[tuple[uuid.UUID]]:
+        """Select completed assessments whose current state can produce publication work."""
         newer = aliased(RevisionConfidenceAssessment)
         has_v2 = exists(
             select(newer.id).where(
@@ -82,34 +84,102 @@ class RevisionConfidenceRepository:
                 newer.policy_version == ConfidencePolicyVersion.V2,
             )
         )
-        return list(
-            self.session.scalars(
-                select(RevisionConfidenceAssessment.id)
-                .join(
-                    VerificationRun,
-                    VerificationRun.id == RevisionConfidenceAssessment.verification_run_id,
-                )
-                .outerjoin(
-                    MasterPublicationEvent,
-                    MasterPublicationEvent.revision_confidence_assessment_id
-                    == RevisionConfidenceAssessment.id,
-                )
-                .where(
-                    VerificationRun.status == VerificationRunStatus.COMPLETED,
-                    or_(
-                        RevisionConfidenceAssessment.policy_version == ConfidencePolicyVersion.V2,
-                        and_(
-                            RevisionConfidenceAssessment.policy_version
-                            == ConfidencePolicyVersion.V1,
-                            ~has_v2,
-                        ),
-                    ),
-                    MasterPublicationEvent.id.is_(None),
-                )
-                .order_by(
-                    RevisionConfidenceAssessment.created_at,
-                    RevisionConfidenceAssessment.id,
-                )
-                .limit(limit)
+        approved_outcomes = (
+            ReviewCaseOutcome.APPROVED,
+            ReviewCaseOutcome.APPROVED_WITH_CORRECTIONS,
+        )
+        v1_approved = exists(
+            select(ReviewCase.id).where(
+                ReviewCase.revision_confidence_assessment_id
+                == RevisionConfidenceAssessment.id,
+                ReviewCase.status == ReviewCaseStatus.RESOLVED,
+                ReviewCase.outcome.in_(approved_outcomes),
             )
         )
+        routing_v2 = aliased(ReviewRoutingAssessment)
+        routing_v1 = aliased(ReviewRoutingAssessment)
+        has_v2_routing = exists(
+            select(routing_v2.id).where(
+                routing_v2.revision_confidence_assessment_id
+                == RevisionConfidenceAssessment.id,
+                routing_v2.policy_version == ReviewRoutingPolicyVersion.V2,
+            )
+        )
+
+        def routing_actionable(routing, policy):
+            approved = exists(
+                select(ReviewCase.id).where(
+                    ReviewCase.review_routing_assessment_id == routing.id,
+                    ReviewCase.status == ReviewCaseStatus.RESOLVED,
+                    ReviewCase.outcome.in_(approved_outcomes),
+                )
+            )
+            return exists(
+                select(routing.id).where(
+                    routing.revision_confidence_assessment_id
+                    == RevisionConfidenceAssessment.id,
+                    routing.policy_version == policy,
+                    or_(routing.review_required.is_(False), approved),
+                )
+            )
+
+        v2_actionable = routing_actionable(routing_v2, ReviewRoutingPolicyVersion.V2)
+        v1_routing_actionable = routing_actionable(
+            routing_v1, ReviewRoutingPolicyVersion.V1
+        )
+        return (
+            select(RevisionConfidenceAssessment.id)
+            .join(
+                VerificationRun,
+                VerificationRun.id == RevisionConfidenceAssessment.verification_run_id,
+            )
+            .outerjoin(
+                MasterPublicationEvent,
+                MasterPublicationEvent.revision_confidence_assessment_id
+                == RevisionConfidenceAssessment.id,
+            )
+            .where(
+                VerificationRun.status == VerificationRunStatus.COMPLETED,
+                or_(
+                    RevisionConfidenceAssessment.policy_version == ConfidencePolicyVersion.V2,
+                    and_(
+                        RevisionConfidenceAssessment.policy_version
+                        == ConfidencePolicyVersion.V1,
+                        ~has_v2,
+                    ),
+                ),
+                MasterPublicationEvent.id.is_(None),
+                or_(
+                    and_(
+                        RevisionConfidenceAssessment.policy_version
+                        == ConfidencePolicyVersion.V1,
+                        or_(
+                            RevisionConfidenceAssessment.review_required.is_(False),
+                            v1_approved,
+                        ),
+                    ),
+                    and_(
+                        RevisionConfidenceAssessment.policy_version
+                        == ConfidencePolicyVersion.V2,
+                        or_(
+                            v2_actionable,
+                            and_(~has_v2_routing, v1_routing_actionable),
+                        ),
+                    ),
+                ),
+            )
+        )
+
+    def count_incremental_publication_ids(self) -> int:
+        statement = self._incremental_publication_statement()
+        return int(
+            self.session.scalar(select(func.count()).select_from(statement.subquery())) or 0
+        )
+
+    def list_pending_publication_ids(self, *, limit: int) -> list[uuid.UUID]:
+        """Return deterministic incremental publication work, bounded by ``limit``."""
+        statement = self._incremental_publication_statement().order_by(
+            RevisionConfidenceAssessment.created_at,
+            RevisionConfidenceAssessment.id,
+        )
+        return list(self.session.scalars(statement.limit(limit)))

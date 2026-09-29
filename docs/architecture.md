@@ -548,18 +548,21 @@ T-010B adds an independently executable orchestration layer at
 transaction, correction, hashing, revision, or change semantics. Those remain exclusively in the
 T-010 `MasterPublisherService`.
 
-`RevisionConfidenceRepository.list_pending_publication_ids` selects only assessments attached to
-COMPLETED VerificationRuns and without a successful MasterPublicationEvent. Selection is ordered by
-assessment creation time and UUID, then limited by `AJI_MASTER_PUBLISHER_BATCH_SIZE` (default 100).
-This makes batching deterministic and prevents an unchanged periodic invocation from replaying
-already-processed inputs or generating repeated UNCHANGED events.
+`RevisionConfidenceRepository.list_pending_publication_ids` incrementally selects assessments
+attached to COMPLETED VerificationRuns, without a successful MasterPublicationEvent, and whose
+current state can produce publication work: direct publication or a resolved
+APPROVED/APPROVED_WITH_CORRECTIONS ReviewCase. Selection is ordered by assessment creation time and
+UUID, then limited by `AJI_MASTER_PUBLISHER_BATCH_SIZE` (default 100). New verified revisions are
+immediately eligible; resolving Review makes an existing assessment eligible without polling by
+time. Actionable failures remain event-free and retryable.
 
-The worker classifies required-review state before publishing. Direct assessments and RESOLVED
-APPROVED/APPROVED_WITH_CORRECTIONS cases are delegated to `MasterPublisherService`; missing,
-queued, in-review, cancelled, rejected, and reverification-requested cases are reported and skipped.
-A domain/integrity failure rolls back that assessment and does not prevent later IDs in the batch
-from being processed. Database-level failure remains a worker-level error. Each real publication
-retains the Publisher's own atomic transaction rather than joining the batch into one transaction.
+Unchanged missing, queued, in-review, cancelled, rejected, and reverification-requested cases remain
+persisted and auditable but are not selected. The worker reclassifies selected records defensively
+before delegating to `MasterPublisherService`. A domain/integrity failure rolls back that assessment
+and does not prevent later IDs in the batch from being processed. Database-level failure remains a
+worker-level error. Each real publication retains the Publisher's own atomic transaction rather than
+joining the batch into one transaction. Summary metrics expose total eligible, selected/scanned,
+processed, publication results, skipped race-state records, and failed records.
 
 Dry-run uses the Publisher's read-only preview path. It revalidates the same immutable inputs,
 constructs the same effective projection/hash, and reports whether content would create, update, or

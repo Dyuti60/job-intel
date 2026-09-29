@@ -217,8 +217,15 @@ The Publisher creates Master data only for:
 - a completed verification/confidence result that does not require review; or
 - a resolved `APPROVED` or `APPROVED_WITH_CORRECTIONS` ReviewCase.
 
-Queued, in-review, cancelled, rejected, and reverification-requested cases are skipped. Corrected
-MasterFields retain links to both the original CandidateField and ReviewDecision.
+Queued, in-review, missing, cancelled, rejected, and reverification-requested cases remain persisted
+and auditable but are not selected by later Publisher runs. A Review approval makes its assessment
+eligible immediately; a newly verified revision is independently eligible. Corrected MasterFields
+retain links to both the original CandidateField and ReviewDecision.
+
+Publisher output distinguishes eligible, selected/scanned, processed, created, updated, unchanged,
+skipped, and failed work. On the 29 September 2026 backlog, the former query would have scanned 92
+unchanged `REVIEW_PENDING` assessments. The incremental selector marked 0 eligible and excluded all
+92 in about 14 ms without mutating data.
 
 Inspect Master output:
 
@@ -290,10 +297,9 @@ fix before retrying. Never work around host/TLS restrictions or manually enable 
 source. `AJI_HISTORY_LOOKBACK_MONTHS` is the rolling discovery window for future runs; changing it
 does not delete persisted history.
 
-The staged activation on 29 September 2026 also showed the Publisher rescanning a growing pending
-backlog (up to 92 assessments). This was bounded and correct, with zero publication failures. Treat
-incremental Publisher scanning as a separate performance task; do not bypass `REVIEW_PENDING` or
-change publication safeguards to reduce the count.
+The staged activation on 29 September 2026 showed a pending backlog of 92 assessments. Incremental
+selection now leaves unchanged `REVIEW_PENDING` work out of subsequent Publisher batches while
+preserving all Review and publication safeguards.
 
 ```powershell
 uv run python -m workers.monitoring --source APSC

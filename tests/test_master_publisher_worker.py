@@ -60,7 +60,9 @@ def test_direct_publication_and_second_run_are_idempotent(
     _direct_graph(client, "WORKER_DIRECT")
 
     first = MasterPublisherWorkerService(db_session).run(batch_size=100)
+    assert first.eligible == 1
     assert first.scanned == 1
+    assert first.processed == 1
     assert first.direct_verified == 1
     assert first.master_created == 1
     assert first.failed == 0
@@ -73,6 +75,7 @@ def test_direct_publication_and_second_run_are_idempotent(
     )
 
     second = MasterPublisherWorkerService(db_session).run(batch_size=100)
+    assert second.eligible == 0
     assert second.scanned == 0
     assert counts == (
         _count(db_session, RecruitmentMaster),
@@ -110,7 +113,7 @@ def test_approved_and_corrected_review_paths_publish(
     assert source_field["value"] == "2026-10-20"
 
 
-def test_review_skip_states_are_normal_work(
+def test_nonpublishable_review_states_are_not_selected(
     client: TestClient, db_session: Session
 ) -> None:
     missing = build_review_graph(client, suffix="WORKER_MISSING", create_case=False)
@@ -124,15 +127,33 @@ def test_review_skip_states_are_normal_work(
 
     summary = MasterPublisherWorkerService(db_session).run(batch_size=100)
 
-    assert summary.scanned == 5
-    assert summary.review_missing == 1
-    assert summary.review_pending == 2
-    assert summary.rejected == 1
-    assert summary.reverification_requested == 1
+    assert summary.eligible == 0
+    assert summary.scanned == 0
+    assert summary.processed == 0
+    assert summary.skipped == 0
     assert summary.failed == 0
     assert _count(db_session, RecruitmentMaster) == 0
-    assert missing["confidence"]["id"] in {str(item) for item in summary.scanned_ids}
-    assert queued["confidence"]["id"] in {str(item) for item in summary.scanned_ids}
+    assert missing["confidence"]["id"] not in {str(item) for item in summary.scanned_ids}
+    assert queued["confidence"]["id"] not in {str(item) for item in summary.scanned_ids}
+
+
+def test_review_approval_makes_pending_assessment_eligible(
+    client: TestClient, db_session: Session
+) -> None:
+    pending = build_review_graph(client, suffix="WORKER_BECOMES_APPROVED")
+
+    before = MasterPublisherWorkerService(db_session).run(batch_size=100)
+    assert before.eligible == 0
+    assert before.scanned == 0
+
+    _resolve_case(client, pending, "APPROVE_AS_IS")
+    approved = MasterPublisherWorkerService(db_session).run(batch_size=100)
+
+    assert approved.eligible == 1
+    assert approved.scanned == 1
+    assert approved.processed == 1
+    assert approved.human_approved == 1
+    assert approved.master_created == 1
 
 
 def test_mixed_batch_continues_after_invalid_assessment(
@@ -156,17 +177,26 @@ def test_mixed_batch_continues_after_invalid_assessment(
 
     summary = MasterPublisherWorkerService(db_session).run(batch_size=100)
 
-    assert summary.scanned == 6
+    assert summary.eligible == 4
+    assert summary.scanned == 4
+    assert summary.processed == 4
     assert summary.direct_verified == 1
     assert summary.human_approved == 1
     assert summary.human_corrected == 1
-    assert summary.review_pending == 1
-    assert summary.rejected == 1
+    assert summary.review_pending == 0
+    assert summary.rejected == 0
+    assert summary.skipped == 0
     assert summary.failed == 1
     assert summary.master_created == 3
     assert _count(db_session, RecruitmentMaster) == 3
     assert _count(db_session, MasterPublicationEvent) == 3
     assert direct["confidence"]["id"] != pending["confidence"]["id"]
+
+    retry = MasterPublisherWorkerService(db_session).run(batch_size=100)
+    assert retry.eligible == 1
+    assert retry.scanned == 1
+    assert retry.processed == 1
+    assert retry.failed == 1
 
 
 def test_batch_limit_uses_oldest_then_id_order(
@@ -186,9 +216,11 @@ def test_batch_limit_uses_oldest_then_id_order(
 
     summary = MasterPublisherWorkerService(db_session).run(batch_size=2)
 
+    assert summary.eligible == 3
     assert summary.scanned_ids == expected_ids
     assert _count(db_session, MasterPublicationEvent) == 2
     remaining = MasterPublisherWorkerService(db_session).run(batch_size=2)
+    assert remaining.eligible == 1
     assert remaining.scanned == 1
 
 
@@ -200,6 +232,8 @@ def test_dry_run_validates_and_classifies_without_mutation(
     dry_run = MasterPublisherWorkerService(db_session).run(batch_size=100, dry_run=True)
 
     assert dry_run.scanned == 1
+    assert dry_run.eligible == 1
+    assert dry_run.processed == 1
     assert dry_run.direct_verified == 1
     assert dry_run.master_created == 1
     assert dry_run.status == "DRY_RUN"
@@ -211,6 +245,8 @@ def test_dry_run_validates_and_classifies_without_mutation(
     report = format_master_publisher_summary(dry_run)
     assert "(DRY RUN)" in report
     assert "WOULD RESULT" in report
+    assert "Eligible:" in report
+    assert "Selected/scanned:" in report
 
     actual = MasterPublisherWorkerService(db_session).run(batch_size=100)
     assert actual.master_created == 1

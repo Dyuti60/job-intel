@@ -196,11 +196,12 @@ def test_no_review_pipeline_publishes_and_replay_is_idempotent(db_session, tmp_p
     )
 
 
-def test_review_required_is_success_and_publisher_skips(db_session, tmp_path) -> None:
+def test_review_required_is_success_and_publisher_defers(db_session, tmp_path) -> None:
     summary = _run(db_session, tmp_path, _adapter(review_required=True))
     assert summary.status == PipelineStatus.SUCCESS
     assert summary.verification.review_cases_queued == 1
-    assert summary.publisher.review_pending == 1
+    assert summary.publisher.eligible == 0
+    assert summary.publisher.scanned == 0
     assert summary.active_review_cases == 1
     assert _count(db_session, RecruitmentMaster) == 0
 
@@ -225,7 +226,7 @@ def test_human_correction_publishes_on_later_unchanged_run(client, db_session, t
     assert master_field.value == "2026-10-27"
     assert master_field.review_decision_id is not None
     assert candidate_field.value == "2026-10-20"
-    assert first.publisher.review_pending == 1
+    assert first.publisher.scanned == 0
 
 
 def test_rejected_review_remains_unpublished(client, db_session, tmp_path) -> None:
@@ -234,7 +235,8 @@ def test_rejected_review_remains_unpublished(client, db_session, tmp_path) -> No
     _resolve(client, case_id, decision="REJECT")
     db_session.rollback()
     second = _run(db_session, tmp_path, _adapter(review_required=True))
-    assert second.publisher.rejected == 1
+    assert second.publisher.scanned == 0
+    assert second.publisher.rejected == 0
     assert second.status == PipelineStatus.SUCCESS
     assert _count(db_session, RecruitmentMaster) == 0
 

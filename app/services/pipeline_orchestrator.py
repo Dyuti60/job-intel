@@ -247,11 +247,14 @@ class PipelineOrchestratorService:
                 stage_started_at,
                 stage_started_clock,
                 summary={
+                    "eligible": result.publisher.eligible,
                     "scanned": result.publisher.scanned,
+                    "processed": result.publisher.processed,
                     "master_created": result.publisher.master_created,
                     "master_updated": result.publisher.master_updated,
                     "master_unchanged": result.publisher.master_unchanged,
                     "review_pending": result.publisher.review_pending,
+                    "skipped": result.publisher.skipped,
                     "failed": result.publisher.failed,
                 },
             )
