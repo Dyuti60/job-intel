@@ -179,3 +179,25 @@ operational APIs must never be mounted into or routed through the public contain
 Current total: **11 PASS / 2 WARNING / 0 BLOCKER**. Production release is permitted only while
 the separation model remains enforced. The unauthenticated private application is not an
 Internet-facing deployment target.
+
+## Protected release rehearsal — 30 September 2026
+
+The rehearsal started from clean `main` commit
+`0f36f1c9bdddb967cb72e72776b624473713b213`. Exact-commit CI run `36671714469` passed. The intended
+Windows x64 runner service was running, Docker was reachable, and the external raw and backup roots
+were present. The workflow and Compose contract still select `app.public_main:app`; the due-only
+scheduler and public/private route boundaries were unchanged.
+
+The rehearsal stopped at protected-control-plane preflight. This operator session had neither an
+authenticated GitHub CLI nor an authenticated browser session, so it could not verify the
+`public-production` Environment's required reviewer and `main` branch restriction, or confirm the
+presence of `PUBLIC_HOSTNAME`, `PUBLIC_BASE_URL`, `DOCKER_EXE`, `AJI_PUBLIC_DATABASE_URL`, and
+`AJI_BACKUP_DATABASE_URL` without exposing values. No build-only workflow was dispatched, no image
+or digest was produced for this commit, and backup, deployment, smoke, scheduler preview, and
+rollback observation were not attempted.
+
+Rehearsal result: **BLOCKER (operational access/prerequisite verification)**. This is not an
+application defect. Resume only from an authenticated repository-owner session, verify the
+protected Environment without printing secret values, then dispatch `deploy=false` for this exact
+commit before considering the approval-gated deployment. Do not substitute a local or unprotected
+deployment path.

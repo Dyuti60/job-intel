@@ -1,10 +1,15 @@
-# Next task: protected production release rehearsal
+# Next task: resume authenticated protected production release rehearsal
 
-Rehearse the existing protected Public Release path on the intended host: validate protected
-configuration, complete a build-only release, verify the coordinated backup and Alembic-head gate,
-deploy the immutable public image, run the bounded public smoke checks, preview due sources, and
-observe the first scheduled due-only run in Operations. Do not expose `app.main`, force
-`--all-enabled`, mutate source coverage, or bypass the protected environment approval.
+From a repository-owner session with authenticated GitHub CLI or browser access, verify the
+`public-production` required reviewer, `main` restriction, variables, and secret names without
+printing values. Record the exact current `main` commit, then dispatch the existing Public Release
+workflow for that commit with `deploy=false`. Record its run ID, immutable image digest, Trivy
+result, and provenance result before requesting the separate `deploy=true` run and human
+Environment approval.
+
+Do not deploy through a parallel path, expose `app.main`, force `--all-enabled`, mutate source
+coverage, or bypass protected approval. After an approved healthy deployment, run the existing
+public smoke and due-only scheduler preview and record backup/release-audit evidence.
 
 DHS/DME OCR is passive monitoring only. Revisit it only if a current, in-window image-only official
 advertisement demonstrates production value; do not backfill historical scans or weaken
