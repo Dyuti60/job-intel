@@ -42,6 +42,9 @@ def test_deployment_script_requires_immutable_image_and_rolls_back() -> None:
     assert "@sha256:[0-9a-f]{64}" in script
     assert "docker compose -f $ComposeFile pull" in script
     assert "public_release_smoke.py" in script
+    assert "alembic current --check-heads" in script
+    assert "$env:AJI_DATABASE_URL = $env:AJI_BACKUP_DATABASE_URL" in script
+    assert "$env:AJI_DATABASE_URL = $publicDatabaseUrl" in script
     assert "previousImage" in script
     assert "--force-recreate public-web" in script
     assert "releases.jsonl" in script

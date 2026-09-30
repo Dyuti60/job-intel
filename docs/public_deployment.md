@@ -66,11 +66,13 @@ deployment environment or secret store; do not put it in Compose or source contr
 1. Require a successful GitHub-hosted CI run on the exact commit.
 2. Back up PostgreSQL and the external raw-content root as a coordinated recovery point.
 3. Apply `uv run alembic upgrade head` from the trusted administrative runtime—not the public
-   container.
+   container—then require `uv run alembic current --check-heads` to pass before traffic changes.
 4. Build an immutable, commit-tagged image: `docker build -t aji-public:<commit> .`.
 5. Set the required `AJI_DATABASE_URL` and `AJI_PUBLIC_ALLOWED_HOSTS` outside the repository.
 6. Start `docker compose -f docker-compose.public.yml up -d`.
-7. Run `uv run python scripts/public_release_smoke.py --base-url http://127.0.0.1:8001`.
+7. Run `uv run python scripts/public_release_smoke.py --base-url http://127.0.0.1:8001`. It checks
+   liveness, readiness, the jobs page and API, one job detail when available, and private-route
+   isolation.
 8. Confirm the reverse proxy serves HTTPS, HSTS, CSP, correct Host rejection, and no internal route.
 9. Shift traffic to the new container and retain the prior image for rollback.
 
@@ -158,14 +160,22 @@ operational APIs must never be mounted into or routed through the public contain
 
 ## Release checklist
 
-- CI passes on the exact main commit.
-- Build-only Public Release run passes vulnerability scanning and provenance attestation.
-- DNS and protected Environment variables point to the reviewed target.
-- The public database role has SELECT only on the documented tables.
-- A coordinated backup and manifest exist outside the checkout.
-- Protected deployment approval is recorded.
-- `/healthz`, `/readyz`, `/jobs`, and the public API succeed over HTTPS.
-- `/review`, `/operations`, `/api/v1`, `/docs`, and `/openapi.json` return 404 publicly.
-- HSTS, CSP, ETag, and `must-revalidate` headers are present.
-- The external release JSONL records the immutable image, prior image, actor, run, and time.
-- The prior image remains available and a recent backup passes isolated restore rehearsal.
+| Gate | Status | Release evidence / condition |
+| --- | --- | --- |
+| CI | PASS | Exact main commit passes tests, Ruff, migration drift check, and public image build. |
+| Configuration | PASS | Production rejects the development database default, debug mode, and wildcard public host/proxy trust. Protected secrets supply runtime URLs. |
+| Database / migrations | PASS | Backup precedes deployment; migrations run from the trusted runtime; deployment requires `alembic current --check-heads`. |
+| Application startup | PASS | Immutable non-root public image starts only `app.public_main:app`. |
+| Readiness | PASS | `/healthz` is process liveness; `/readyz` checks PostgreSQL and returns 503 without secret details on failure. |
+| Public jobs | PASS | Smoke checks `/jobs`, the public API, and one current job detail when available. |
+| Admin access safety | PASS | Public runtime contains no Review, operations, internal API, docs, or mutation routes; probes require 404. Exposing `app.main:app` is a release blocker. |
+| Scheduler automation | PASS | Trusted daily workflow selects due enabled sources only; manual production forcing of `--all-enabled` is absent. |
+| Overlap locking | PASS | Workflow concurrency and database advisory source locks prevent overlapping execution. |
+| Operational visibility | PASS | Private operations UI and persisted pipeline/source history expose attempts, status, failures, cadence, priority, and next due time. |
+| Rollback | PASS | Prior immutable image and coordinated backup are retained; rollback preserves recruitment history. |
+| Source readiness | WARNING | 11 enabled sources: 9 READY, 2 DEGRADED, 0 BLOCKED; ingestion has no release blocker. |
+| DHS/DME monitoring | WARNING | Keep safe review fallback; revisit bounded OCR only for a current, in-window image-only advertisement. |
+
+Current total: **11 PASS / 2 WARNING / 0 BLOCKER**. Production release is permitted only while
+the separation model remains enforced. The unauthenticated private application is not an
+Internet-facing deployment target.

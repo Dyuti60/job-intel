@@ -42,7 +42,7 @@ uv run alembic check
 Expected migration head at the time of this guide:
 
 ```text
-20260912_0011 (head)
+20260921_0018 (head)
 No new upgrade operations detected.
 ```
 
@@ -144,6 +144,9 @@ uv run python -m workers.scheduler --group HIGH_PRIORITY
 uv run python -m workers.scheduler --due --trigger SCHEDULED
 uv run python -m workers.scheduler --all-enabled
 ```
+
+Production automation uses `--due` only. `--all-enabled` is retained for explicit local diagnostics
+and must not be substituted for the trusted due-source schedule or used for a production backfill.
 
 It is safe to repeat these commands. Human-review routing is a successful pipeline result, not a
 failure.
@@ -305,8 +308,14 @@ preserving all Review and publication safeguards.
 uv run python -m workers.monitoring --source APSC
 uv run python -m workers.monitoring --source SLPRB_ASSAM
 uv run python -m workers.monitoring --source DEE_ASSAM
+uv run python -m workers.monitoring --source DHS_ASSAM
 uv run python -m workers.monitoring --source DME_ASSAM
+uv run python -m workers.monitoring --source DTE_ASSAM
 uv run python -m workers.monitoring --source ASDMA_ASSAM
+uv run python -m workers.monitoring --source FREMAA_ASSAM
+uv run python -m workers.monitoring --source APGCL_ASSAM
+uv run python -m workers.monitoring --source AEGCL_ASSAM
+uv run python -m workers.monitoring --source SOIL_ASSAM
 ```
 
 ![Live operational monitoring](images/operations-guide/02-operations.png)
@@ -320,7 +329,34 @@ GET /api/v1/operational-status/{source_code}
 GET /api/v1/operational-notifications
 ```
 
-## 10. Validate the complete application
+## 10. Production release sequence
+
+Production configuration must set `AJI_APP_ENV=production`, an explicit non-development
+`AJI_DATABASE_URL`, `AJI_DEBUG=false`, and the exact public host/proxy trust settings documented in
+`public_deployment.md`. History, lifecycle, logging, cache, and request bounds are optional bounded
+policy settings. The example PostgreSQL container credentials are local-development only. Store all
+production credentials in the protected deployment environment, never `.env` in the checkout.
+
+1. **Pre-deploy:** validate configuration, confirm PostgreSQL, create the coordinated database/raw
+   backup, run `uv run alembic upgrade head`, then `uv run alembic current --check-heads` and
+   `uv run alembic check`.
+2. **Deploy:** start the immutable public image, require `/readyz` to become healthy, then run the
+   bounded public smoke script. Do not expose `app.main`; it has no authentication and remains
+   loopback/private-network only.
+3. **Activate:** run `uv run python -m workers.scheduler --due --dry-run`, enable the trusted due-only
+   schedule, and inspect the first run in the private operations UI. Do not force `--all-enabled`.
+4. **Rollback:** stop routing to the new image and restore the previous immutable application image.
+   Preserve the database and all immutable recruitment history. A schema downgrade is allowed only
+   from a separately reviewed, backup-backed procedure when compatibility requires it; never reset
+   recruitment data to roll back code.
+
+Startup and scheduler logs identify source code, pipeline/run result, stage failures, and publisher
+summary without intentionally logging credentials. Treat any credential-bearing URL in operator
+input or third-party errors as sensitive and do not paste it into issue trackers or run summaries.
+
+The authoritative PASS/WARNING/BLOCKER release gate is in `docs/public_deployment.md`.
+
+## 11. Validate the complete application
 
 ```powershell
 uv run pytest -q

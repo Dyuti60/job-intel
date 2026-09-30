@@ -1,9 +1,11 @@
-# Next task: monitor DHS/DME for a current scanned advertisement
+# Next task: protected production release rehearsal
 
-Use normal scheduled operation to identify whether DHS or DME publishes an in-window, image-only
-recruitment advertisement. Revisit a bounded local OCR proof only when current official evidence
-demonstrates production value; require layout-preserving row ownership, packaged runtime support,
-and strict document/page/time bounds before implementation.
+Rehearse the existing protected Public Release path on the intended host: validate protected
+configuration, complete a build-only release, verify the coordinated backup and Alembic-head gate,
+deploy the immutable public image, run the bounded public smoke checks, preview due sources, and
+observe the first scheduled due-only run in Operations. Do not expose `app.main`, force
+`--all-enabled`, mutate source coverage, or bypass the protected environment approval.
 
-Do not backfill the assessed 2019â€“2024 scans, enable cloud/LLM OCR, or weaken
+DHS/DME OCR is passive monitoring only. Revisit it only if a current, in-window image-only official
+advertisement demonstrates production value; do not backfill historical scans or weaken
 `AMBIGUOUS`/`LEGACY_UNSPLIT` safeguards.

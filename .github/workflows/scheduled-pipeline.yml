@@ -12,7 +12,6 @@ on:
           - due
           - source
           - group
-          - all-enabled
       source:
         description: Source used when selection is source
         required: true
@@ -22,8 +21,14 @@ on:
           - APSC
           - SLPRB_ASSAM
           - DEE_ASSAM
+          - DHS_ASSAM
           - DME_ASSAM
+          - DTE_ASSAM
           - ASDMA_ASSAM
+          - FREMAA_ASSAM
+          - APGCL_ASSAM
+          - AEGCL_ASSAM
+          - SOIL_ASSAM
       group:
         description: Schedule group used when selection is group
         required: true
@@ -155,7 +160,6 @@ jobs:
           switch ($env:AJI_SCHEDULER_SELECTION) {
             'source' { $arguments += @('--source', $env:AJI_PIPELINE_SOURCE) }
             'group' { $arguments += @('--group', $env:AJI_PIPELINE_GROUP) }
-            'all-enabled' { $arguments += '--all-enabled' }
             default { $arguments += '--due' }
           }
           if ($env:AJI_PIPELINE_DRY_RUN -eq 'true') {
@@ -176,7 +180,19 @@ jobs:
         if: always() && steps.pipeline.outcome != 'skipped'
         shell: powershell
         run: |
-          $sources = @('APSC', 'SLPRB_ASSAM', 'DEE_ASSAM', 'DME_ASSAM', 'ASDMA_ASSAM')
+          $sources = @(
+            'APSC',
+            'SLPRB_ASSAM',
+            'DEE_ASSAM',
+            'DHS_ASSAM',
+            'DME_ASSAM',
+            'DTE_ASSAM',
+            'ASDMA_ASSAM',
+            'FREMAA_ASSAM',
+            'APGCL_ASSAM',
+            'AEGCL_ASSAM',
+            'SOIL_ASSAM'
+          )
           foreach ($source in $sources) {
             uv run python -m workers.monitoring --source $source
             if ($LASTEXITCODE -ne 0) { throw "Monitoring failed for $source" }

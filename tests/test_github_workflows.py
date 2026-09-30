@@ -20,10 +20,21 @@ def test_ci_uses_hosted_runner_and_temporary_postgresql() -> None:
 def test_scheduled_pipeline_has_trusted_boundaries_and_concurrency() -> None:
     workflow = (ROOT / ".github/workflows/scheduled-pipeline.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in workflow
-    assert "- SLPRB_ASSAM" in workflow
-    assert "- DEE_ASSAM" in workflow
-    assert "- DME_ASSAM" in workflow
-    assert "- ASDMA_ASSAM" in workflow
+    enabled_sources = (
+        "APSC",
+        "SLPRB_ASSAM",
+        "DEE_ASSAM",
+        "DHS_ASSAM",
+        "DME_ASSAM",
+        "DTE_ASSAM",
+        "ASDMA_ASSAM",
+        "FREMAA_ASSAM",
+        "APGCL_ASSAM",
+        "AEGCL_ASSAM",
+        "SOIL_ASSAM",
+    )
+    for source in enabled_sources:
+        assert f"- {source}" in workflow
     assert "schedule:" in workflow
     assert 'cron: "30 2 * * *"' in workflow
     assert "runs-on: [self-hosted, Windows, X64]" in workflow
@@ -34,7 +45,7 @@ def test_scheduled_pipeline_has_trusted_boundaries_and_concurrency() -> None:
     assert "uv run alembic upgrade head" in workflow
     assert "workers.scheduler" in workflow
     assert "--due" in workflow
-    assert "--all-enabled" in workflow
+    assert "--all-enabled" not in workflow
     assert "workers.monitoring" in workflow
     assert "AJI_MONITOR_NOTIFICATION_CHANNELS" in workflow
     assert "AJI_MONITOR_NOTIFICATION_FILE" in workflow

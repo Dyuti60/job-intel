@@ -5,6 +5,11 @@ from typing import Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_DEVELOPMENT_DATABASE_URL = (
+    "postgresql+psycopg://assam_admin:assam_dev_password@localhost:5432/"
+    "assam_job_intelligence"
+)
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -19,7 +24,7 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     database_url: str = Field(
-        default="postgresql+psycopg://assam_admin:assam_dev_password@localhost:5432/assam_job_intelligence",
+        default=DEFAULT_DEVELOPMENT_DATABASE_URL,
         min_length=1,
     )
     confidence_standard_threshold: int = Field(default=80, ge=0, le=100)
@@ -64,8 +69,12 @@ class Settings(BaseSettings):
         return hosts
 
     @model_validator(mode="after")
-    def reject_unbounded_production_proxy_trust(self) -> "Settings":
+    def validate_production_contract(self) -> "Settings":
         if self.app_env == "production":
+            if self.database_url == DEFAULT_DEVELOPMENT_DATABASE_URL:
+                raise ValueError("AJI_DATABASE_URL must be explicitly configured in production")
+            if self.debug:
+                raise ValueError("AJI_DEBUG must be false in production")
             if "*" in self.public_allowed_host_list:
                 raise ValueError("AJI_PUBLIC_ALLOWED_HOSTS cannot contain '*' in production")
             if self.public_forwarded_allow_ips.strip() == "*":

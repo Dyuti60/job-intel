@@ -11,8 +11,22 @@ $PSNativeCommandUseErrorActionPreference = $true
 if ($Image -notmatch '^ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$') {
   throw "Deployment image must use an immutable GHCR sha256 digest."
 }
-if (-not $env:AJI_DATABASE_URL -or -not $env:AJI_PUBLIC_HOSTNAME) {
-  throw "AJI_DATABASE_URL and AJI_PUBLIC_HOSTNAME are required."
+if (-not $env:AJI_DATABASE_URL -or -not $env:AJI_BACKUP_DATABASE_URL -or -not $env:AJI_PUBLIC_HOSTNAME) {
+  throw "AJI_DATABASE_URL, AJI_BACKUP_DATABASE_URL, and AJI_PUBLIC_HOSTNAME are required."
+}
+
+$publicDatabaseUrl = $env:AJI_DATABASE_URL
+try {
+  # The public reader intentionally cannot read migration metadata. Use the protected trusted
+  # runtime connection for this read-only gate, then restore the public URL used by Compose.
+  $env:AJI_DATABASE_URL = $env:AJI_BACKUP_DATABASE_URL
+  uv run alembic current --check-heads
+  if ($LASTEXITCODE -ne 0) {
+    throw "Database is not at the required Alembic head. Apply migrations before deployment."
+  }
+}
+finally {
+  $env:AJI_DATABASE_URL = $publicDatabaseUrl
 }
 
 $previousImage = ""

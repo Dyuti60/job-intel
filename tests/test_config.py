@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import Settings
+from app.core.config import DEFAULT_DEVELOPMENT_DATABASE_URL, Settings
 
 
 def test_settings_load_defaults(monkeypatch) -> None:
@@ -53,4 +53,40 @@ def test_settings_load_environment(monkeypatch) -> None:
 )
 def test_production_settings_reject_unbounded_trust(setting, value) -> None:
     with pytest.raises(ValidationError):
-        Settings(_env_file=None, app_env="production", **{setting: value})
+        Settings(
+            _env_file=None,
+            app_env="production",
+            database_url="postgresql+psycopg://runtime@db/assam_jobs",
+            **{setting: value},
+        )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"database_url": DEFAULT_DEVELOPMENT_DATABASE_URL}, "AJI_DATABASE_URL"),
+        (
+            {
+                "database_url": "postgresql+psycopg://runtime@db/assam_jobs",
+                "debug": True,
+            },
+            "AJI_DEBUG",
+        ),
+    ],
+)
+def test_production_settings_fail_fast_on_unsafe_defaults(overrides, message) -> None:
+    with pytest.raises(ValidationError, match=message):
+        Settings(_env_file=None, app_env="production", **overrides)
+
+
+def test_production_settings_accept_explicit_safe_runtime_values() -> None:
+    settings = Settings(
+        _env_file=None,
+        app_env="production",
+        database_url="postgresql+psycopg://runtime@db/assam_jobs",
+        public_allowed_hosts="jobs.example.gov.in",
+        public_forwarded_allow_ips="172.16.0.0/12",
+    )
+
+    assert settings.app_env == "production"
+    assert settings.debug is False
