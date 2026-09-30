@@ -1,8 +1,9 @@
-# Next task: bounded scanned-PDF extraction assessment for DHS/DME
+# Next task: monitor DHS/DME for a current scanned advertisement
 
-Evaluate a small representative set of the remaining persisted DHS/DME `LEGACY_UNSPLIT` documents
-that yield no usable pypdf text. Determine whether a bounded deterministic OCR/text-recovery path can
-improve extraction without weakening official evidence, Post ownership, or Human Review safeguards.
+Use normal scheduled operation to identify whether DHS or DME publishes an in-window, image-only
+recruitment advertisement. Revisit a bounded local OCR proof only when current official evidence
+demonstrates production value; require layout-preserving row ownership, packaged runtime support,
+and strict document/page/time bounds before implementation.
 
-Do not rewrite immutable history, rerun all enabled sources, expand source coverage, or fabricate
-Posts. Keep unsupported or uncertain structures routed to `AMBIGUOUS`/`LEGACY_UNSPLIT`.
+Do not backfill the assessed 2019â€“2024 scans, enable cloud/LLM OCR, or weaken
+`AMBIGUOUS`/`LEGACY_UNSPLIT` safeguards.

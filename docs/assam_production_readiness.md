@@ -100,3 +100,28 @@ whitespace vacancy tables, and numbered position/count rows. It still rejects in
 | `DME_ASSAM` | 4 documents: before 0 Posts / 0 AMBIGUOUS / 4 LEGACY; after 4 Posts / 0 AMBIGUOUS / 2 LEGACY | Reachable; one document resolved; sampled image/unsupported PDF remained LEGACY_UNSPLIT | DEGRADED â€” evaluate bounded scanned-PDF text recovery; keep Review fallback |
 
 Both checks were non-persistent, fetched at most one qualifying document, and fabricated no Posts.
+
+## DHS/DME scanned-PDF assessment â€” 30 September 2026
+
+Four unique persisted PDFs from the 29 September run were assessed locally; the same official files
+were represented under both DHS and DME. All 17 pages had zero extractable characters and exactly
+one full-page raster image. No source request or recruitment-domain write was made.
+
+| Shape | Pages | Text layer / scan | Safe value after recovery | Assessment |
+|---|---:|---|---|---|
+| Grade-III technical advertisement (2024) | 7 | No / all pages image-only | Multi-Post tables are readable, but row/column ownership requires layout-aware OCR and reconciliation | Technically recoverable; not safe for the current plain-text parser |
+| Reader advertisement (2019) | 1 | No / image-only | Four explicit Post rows with per-row vacancy counts are visibly present | Potentially 4 Posts, but only after deterministic table-layout recovery is proven |
+| Nagaon notice (2023) | 1 | No / image-only | Reschedules an earlier recruitment; it is lifecycle-only | Must remain excluded as a new Candidate |
+| Grade-III advertisement (2023) | 8 | No / all pages image-only | Multi-Post qualification/pay tables are readable; safe ownership needs layout preservation | Technically recoverable; not safe for the current plain-text parser |
+
+Assessment totals: **4 examined, 4 text-layer failures, 4 visually recoverable, 0 image-level
+unrecoverable**. Immediate safe recovery through the existing parser is **0 documents**; the strongest
+future proof case is the four-row Reader table. The current environment has neither an OCR engine nor
+an image-decoding dependency. Adding local OCR would require a packaged binary/model, image decoding,
+layout preservation, strict page/size/time bounds, and material CPU/memory capacity. All sampled
+documents are also outside the current 12-month discovery window.
+
+Decision: **do not implement OCR in this milestone**. The operational and dependency cost is not
+justified by this historical sample, and plain OCR could leak facts between sibling Posts. Original
+PDFs remain authoritative and the safe `AMBIGUOUS`/`LEGACY_UNSPLIT` fallback remains unchanged. DHS
+and DME remain **DEGRADED**, not blocked.
