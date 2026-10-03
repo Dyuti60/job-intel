@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-_PUBLIC_CACHE_PATHS = ("/jobs", "/api/public/v1/")
+_PUBLIC_CACHE_PATHS = ("/jobs", "/api/jobs/v1/")
 _MAX_RATE_BUCKETS = 10_000
 _SECURITY_HEADERS = {
     "content-security-policy": (

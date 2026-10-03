@@ -1,0 +1,25 @@
+{% extends "public/base.html" %}
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">careerthora</p>
+  <h1>Careerthora Jobs</h1>
+  <p>Explore verified government job opportunities by region.</p>
+</section>
+
+<section aria-labelledby="available-regions-heading">
+  <div class="result-heading"><h2 id="available-regions-heading">Available now</h2></div>
+  <article class="job-card region-card">
+    <div>
+      <span class="status status-open">Available</span>
+      <h3>Assam Government Jobs</h3>
+      <p>Search approved Assam recruitment Posts with official-source provenance.</p>
+    </div>
+    <a class="button-link" href="/jobs/assam">Explore Assam Jobs</a>
+  </article>
+</section>
+
+<section class="detail-section future-regions" aria-labelledby="future-regions-heading">
+  <h2 id="future-regions-heading">More regions will follow</h2>
+  <p>Careerthora will add new regional job collections only when verified coverage is ready.</p>
+</section>
+{% endblock %}

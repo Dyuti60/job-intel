@@ -3,15 +3,23 @@ from datetime import date
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import parse_qs
+from xml.sax.saxutils import escape
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.public_web.services import PublicRecruitmentViewService
+from app.public_web.urls import (
+    assam_advertisement_path,
+    assam_job_path,
+    canonical_url,
+    path_with_query,
+    public_slug,
+)
 from app.schemas.eligibility import ApplicantCategory, EligibilityProfile
 from app.schemas.public_recruitments import PublicApplicationStatus, PublicRecruitmentSort
 from app.services.eligibility import EligibilityService
@@ -23,6 +31,8 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[2] / 
 templates.env.filters["public_date"] = lambda value: (
     value.strftime("%d %b %Y").lstrip("0") if value else "Not specified"
 )
+templates.env.globals["assam_job_path"] = assam_job_path
+templates.env.globals["assam_advertisement_path"] = assam_advertisement_path
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
@@ -62,8 +72,22 @@ async def _read_form(request: Request) -> dict[str, str]:
     return {key: items[-1] for key, items in values.items()}
 
 
-@router.get("", response_class=HTMLResponse, name="public_jobs")
-def public_jobs(
+@router.get("", response_class=HTMLResponse, name="public_jobs_hub")
+def public_jobs_hub(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="public/jobs_hub.html",
+        context={
+            "request": request,
+            "title": "Careerthora Jobs",
+            "description": "Explore verified government job opportunities on careerthora.",
+            "canonical_url": canonical_url(request, "/jobs"),
+        },
+    )
+
+
+@router.get("/assam", response_class=HTMLResponse, name="public_assam_jobs")
+def public_assam_jobs(
     request: Request,
     session: DatabaseSession,
     authority: str | None = None,
@@ -146,9 +170,9 @@ def public_jobs(
         name="public/jobs.html",
         context={
             "request": request,
-            "title": "Assam Government Recruitments",
+            "title": "Assam Government Jobs",
             "description": "Current approved Assam Government recruitment opportunities.",
-            "canonical_url": str(request.url.replace(query="")),
+            "canonical_url": canonical_url(request, "/jobs/assam"),
             "result": result,
             "statuses": list(PublicApplicationStatus),
             "sort_options": list(PublicRecruitmentSort),
@@ -180,32 +204,67 @@ def public_jobs(
     )
 
 
+@router.get("/sitemap.xml", name="public_jobs_sitemap")
+def public_jobs_sitemap(request: Request, session: DatabaseSession) -> Response:
+    result = PublicRecruitmentService(session).list_recruitments(
+        filters=PublicRecruitmentFilters(),
+        sort=PublicRecruitmentSort.LIFECYCLE,
+        page=1,
+        page_size=100,
+    )
+    paths = ["/jobs", "/jobs/assam"]
+    advertisements: dict[uuid.UUID, str] = {}
+    for job in result.items:
+        paths.append(assam_job_path(job.id, job.display_name))
+        advertisements[job.advertisement_id] = job.advertisement_title
+    paths.extend(
+        assam_advertisement_path(advertisement_id, title)
+        for advertisement_id, title in advertisements.items()
+    )
+    body = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+    body += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    body += "".join(
+        f"  <url><loc>{escape(canonical_url(request, path))}</loc></url>\n" for path in paths
+    )
+    body += "</urlset>\n"
+    return Response(content=body, media_type="application/xml")
+
+
+def _not_found(request: Request, *, advertisement: bool = False) -> HTMLResponse:
+    noun = "Advertisement" if advertisement else "Job"
+    return templates.TemplateResponse(
+        request=request,
+        name="public/error.html",
+        context={
+            "request": request,
+            "title": f"{noun} not found",
+            "message": f"This approved {noun.lower()} is not available.",
+        },
+        status_code=404,
+    )
+
+
 @router.get(
-    "/advertisements/{advertisement_id}",
+    "/assam/advertisements/{advertisement_id}/{slug}",
     response_class=HTMLResponse,
     name="public_advertisement_summary",
 )
 def public_advertisement_summary(
     advertisement_id: uuid.UUID,
+    slug: str,
     request: Request,
     session: DatabaseSession,
     as_of: date | None = None,
-) -> HTMLResponse:
+) -> Response:
     try:
         advertisement = PublicRecruitmentService(session).get_advertisement(
             advertisement_id, as_of=as_of
         )
     except ResourceNotFoundError:
-        return templates.TemplateResponse(
-            request=request,
-            name="public/error.html",
-            context={
-                "request": request,
-                "title": "Advertisement not found",
-                "message": "This approved advertisement is not available.",
-            },
-            status_code=404,
-        )
+        return _not_found(request, advertisement=True)
+    expected_path = assam_advertisement_path(advertisement.id, advertisement.title)
+    if slug != public_slug(advertisement.title):
+        return RedirectResponse(path_with_query(expected_path, request.url.query), status_code=308)
     return templates.TemplateResponse(
         request=request,
         name="public/advertisement_summary.html",
@@ -213,32 +272,27 @@ def public_advertisement_summary(
             "request": request,
             "title": advertisement.title,
             "description": f"Approved advertisement summary for {advertisement.title}.",
-            "canonical_url": str(request.url.replace(query="")),
+            "canonical_url": canonical_url(request, expected_path),
             "view": PublicRecruitmentViewService.advertisement(advertisement),
         },
     )
 
 
-@router.get("/{job_id}", response_class=HTMLResponse, name="public_job_detail")
+@router.get("/assam/{job_id}/{slug}", response_class=HTMLResponse, name="public_job_detail")
 def public_job_detail(
     job_id: uuid.UUID,
+    slug: str,
     request: Request,
     session: DatabaseSession,
     as_of: date | None = None,
-) -> HTMLResponse:
+) -> Response:
     try:
         recruitment = PublicRecruitmentService(session).get_recruitment(job_id, as_of=as_of)
     except ResourceNotFoundError:
-        return templates.TemplateResponse(
-            request=request,
-            name="public/error.html",
-            context={
-                "request": request,
-                "title": "Job not found",
-                "message": "This approved job is not available.",
-            },
-            status_code=404,
-        )
+        return _not_found(request)
+    expected_path = assam_job_path(recruitment.id, recruitment.display_name)
+    if slug != public_slug(recruitment.display_name):
+        return RedirectResponse(path_with_query(expected_path, request.url.query), status_code=308)
     return templates.TemplateResponse(
         request=request,
         name="public/job_detail.html",
@@ -248,20 +302,25 @@ def public_job_detail(
             "description": (
                 f"Approved Assam Government recruitment information for {recruitment.display_name}."
             ),
-            "canonical_url": str(request.url.replace(query="")),
+            "canonical_url": canonical_url(request, expected_path),
             "view": PublicRecruitmentViewService.detail(recruitment),
             "eligibility": None,
         },
     )
 
 
-@router.post("/{job_id}/eligibility", response_class=HTMLResponse)
+@router.post("/assam/{job_id}/{slug}/eligibility", response_class=HTMLResponse)
 async def public_job_eligibility(
     job_id: uuid.UUID,
+    slug: str,
     request: Request,
     session: DatabaseSession,
-) -> HTMLResponse:
+) -> Response:
     try:
+        recruitment = PublicRecruitmentService(session).get_recruitment(job_id)
+        expected_path = assam_job_path(recruitment.id, recruitment.display_name)
+        if slug != public_slug(recruitment.display_name):
+            return RedirectResponse(f"{expected_path}/eligibility", status_code=308)
         form = await _read_form(request)
         domicile = (form.get("assam_domicile") or "").strip().lower()
         profile = EligibilityProfile(
@@ -275,19 +334,9 @@ async def public_job_eligibility(
             ],
             experience_months=(form.get("experience_months") or None),
         )
-        recruitment = PublicRecruitmentService(session).get_recruitment(job_id)
         eligibility = EligibilityService(session).evaluate(job_id, profile)
     except ResourceNotFoundError:
-        return templates.TemplateResponse(
-            request=request,
-            name="public/error.html",
-            context={
-                "request": request,
-                "title": "Job not found",
-                "message": "This approved job is not available.",
-            },
-            status_code=404,
-        )
+        return _not_found(request)
     except (ValidationError, ValueError):
         return templates.TemplateResponse(
             request=request,
@@ -306,8 +355,36 @@ async def public_job_eligibility(
             "request": request,
             "title": recruitment.display_name,
             "description": f"Eligibility result for {recruitment.display_name}.",
-            "canonical_url": str(request.url_for("public_job_detail", job_id=job_id)),
+            "canonical_url": canonical_url(request, expected_path),
             "view": PublicRecruitmentViewService.detail(recruitment),
             "eligibility": eligibility,
         },
     )
+
+
+@router.get("/advertisements/{advertisement_id}", name="legacy_public_advertisement")
+def legacy_public_advertisement(
+    advertisement_id: uuid.UUID,
+    request: Request,
+    session: DatabaseSession,
+) -> Response:
+    try:
+        advertisement = PublicRecruitmentService(session).get_advertisement(advertisement_id)
+    except ResourceNotFoundError:
+        return _not_found(request, advertisement=True)
+    path = assam_advertisement_path(advertisement.id, advertisement.title)
+    return RedirectResponse(path_with_query(path, request.url.query), status_code=308)
+
+
+@router.get("/{job_id}", name="legacy_public_job")
+def legacy_public_job(
+    job_id: uuid.UUID,
+    request: Request,
+    session: DatabaseSession,
+) -> Response:
+    try:
+        recruitment = PublicRecruitmentService(session).get_recruitment(job_id)
+    except ResourceNotFoundError:
+        return _not_found(request)
+    path = assam_job_path(recruitment.id, recruitment.display_name)
+    return RedirectResponse(path_with_query(path, request.url.query), status_code=308)

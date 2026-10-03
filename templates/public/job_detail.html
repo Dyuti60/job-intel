@@ -1,7 +1,7 @@
 {% extends "public/base.html" %}
 {% block content %}
 {% from "public/field_value.html" import render_value %}
-<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Jobs</a><span aria-hidden="true">/</span><span>Details</span></nav>
+<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Jobs</a><span aria-hidden="true">/</span><a href="/jobs/assam">Assam</a><span aria-hidden="true">/</span><span>Details</span></nav>
 
 <section class="detail-hero">
   <div>
@@ -10,7 +10,7 @@
     {% for organisation in view.organisations %}<p>{{ organisation }}</p>{% endfor %}
     <p>{{ view.recruitment.authority.name }}</p>
     <div class="form-actions">
-      <a href="/jobs/advertisements/{{ view.recruitment.advertisement_id }}">Advertisement Summary</a>
+      <a href="{{ assam_advertisement_path(view.recruitment.advertisement_id, view.recruitment.advertisement_title) }}">Advertisement Summary</a>
       {% if view.official_document_url %}<a href="{{ view.official_document_url }}" target="_blank" rel="noopener noreferrer">Complete Official Advertisement <span aria-hidden="true">↗</span></a>{% endif %}
     </div>
   </div>
@@ -53,7 +53,7 @@
 <section class="detail-section" aria-labelledby="eligibility-heading">
   <h2 id="eligibility-heading">Check deterministic eligibility</h2>
   <p>This check uses only approved structured facts shown above. Missing or text-only rules return Unknown or Review required.</p>
-  <form class="search-panel" method="post" action="/jobs/{{ view.recruitment.id }}/eligibility">
+  <form class="search-panel" method="post" action="{{ assam_job_path(view.recruitment.id, view.recruitment.display_name) }}/eligibility">
     <div class="filter-grid">
       <label>Date of birth <input type="date" name="date_of_birth"></label>
       <label>Category

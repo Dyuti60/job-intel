@@ -10,6 +10,7 @@ from app.models.candidates import CandidateField, RecruitmentCandidateRevision
 from app.models.discovery import DiscoveryRun, DiscoveryRunStatus
 from app.models.master import MasterPost, MasterPublicationEvent
 from app.models.review import ReviewCase, ReviewDecision, ReviewItem
+from app.public_web.urls import assam_job_path
 from app.review_web.router import _format_ist
 from app.services.job_lifecycle import assam_today
 from tests.factories import (
@@ -346,8 +347,8 @@ def test_quick_preserves_corrected_shared_values_and_blocks_rejected_posts(
         },
     )
     assert "View Published Job" in result.text
-    listing = client.get("/api/public/v1/recruitments").json()
-    detail = client.get(f"/api/public/v1/recruitments/{listing['items'][0]['id']}").json()
+    listing = client.get("/api/jobs/v1/recruitments").json()
+    detail = client.get(f"/api/jobs/v1/recruitments/{listing['items'][0]['id']}").json()
     assert (
         next(field for field in detail["fields"] if field["field_path"] == "application.end_date")[
             "value"
@@ -792,13 +793,13 @@ def test_grouped_review_corrections_preserve_extraction_and_reach_public_master(
         "HUMAN_CORRECTED"
     )
 
-    listing = client.get("/api/public/v1/recruitments", params={"page_size": 10}).json()
+    listing = client.get("/api/jobs/v1/recruitments", params={"page_size": 10}).json()
     assert listing["total"] == 3
     public_by_name = {item["display_name"]: item for item in listing["items"]}
     assert public_by_name["Grade IV Staff - Assam Police"]["vacancies_total"] == 186
     assert public_by_name["Grade IV Staff - Assam Commando Battalions"]["vacancies_total"] == 6
     for public_post in public_by_name.values():
-        detail = client.get(f"/api/public/v1/recruitments/{public_post['id']}").json()
+        detail = client.get(f"/api/jobs/v1/recruitments/{public_post['id']}").json()
         effective = {field["field_path"]: field["value"] for field in detail["fields"]}
         assert effective["application.end_date"] == "2026-10-22"
         assert effective["advertisement.vacancies.total"] == 256
@@ -1105,7 +1106,7 @@ def test_review_metrics_and_manual_publication_are_post_scoped_and_idempotent(
     assert "PUBLISHED" in published_page.text
     assert "View Published Job" in published_page.text
     assert "Publish Job" not in published_page.text
-    listing = client.get("/api/public/v1/recruitments", params={"page_size": 10}).json()
+    listing = client.get("/api/jobs/v1/recruitments", params={"page_size": 10}).json()
     assert listing["total"] == 1
     assert listing["items"][0]["display_name"] == "Grade IV Staff - Assam Police"
     assert listing["items"][0]["vacancies_total"] == 181
@@ -1127,7 +1128,7 @@ def test_incremental_post_publication_keeps_prior_post_and_complete_details(
     _submit_post(client, case, "assam_police", final_action="APPROVE_POST")
     after_police = client.get(f"/api/v1/review-cases/{case_id}").json()
     client.post(f"/review/cases/{case_id}/publish", data={"post": "assam_police"})
-    first_listing = client.get("/api/public/v1/recruitments", params={"page_size": 10}).json()
+    first_listing = client.get("/api/jobs/v1/recruitments", params={"page_size": 10}).json()
     police_public_id = first_listing["items"][0]["id"]
     _submit_post(
         client,
@@ -1141,7 +1142,7 @@ def test_incremental_post_publication_keeps_prior_post_and_complete_details(
     )
     assert second.status_code == 200
 
-    listing = client.get("/api/public/v1/recruitments", params={"page_size": 10}).json()
+    listing = client.get("/api/jobs/v1/recruitments", params={"page_size": 10}).json()
     assert listing["total"] == 2
     assert {item["display_name"] for item in listing["items"]} == {
         "Grade IV Staff - Assam Police",
@@ -1157,7 +1158,7 @@ def test_incremental_post_publication_keeps_prior_post_and_complete_details(
         == police_public_id
     )
     for item in listing["items"]:
-        detail_response = client.get(f"/api/public/v1/recruitments/{item['id']}")
+        detail_response = client.get(f"/api/jobs/v1/recruitments/{item['id']}")
         fields = {field["field_path"]: field["value"] for field in detail_response.json()["fields"]}
         assert fields["advertisement.vacancies.total"] == 256
         assert fields["application.fee"] == "Rs. 250"
@@ -1168,9 +1169,11 @@ def test_incremental_post_publication_keeps_prior_post_and_complete_details(
         assert "Application Details" in html
         assert "Selection Process" in html
 
-    cards = client.get("/jobs").text
+    cards = client.get("/jobs/assam").text
     assert cards.count('class="job-card"') == 2
     assert "SLPRB Grade IV Advertisement</h2>" not in cards
+    for item in listing["items"]:
+        assert assam_job_path(item["id"], item["display_name"]) in cards
 
 
 def test_grouped_post_submission_validates_all_items_comment_and_focus(

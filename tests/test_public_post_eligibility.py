@@ -1,5 +1,6 @@
 import uuid
 
+from app.public_web.urls import assam_advertisement_path, assam_job_path
 from tests.factories import (
     create_candidate,
     create_discovery_source,
@@ -96,8 +97,8 @@ def _publish_three_posts(client) -> dict:
 
 def test_three_explicit_posts_are_independent_public_jobs_with_shared_context(client) -> None:
     graph = _publish_three_posts(client)
-    listing = client.get("/api/public/v1/recruitments", params={"page_size": 10}).json()
-    cards = client.get("/jobs").text
+    listing = client.get("/api/jobs/v1/recruitments", params={"page_size": 10}).json()
+    cards = client.get("/jobs/assam").text
 
     assert listing["total"] == 3
     assert {item["display_name"] for item in listing["items"]} == {
@@ -119,7 +120,7 @@ def test_three_explicit_posts_are_independent_public_jobs_with_shared_context(cl
         "Driver": "Class X with driving licence",
     }
     for item in listing["items"]:
-        detail = client.get(f"/api/public/v1/recruitments/{item['id']}").json()
+        detail = client.get(f"/api/jobs/v1/recruitments/{item['id']}").json()
         values = {field["field_path"]: field["value"] for field in detail["fields"]}
         assert values["name"] == item["display_name"]
         assert values["vacancies.total"] == item["vacancies_total"]
@@ -127,14 +128,16 @@ def test_three_explicit_posts_are_independent_public_jobs_with_shared_context(cl
         assert "pay.scale" in values
         assert values["application.start_date"] == "2026-09-20"
         assert values["application.end_date"] == "2026-10-20"
-        assert f"/jobs/{item['id']}" in cards
+        assert assam_job_path(item["id"], item["display_name"]) in cards
 
     first = listing["items"][0]
-    html = client.get(f"/jobs/{first['id']}").text
+    html = client.get(assam_job_path(first["id"], first["display_name"])).text
     assert "Important Dates" in html and "20 September 2026" in html
     assert "Educational Qualification" in html and "Salary / Pay Scale" in html
     assert "Advertisement Summary" in html
-    summary = client.get(f"/jobs/advertisements/{first['advertisement_id']}").text
+    summary = client.get(
+        assam_advertisement_path(first["advertisement_id"], first["advertisement_title"])
+    ).text
     assert "Combined Services Advertisement" in summary
 
 
@@ -242,9 +245,9 @@ def test_public_contract_uses_approved_post_as_result_unit(client) -> None:
     )
     assert public_id == str(expected_public_id)
 
-    listed = client.get("/api/public/v1/recruitments", params={"q": "Valid Post"})
-    detail = client.get(f"/api/public/v1/recruitments/{public_id}")
-    legacy_parent = client.get(f"/api/public/v1/recruitments/{publication['master']['id']}")
+    listed = client.get("/api/jobs/v1/recruitments", params={"q": "Valid Post"})
+    detail = client.get(f"/api/jobs/v1/recruitments/{public_id}")
+    legacy_parent = client.get(f"/api/jobs/v1/recruitments/{publication['master']['id']}")
 
     assert listed.status_code == detail.status_code == 200
     assert legacy_parent.status_code == 404
@@ -271,13 +274,13 @@ def test_public_contract_uses_approved_post_as_result_unit(client) -> None:
     assert all("conflicted_post" not in str(field) for field in detail.json()["fields"])
     assert (
         client.get(
-            "/api/public/v1/recruitments",
+            "/api/jobs/v1/recruitments",
             params={"post_name": "valid", "qualification": "bachelor"},
         ).json()["total"]
         == 1
     )
     assert (
-        client.get("/api/public/v1/recruitments", params={"qualification": "doctorate"}).json()[
+        client.get("/api/jobs/v1/recruitments", params={"qualification": "doctorate"}).json()[
             "total"
         ]
         == 0
@@ -286,7 +289,7 @@ def test_public_contract_uses_approved_post_as_result_unit(client) -> None:
     updated = _publish_updated_valid_post(client, publication)
     assert updated["master_revision"]["revision_number"] == 2
     assert updated["master_revision"]["posts"][0]["public_id"] == public_id
-    refreshed = client.get(f"/api/public/v1/recruitments/{public_id}").json()
+    refreshed = client.get(f"/api/jobs/v1/recruitments/{public_id}").json()
     assert refreshed["current_revision_number"] == 2
     assert refreshed["vacancies_total"] == 11
 
@@ -294,7 +297,7 @@ def test_public_contract_uses_approved_post_as_result_unit(client) -> None:
 def test_eligibility_is_versioned_explainable_and_conservative(client) -> None:
     publication = _publish_valid_sibling(client)
     public_id = publication["master_revision"]["posts"][0]["public_id"]
-    endpoint = f"/api/public/v1/recruitments/{public_id}/eligibility"
+    endpoint = f"/api/jobs/v1/recruitments/{public_id}/eligibility"
 
     eligible = client.post(
         endpoint,
@@ -329,7 +332,7 @@ def test_eligibility_is_versioned_explainable_and_conservative(client) -> None:
     )
     invalid = client.post(endpoint, json={"category": "UNSUPPORTED"})
     missing = client.post(
-        "/api/public/v1/recruitments/00000000-0000-0000-0000-000000000000/eligibility",
+        "/api/jobs/v1/recruitments/00000000-0000-0000-0000-000000000000/eligibility",
         json={},
     )
 
@@ -354,9 +357,10 @@ def test_eligibility_is_versioned_explainable_and_conservative(client) -> None:
     assert invalid.status_code == 422
     assert missing.status_code == 404
 
-    page = client.get(f"/jobs/{public_id}")
+    job_path = assam_job_path(public_id, "Valid Post")
+    page = client.get(job_path)
     rendered = client.post(
-        f"/jobs/{public_id}/eligibility",
+        f"{job_path}/eligibility",
         data={
             "date_of_birth": "2000-01-02",
             "category": "GENERAL",

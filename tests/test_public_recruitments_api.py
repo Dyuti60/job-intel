@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import Base
 from app.models.master import RecruitmentMaster, RecruitmentMasterStatus
+from app.public_web.urls import assam_job_path
 from tests.factories import (
     create_ready_candidate_revision,
     decide_review_item,
@@ -15,7 +16,7 @@ from tests.factories import (
 from tests.test_master_api import _direct_graph, _new_candidate_revision, _publish
 from tests.test_review_api import build_review_graph
 
-PUBLIC_URL = "/api/public/v1/recruitments"
+PUBLIC_URL = "/api/jobs/v1/recruitments"
 
 
 def _published(
@@ -258,9 +259,10 @@ def test_default_public_and_web_order_share_lifecycle_priority(client: TestClien
     assert [item["lifecycle"] for item in listed] == [
         "OPEN", "OPEN", "RECENTLY_CLOSED", "UPCOMING", "CLOSED",
     ]
-    web = client.get("/jobs", params={"as_of": "2026-09-22"}).text
-    assert [web.index(f"/jobs/{job_id}") for job_id in ids] == sorted(
-        web.index(f"/jobs/{job_id}") for job_id in ids
+    web = client.get("/jobs/assam", params={"as_of": "2026-09-22"}).text
+    paths = [assam_job_path(item["id"], item["display_name"]) for item in listed]
+    assert [web.index(path) for path in paths] == sorted(
+        web.index(path) for path in paths
     )
     assert "Closed Recently" in web and "<dt>Closed</dt>" in web
 
@@ -349,7 +351,7 @@ def test_public_validation_is_bounded_and_gets_are_read_only(
     public_paths = {
         path: methods
         for path, methods in client.get("/openapi.json").json()["paths"].items()
-        if path.startswith("/api/public/v1/")
+        if path.startswith("/api/jobs/v1/")
     }
     assert public_paths
     assert all(

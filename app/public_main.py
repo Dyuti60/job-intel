@@ -35,11 +35,12 @@ def create_public_app(settings: Settings | None = None) -> FastAPI:
         openapi_url=None,
         lifespan=public_lifespan,
     )
+    application.state.public_base_url = settings.public_base_url
     application.include_router(public_health_router)
-    application.include_router(public_api_router, prefix="/api/public/v1")
+    application.include_router(public_api_router, prefix="/api/jobs/v1")
     application.include_router(public_web_router)
     application.mount(
-        "/static",
+        "/jobs/static",
         StaticFiles(directory=Path(__file__).resolve().parent / "static"),
         name="static",
     )

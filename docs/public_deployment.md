@@ -27,7 +27,12 @@ any of these secrets.
 Run `app.public_main:app` publicly. Never expose `app.main:app`: it contains the internal API,
 Human Review, and operations pages. The supplied Compose file publishes the public container only
 on `127.0.0.1:8001`; terminate TLS in a reverse proxy on the same trusted host or private network.
-Forward only `/jobs`, `/api/public/v1`, `/static`, `/healthz`, and `/readyz` to that listener.
+Forward only `/jobs`, `/jobs/*`, `/api/jobs/v1/*`, `/healthz`, and `/readyz` to that listener.
+
+The public Jobs URL contract is `/jobs` for the Careerthora Jobs hub, `/jobs/assam` for the Assam
+listing, `/jobs/assam/{uuid}/{slug}` for canonical job detail, and `/api/jobs/v1` for the read-only
+Jobs API. Public assets are namespaced below `/jobs/static`; UUIDs remain the stable identity and
+slugs are presentation-only.
 
 Set `AJI_PUBLIC_ALLOWED_HOSTS` to comma-separated exact deployment hosts. Set
 `AJI_PUBLIC_FORWARDED_ALLOW_IPS` to only the reverse proxy address or trusted proxy CIDR; never use

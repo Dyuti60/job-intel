@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import Settings
 from app.db.session import get_db
 from app.public_main import create_public_app
+from app.public_web.urls import assam_job_path
 from tests.test_master_api import _new_candidate_revision, _publish
 from tests.test_public_recruitments_api import _published
 
@@ -21,12 +22,12 @@ def _public_client(test_engine, **overrides) -> Generator[TestClient, None, None
         with session_factory() as session:
             yield session
 
-    settings = Settings(
-        _env_file=None,
-        database_url="sqlite+pysqlite:///:memory:",
-        public_allowed_hosts="testserver,public.example.test",
+    values = {
+        "database_url": "sqlite+pysqlite:///:memory:",
+        "public_allowed_hosts": "testserver,public.example.test",
         **overrides,
-    )
+    }
+    settings = Settings(_env_file=None, **values)
     application = create_public_app(settings)
     application.dependency_overrides[get_db] = override_get_db
     with TestClient(application) as public_client:
@@ -36,7 +37,10 @@ def _public_client(test_engine, **overrides) -> Generator[TestClient, None, None
 def test_public_app_exposes_only_public_read_and_health_surfaces(test_engine) -> None:
     with _public_client(test_engine) as public_client:
         assert public_client.get("/jobs").status_code == 200
-        assert public_client.get("/api/public/v1/recruitments").status_code == 200
+        assert public_client.get("/api/jobs/v1/recruitments").status_code == 200
+        assert public_client.get("/jobs/static/public.css").status_code == 200
+        assert public_client.get("/api/public/v1/recruitments").status_code == 404
+        assert public_client.get("/static/public.css").status_code == 404
         assert public_client.get("/healthz").json() == {"status": "ok"}
         assert public_client.get("/readyz").json() == {"status": "ok"}
         for private_path in (
@@ -49,8 +53,23 @@ def test_public_app_exposes_only_public_read_and_health_surfaces(test_engine) ->
         ):
             assert public_client.get(private_path).status_code == 404
         assert public_client.post("/jobs").status_code == 405
-        assert public_client.post("/api/public/v1/recruitments").status_code == 405
+        assert public_client.post("/api/jobs/v1/recruitments").status_code == 405
         assert public_client.post("/operations/actions").status_code == 404
+
+
+def test_public_canonical_url_uses_configured_origin_not_request_host(client, test_engine) -> None:
+    _published(client, "CONFIGURED_CANONICAL")
+    with _public_client(
+        test_engine,
+        public_base_url="https://careerthora.com",
+        public_allowed_hosts="request.example.test",
+    ) as public_client:
+        response = public_client.get(
+            "/jobs/assam", headers={"host": "request.example.test"}
+        )
+
+    assert response.status_code == 200
+    assert '<link rel="canonical" href="https://careerthora.com/jobs/assam">' in response.text
 
 
 def test_public_security_headers_host_guard_and_hsts(test_engine) -> None:
@@ -80,11 +99,12 @@ def test_public_etag_revalidates_against_current_master(client: TestClient, test
     graph = _published(client, "RELEASE_ETAG", end="2026-10-20", vacancies=10)
     master_id = graph["publication"]["master"]["id"]
     with _public_client(test_engine) as public_client:
-        first = public_client.get(f"/jobs/{master_id}")
+        job_path = assam_job_path(master_id, graph["candidate"]["display_name"])
+        first = public_client.get(job_path)
         assert first.status_code == 200
         assert first.headers["cache-control"] == "public, max-age=60, must-revalidate"
         etag = first.headers["etag"]
-        replay = public_client.get(f"/jobs/{master_id}", headers={"if-none-match": etag})
+        replay = public_client.get(job_path, headers={"if-none-match": etag})
         assert replay.status_code == 304
         assert replay.content == b""
 
@@ -112,7 +132,7 @@ def test_public_etag_revalidates_against_current_master(client: TestClient, test
         second_publication = _publish(client, newer["confidence"]["id"])
         assert second_publication.status_code == 201
 
-        refreshed = public_client.get(f"/jobs/{master_id}", headers={"if-none-match": etag})
+        refreshed = public_client.get(job_path, headers={"if-none-match": etag})
         assert refreshed.status_code == 200
         assert refreshed.headers["etag"] != etag
         assert "27 Oct 2026" in refreshed.text
@@ -123,7 +143,7 @@ def test_public_eligibility_post_is_stateless_and_never_cached(client, test_engi
     master_id = graph["publication"]["master"]["id"]
     with _public_client(test_engine) as public_client:
         response = public_client.post(
-            f"/api/public/v1/recruitments/{master_id}/eligibility", json={}
+            f"/api/jobs/v1/recruitments/{master_id}/eligibility", json={}
         )
         assert response.status_code == 200
         assert response.json()["overall_outcome"] == "UNKNOWN"
@@ -139,13 +159,13 @@ def test_public_rate_limit_and_request_target_bound(test_engine) -> None:
         public_max_request_target_bytes=512,
     ) as public_client:
         assert public_client.get("/jobs").status_code == 200
-        assert public_client.get("/jobs?q=assam").status_code == 200
-        limited = public_client.get("/jobs?q=third")
+        assert public_client.get("/jobs/assam?q=assam").status_code == 200
+        limited = public_client.get("/jobs/assam?q=third")
         assert limited.status_code == 429
         assert limited.headers["retry-after"]
         assert limited.headers["cache-control"] == "no-store"
         assert public_client.get("/healthz").status_code == 200
-        assert public_client.get(f"/static/public.css?padding={'x' * 600}").status_code == 414
+        assert public_client.get(f"/jobs/static/public.css?padding={'x' * 600}").status_code == 414
 
 
 def test_public_readiness_is_bounded_on_database_failure(test_engine) -> None:

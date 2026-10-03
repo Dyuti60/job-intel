@@ -18,6 +18,7 @@ from app.models.candidates import (
 from app.models.discovery import DocumentType
 from app.models.evidence import CandidateFieldEvidence, Evidence
 from app.models.master import MasterPost
+from app.public_web.urls import assam_job_path
 from app.services.official_archive_discovery import OfficialArchiveDiscoveryWorkerService
 from app.services.published_maintenance import PublishedMaintenanceService
 from sources.adapters.apsc_recruitment import AdapterDocument
@@ -729,7 +730,7 @@ def test_rich_multi_post_facts_reach_master_and_public_views(client, db_session,
     publication = _publish(client, confidence["id"])
     assert publication.status_code == 201, publication.text
 
-    public = client.get("/api/public/v1/recruitments", params={"as_of": "2026-09-20"}).json()
+    public = client.get("/api/jobs/v1/recruitments", params={"as_of": "2026-09-20"}).json()
     assert public["total"] == 2
     driver = next(
         item
@@ -746,7 +747,7 @@ def test_rich_multi_post_facts_reach_master_and_public_views(client, db_session,
     assert driver["organisation"] == "Assam Police"
     assert driver["qualification_summary"].startswith("HSLC passed")
 
-    detail = client.get(f"/api/public/v1/recruitments/{driver['id']}").json()
+    detail = client.get(f"/api/jobs/v1/recruitments/{driver['id']}").json()
     values = {field["field_path"]: field["value"] for field in detail["fields"]}
     assert values["qualification.essential"].startswith("HSLC passed")
     assert values["qualification.desirable"] == "Experience driving heavy vehicles"
@@ -759,7 +760,7 @@ def test_rich_multi_post_facts_reach_master_and_public_views(client, db_session,
     assert values["syllabus.phases"][0]["Subject"] == "General Knowledge and Aptitude"
     assert detail["sources"][0]["document_url"] == metadata.document_url
 
-    operator_detail = client.get(f"/api/public/v1/recruitments/{operator['id']}").json()
+    operator_detail = client.get(f"/api/jobs/v1/recruitments/{operator['id']}").json()
     operator_values = {field["field_path"]: field["value"] for field in operator_detail["fields"]}
     assert operator_values["qualification.desirable"] == "Fire-service driving experience"
     assert "Experience driving heavy vehicles" not in str(operator_values)
@@ -835,14 +836,14 @@ def test_pypdf_like_extraction_reaches_candidate_master_and_public_detail(
     confidence = _verify_revision(client, document, revision)["confidence"]
     assert _publish(client, confidence["id"]).status_code == 201
 
-    public = client.get("/api/public/v1/recruitments", params={"as_of": "2026-01-01"}).json()
+    public = client.get("/api/jobs/v1/recruitments", params={"as_of": "2026-01-01"}).json()
     assert public["total"] == 2
     driver = next(
         item
         for item in public["items"]
         if item["display_name"] == "Driver Constable – Assam Police"
     )
-    detail = client.get(f"/api/public/v1/recruitments/{driver['id']}").json()
+    detail = client.get(f"/api/jobs/v1/recruitments/{driver['id']}").json()
     values = {field["field_path"]: field["value"] for field in detail["fields"]}
     assert values["vacancies.total"] == 127
     assert values["vacancies.tea_tribes_adivasi"] == 4
@@ -913,7 +914,7 @@ def test_atomic_grade_iv_posts_reach_master_and_public_jobs(client, db_session, 
     confidence = _verify_revision(client, document, revision)["confidence"]
     assert _publish(client, confidence["id"]).status_code == 201
 
-    public = client.get("/api/public/v1/recruitments", params={"as_of": "2026-01-22"}).json()
+    public = client.get("/api/jobs/v1/recruitments", params={"as_of": "2026-01-22"}).json()
     assert public["total"] == 13
     assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 13
     assert not any(item["display_name"].startswith("Grade IV Staff") for item in public["items"])
@@ -921,7 +922,7 @@ def test_atomic_grade_iv_posts_reach_master_and_public_jobs(client, db_session, 
         item for item in public["items"] if item["display_name"] == "Cook – DGCD & CGHG"
     )
     assert dgcd_cook["vacancies_total"] == 27
-    detail = client.get(f"/api/public/v1/recruitments/{dgcd_cook['id']}").json()
+    detail = client.get(f"/api/jobs/v1/recruitments/{dgcd_cook['id']}").json()
     values = {field["field_path"]: field["value"] for field in detail["fields"]}
     assert values["vacancies.total"] == 27
     assert values["vacancies.ur"] == 15
@@ -1010,7 +1011,7 @@ def test_slprb_narrative_publishes_three_isolated_master_posts_and_public_jobs(
     assert publication.status_code == 201, publication.text
 
     master_posts = publication.json()["master_revision"]["posts"]
-    public = client.get("/api/public/v1/recruitments", params={"as_of": "2026-09-20"}).json()
+    public = client.get("/api/jobs/v1/recruitments", params={"as_of": "2026-09-20"}).json()
     assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 3
     assert len(master_posts) == public["total"] == 3, [
         row["missing"] for row in PublishedMaintenanceService(db_session).rows()
@@ -1025,7 +1026,7 @@ def test_slprb_narrative_publishes_three_isolated_master_posts_and_public_jobs(
 
     for item in public["items"]:
         detail = client.get(
-            f"/api/public/v1/recruitments/{item['id']}",
+            f"/api/jobs/v1/recruitments/{item['id']}",
             params={"as_of": "2026-09-20"},
         ).json()
         values = {field["field_path"]: field["value"] for field in detail["fields"]}
@@ -1046,7 +1047,7 @@ def test_slprb_narrative_publishes_three_isolated_master_posts_and_public_jobs(
     assert "Grade IV Staff – DGCD &amp; CGHG" in summary.text
     assert metadata.document_url in summary.text
     for item in public["items"]:
-        assert f"/jobs/{item['id']}" in summary.text
+        assert assam_job_path(item["id"], item["display_name"]) in summary.text
 
 
 def test_explicit_revision_supersedes_unsplit_public_view_without_deleting_history(
@@ -1133,12 +1134,12 @@ def test_explicit_revision_supersedes_unsplit_public_view_without_deleting_histo
     verified = _verify_revision(client, updated_document, explicit_revision)
     second = _publish(client, verified["confidence"]["id"]).json()
 
-    public = client.get("/api/public/v1/recruitments", params={"as_of": "2026-09-20"}).json()
+    public = client.get("/api/jobs/v1/recruitments", params={"as_of": "2026-09-20"}).json()
     history = client.get(f"/api/v1/recruitment-master/{first['master']['id']}/revisions").json()
     assert second["master"]["id"] == first["master"]["id"]
     assert second["master_revision"]["revision_number"] == 2
     assert len(history) == 2
     assert public["total"] == 8
     assert legacy_public_id not in {item["id"] for item in public["items"]}
-    assert client.get(f"/api/public/v1/recruitments/{legacy_public_id}").status_code == 404
+    assert client.get(f"/api/jobs/v1/recruitments/{legacy_public_id}").status_code == 404
     assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 8

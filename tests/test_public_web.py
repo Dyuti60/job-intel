@@ -8,13 +8,19 @@ from app.db.base import Base
 from app.models.discovery import SourceDocument
 from app.models.master import RecruitmentMaster, RecruitmentMasterRevision, RecruitmentMasterStatus
 from app.models.source_registry import SourceEndpoint
+from app.public_web.urls import assam_advertisement_path, assam_job_path, public_slug
 from tests.factories import create_ready_candidate_revision
 from tests.test_master_api import _direct_graph, _publish
 from tests.test_public_recruitments_api import _published
 
 
 def test_public_jobs_page_has_accessible_empty_and_filtered_results(client: TestClient) -> None:
-    empty = client.get("/jobs")
+    hub = client.get("/jobs")
+    assert hub.status_code == 200
+    assert "Careerthora Jobs" in hub.text
+    assert 'href="/jobs/assam"' in hub.text
+
+    empty = client.get("/jobs/assam")
     assert empty.status_code == 200
     assert "No approved jobs found" in empty.text
     assert 'href="#main-content"' in empty.text
@@ -22,7 +28,7 @@ def test_public_jobs_page_has_accessible_empty_and_filtered_results(client: Test
     first = _published(client, "WEB_A", end="2026-10-20", vacancies=25)
     second = _published(client, "WEB_B", end="2026-11-20", vacancies=100)
     page = client.get(
-        "/jobs",
+        "/jobs/assam",
         params={
             "authority": second["authority"]["code"].lower(),
             "as_of": "2026-09-10",
@@ -36,12 +42,56 @@ def test_public_jobs_page_has_accessible_empty_and_filtered_results(client: Test
     assert "Open" in page.text
     assert "100" in page.text
     assert '<form class="search-panel" method="get"' in page.text
-    assert '<link rel="canonical" href="http://testserver/jobs">' in page.text
+    assert '<link rel="canonical" href="http://testserver/jobs/assam">' in page.text
+
+
+def test_public_slug_and_canonical_redirects_preserve_uuid_identity(client: TestClient) -> None:
+    graph = _published(client, "CANONICAL")
+    item = client.get("/api/jobs/v1/recruitments").json()["items"][0]
+    job_path = assam_job_path(item["id"], item["display_name"])
+    advertisement_path = assam_advertisement_path(
+        item["advertisement_id"], item["advertisement_title"]
+    )
+
+    assert public_slug("Grade IV Staff – Assam Police") == "grade-iv-staff-assam-police"
+    canonical = client.get(job_path)
+    stale = client.get(f"/jobs/assam/{item['id']}/stale", follow_redirects=False)
+    legacy = client.get(f"/jobs/{item['id']}", follow_redirects=False)
+    legacy_advertisement = client.get(
+        f"/jobs/advertisements/{item['advertisement_id']}", follow_redirects=False
+    )
+
+    assert canonical.status_code == 200
+    assert f'<link rel="canonical" href="http://testserver{job_path}">' in canonical.text
+    assert stale.status_code == legacy.status_code == legacy_advertisement.status_code == 308
+    assert stale.headers["location"] == legacy.headers["location"] == job_path
+    assert legacy_advertisement.headers["location"] == advertisement_path
+    assert graph["publication"]["master"]["id"] in job_path
+
+
+def test_public_jobs_sitemap_contains_only_published_job_urls(client: TestClient) -> None:
+    published = _published(client, "SITEMAP")
+    _, _, unpublished, _ = create_ready_candidate_revision(
+        client,
+        authority_overrides={
+            "code": "SITEMAP_UNPUBLISHED",
+            "official_website_url": "https://sitemap-unpublished.gov.in",
+        },
+        endpoint_overrides={"canonical_url": "https://sitemap-unpublished.gov.in/notices"},
+    )
+
+    response = client.get("/jobs/sitemap.xml")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/xml")
+    assert "/jobs/assam" in response.text
+    assert published["publication"]["master"]["id"] in response.text
+    assert unpublished["id"] not in response.text
 
 
 def test_public_jobs_form_accepts_blank_optional_filters(client: TestClient) -> None:
     response = client.get(
-        "/jobs",
+        "/jobs/assam",
         params={
             "q": "",
             "authority": "",
@@ -58,7 +108,7 @@ def test_public_jobs_form_accepts_blank_optional_filters(client: TestClient) -> 
 
 
 def test_public_jobs_form_renders_friendly_validation_error(client: TestClient) -> None:
-    response = client.get("/jobs", params={"application_end_from": "not-a-date"})
+    response = client.get("/jobs/assam", params={"application_end_from": "not-a-date"})
 
     assert response.status_code == 422
     assert "Invalid search" in response.text
@@ -70,7 +120,7 @@ def test_public_jobs_pagination_preserves_filters(client: TestClient) -> None:
     _published(client, "PAGE_B")
 
     response = client.get(
-        "/jobs",
+        "/jobs/assam",
         params={"q": "Recruitment", "sort": "display_name_asc", "page_size": 1},
     )
 
@@ -94,7 +144,7 @@ def test_public_cards_and_detail_use_candidate_focused_hierarchy(client: TestCli
         },
     )
     cards = client.get(
-        "/jobs",
+        "/jobs/assam",
         params={
             "authority": graph["candidate"].get("authority_code", ""),
             "minimum_vacancies": 1,
@@ -107,8 +157,9 @@ def test_public_cards_and_detail_use_candidate_focused_hierarchy(client: TestCli
     assert "Parent Advertisement" in cards.text
     assert "181" in cards.text and "20 Oct 2026" in cards.text
     assert "Advanced filters" in cards.text and 'name="minimum_vacancies" value="1"' in cards.text
-    listing = client.get("/api/public/v1/recruitments").json()
-    detail = client.get(f"/jobs/{listing['items'][0]['id']}")
+    listing = client.get("/api/jobs/v1/recruitments").json()
+    item = listing["items"][0]
+    detail = client.get(assam_job_path(item["id"], item["display_name"]))
     assert "Job sections" in detail.text
     assert 'href="#section-age"' in detail.text
     assert 'href="#section-physical-medical"' not in detail.text
@@ -124,7 +175,10 @@ def test_public_job_detail_shows_approved_fields_and_safe_source_links(
     graph = _published(client, "DETAIL", end="2026-10-31", vacancies=42)
     master_id = graph["publication"]["master"]["id"]
 
-    response = client.get(f"/jobs/{master_id}", params={"as_of": "2026-10-01"})
+    response = client.get(
+        assam_job_path(master_id, graph["candidate"]["display_name"]),
+        params={"as_of": "2026-10-01"},
+    )
 
     assert response.status_code == 200
     assert graph["candidate"]["display_name"] in response.text
@@ -211,8 +265,8 @@ def test_public_detail_renders_rich_master_fields_before_eligibility_and_officia
     publication = _publish(client, graph["confidence"]["id"]).json()
     master_id = publication["master"]["id"]
 
-    detail = client.get(f"/jobs/{master_id}")
-    summary = client.get(f"/jobs/advertisements/{master_id}")
+    detail = client.get(assam_job_path(master_id, "Driver Recruitment"))
+    summary = client.get(assam_advertisement_path(master_id, graph["candidate"]["display_name"]))
 
     assert detail.status_code == summary.status_code == 200
     assert "Essential Qualification" in detail.text
@@ -257,7 +311,7 @@ def test_public_web_hides_unpublished_and_inactive_records(
         endpoint_overrides={"canonical_url": "https://web-unpublished.gov.in/notices"},
     )
 
-    listing = client.get("/jobs")
+    listing = client.get("/jobs/assam")
     inactive_detail = client.get(f"/jobs/{master.id}")
     unknown = client.get(f"/jobs/{uuid4()}")
 
@@ -296,7 +350,7 @@ def test_public_web_escapes_master_and_source_content(
     endpoint.name = "<img src=x onerror=alert(2)>"
     db_session.commit()
 
-    detail = client.get(f"/jobs/{master.id}")
+    detail = client.get(assam_job_path(master.id, master.display_name))
 
     assert detail.status_code == 200
     assert "<script>alert(1)</script>" not in detail.text
@@ -316,10 +370,18 @@ def test_public_web_gets_are_read_only_and_no_mutation_route_exists(
         for table in Base.metadata.sorted_tables
     }
 
-    assert client.get("/jobs").status_code == 200
-    assert client.get(f"/jobs/{graph['publication']['master']['id']}").status_code == 200
+    assert client.get("/jobs/assam").status_code == 200
+    assert client.get(
+        assam_job_path(
+            graph["publication"]["master"]["id"], graph["candidate"]["display_name"]
+        )
+    ).status_code == 200
     assert client.post("/jobs").status_code == 405
-    assert client.post(f"/jobs/{graph['publication']['master']['id']}").status_code == 405
+    assert client.post(
+        assam_job_path(
+            graph["publication"]["master"]["id"], graph["candidate"]["display_name"]
+        )
+    ).status_code == 405
 
     db_session.expire_all()
     after = {

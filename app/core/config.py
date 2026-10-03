@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -48,6 +49,7 @@ class Settings(BaseSettings):
     monitor_notification_channels: str = "LOG"
     monitor_notification_file: str | None = None
     public_allowed_hosts: str = "localhost,127.0.0.1,testserver"
+    public_base_url: str | None = None
     public_forwarded_allow_ips: str = "127.0.0.1"
     public_rate_limit_requests: int = Field(default=120, ge=1, le=100_000)
     public_rate_limit_window_seconds: int = Field(default=60, ge=1, le=3_600)
@@ -70,6 +72,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_contract(self) -> "Settings":
+        if self.public_base_url is not None:
+            self.public_base_url = self.public_base_url.rstrip("/")
+            parsed = urlsplit(self.public_base_url)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.path:
+                raise ValueError("AJI_PUBLIC_BASE_URL must be an HTTP(S) origin without a path")
         if self.app_env == "production":
             if self.database_url == DEFAULT_DEVELOPMENT_DATABASE_URL:
                 raise ValueError("AJI_DATABASE_URL must be explicitly configured in production")

@@ -31,7 +31,7 @@ def test_release_compose_isolates_application_behind_tls_edge() -> None:
     assert "read_only: true" in compose
     assert "cap_drop:" in compose
     assert "AJI_PUBLIC_DATABASE_URL" not in compose
-    assert "@public path /jobs /jobs/* /api/public/v1/* /static/* /healthz /readyz" in caddy
+    assert "@public path /jobs /jobs/* /api/jobs/v1/* /healthz /readyz" in caddy
     assert 'respond "Not Found" 404' in caddy
     assert "/review" not in caddy and "/operations" not in caddy and "/api/v1/" not in caddy
     assert "roll_size 10MiB" in caddy and "roll_keep 10" in caddy

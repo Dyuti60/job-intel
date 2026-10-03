@@ -156,7 +156,7 @@ def test_human_published_post_edit_preserves_public_identity_and_siblings(client
     assert latest.public_id == public_id
     assert latest.post_key == "assam_police"
     assert db_session.scalar(select(func.count()).select_from(MasterPost)) == 2
-    public = client.get("/api/public/v1/recruitments", params={"as_of": "2026-09-22"})
+    public = client.get("/api/jobs/v1/recruitments", params={"as_of": "2026-09-22"})
     assert public.status_code == 200
     assert public.json()["total"] == 1
     assert public.json()["items"][0]["id"] == str(public_id)
@@ -184,7 +184,7 @@ def test_missing_supported_facts_can_be_added_to_unsplit_publication(client, db_
     assert "PARTIAL" in editor.text
     assert 'name="field.vacancies.total"' in editor.text
     assert 'name="field.qualification.minimum"' in editor.text
-    assert client.get("/api/public/v1/recruitments").json()["total"] == 0
+    assert client.get("/api/jobs/v1/recruitments").json()["total"] == 0
     assert client.get(f"/jobs/{master_id}").status_code == 404
     result = client.post(
         f"/review/published/{master_id}/republish",
@@ -198,7 +198,7 @@ def test_missing_supported_facts_can_be_added_to_unsplit_publication(client, db_
         follow_redirects=False,
     )
     assert "message=" in result.headers["location"], result.headers["location"]
-    listing = client.get("/api/public/v1/recruitments", params={"as_of": "2026-10-01"})
+    listing = client.get("/api/jobs/v1/recruitments", params={"as_of": "2026-10-01"})
     assert listing.json()["total"] == 1
     assert listing.json()["items"][0]["id"] == master_id
     assert listing.json()["items"][0]["vacancies_total"] == 48

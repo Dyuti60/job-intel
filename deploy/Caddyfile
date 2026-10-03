@@ -10,7 +10,7 @@
 		format json
 	}
 
-	@public path /jobs /jobs/* /api/public/v1/* /static/* /healthz /readyz
+	@public path /jobs /jobs/* /api/jobs/v1/* /healthz /readyz
 	handle @public {
 		reverse_proxy public-web:8000
 	}

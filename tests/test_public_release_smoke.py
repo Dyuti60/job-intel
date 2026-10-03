@@ -2,8 +2,10 @@ from scripts.public_release_smoke import first_job_detail_path
 
 
 def test_smoke_selects_one_job_detail_when_available() -> None:
-    assert first_job_detail_path({"items": [{"id": "job-123"}, {"id": "job-456"}]}) == (
-        "/jobs/job-123"
+    assert first_job_detail_path(
+        {"items": [{"id": "job-123", "display_name": "Grade IV Staff"}]}
+    ) == (
+        "/jobs/assam/job-123/grade-iv-staff"
     )
 
 

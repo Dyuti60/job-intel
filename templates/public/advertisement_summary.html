@@ -1,6 +1,6 @@
 {% extends "public/base.html" %}
 {% block content %}
-<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Jobs</a><span aria-hidden="true">/</span><span>Advertisement</span></nav>
+<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/jobs">Jobs</a><span aria-hidden="true">/</span><a href="/jobs/assam">Assam</a><span aria-hidden="true">/</span><span>Advertisement</span></nav>
 
 <section class="detail-hero">
   <div>
@@ -18,7 +18,7 @@
     <article class="job-card">
       <h3>{{ post.display_name }}</h3>
       <p>Vacancies: {{ post.vacancies_total if post.vacancies_total is not none else 'Not specified' }}</p>
-      <a href="/jobs/{{ post.id }}">View Job Details</a>
+      <a href="{{ assam_job_path(post.id, post.display_name) }}">View Job Details</a>
     </article>
     {% endfor %}
   </div>

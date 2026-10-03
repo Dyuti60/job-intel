@@ -115,7 +115,7 @@ def test_human_structure_preserves_history_and_uses_existing_publication(
     )
     second = client.post(f"/review/cases/{new_case_id}/publish", data={"post": posts[1].post_key})
     assert "View Published Job" in second.text
-    public = client.get("/api/public/v1/recruitments?as_of=2026-09-20").json()["items"]
+    public = client.get("/api/jobs/v1/recruitments?as_of=2026-09-20").json()["items"]
     assert len(public) == 2
     assert {item["display_name"] for item in public} == {p.name for p in posts}
     assert {item["vacancies_total"] for item in public} == {7, 5}
